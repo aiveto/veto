@@ -1,0 +1,5 @@
+- operation: assets.delete
+  sentence: Permanently remove an asset from inventory.
+  synonyms:
+    - retire
+    - decommission

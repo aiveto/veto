@@ -1,0 +1,4 @@
+relations:
+  - schema: Holding
+    field: teamsId
+    to: teams.get

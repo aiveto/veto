@@ -1,0 +1,20 @@
+openapi: 3.0.3
+info:
+  title: Assets API
+  version: 1.0.0
+servers:
+  - url: http://127.0.0.1:8080
+paths:
+  /assets/{id}:
+    delete:
+      operationId: assets.delete
+      summary: Delete asset
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted

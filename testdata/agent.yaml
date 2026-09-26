@@ -1,0 +1,11 @@
+operations:
+  - operation: assets.delete
+    permissions:
+      - asset.delete
+    idempotency: none
+    retry: never
+    exposure: discovery-only
+  - operation: assets.list
+    exposure: grouped
+  - operation: assets.get
+    exposure: grouped

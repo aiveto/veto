@@ -1,0 +1,15 @@
+model: scripted
+memory: local
+semantics: file
+semantics_file: semantics.yaml
+decision: default
+policy: builtin
+telemetry: otel
+execution: in-process
+subagents: off
+flow_file: flow.yaml
+agent_file: agent.yaml
+relations_file: relations.yaml
+contracts:
+  - openapi.yaml
+  - teams.yaml

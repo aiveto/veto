@@ -1,0 +1,5 @@
+/veto
+*.exe
+*.test
+*.out
+/generated

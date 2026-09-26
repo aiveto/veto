@@ -1,0 +1,5 @@
+name: delete-requires-confirmation
+input: "Delete asset 123"
+expect:
+  confirmation_required: true
+  operation: assets.delete

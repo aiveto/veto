@@ -1,0 +1,84 @@
+package agentmeta
+
+import (
+	"fmt"
+	"os"
+
+	"github.com/aiveto/veto/catalog"
+	"gopkg.in/yaml.v3"
+)
+
+// Entry is one operation overlay. Nil pointers leave the derived value.
+type Entry struct {
+	Operation    string   `yaml:"operation"`
+	SideEffect   *string  `yaml:"side_effect"`
+	Confirmation *bool    `yaml:"confirmation"`
+	Permissions  []string `yaml:"permissions"`
+	Idempotency  *string  `yaml:"idempotency"`
+	Retry        *string  `yaml:"retry"`
+	Exposure     *string  `yaml:"exposure"`
+}
+
+// File is the agent.yaml document.
+type File struct {
+	Operations []Entry `yaml:"operations"`
+}
+
+// Load reads an agent.yaml overlay.
+func Load(path string) (File, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return File{}, fmt.Errorf("read agent file: %w", err)
+	}
+	var f File
+	if err := yaml.Unmarshal(data, &f); err != nil {
+		return File{}, fmt.Errorf("parse agent file: %w", err)
+	}
+	return f, nil
+}
+
+// Apply merges the overlay onto the catalog. A field set in the file replaces the derived value.
+func Apply(cat *catalog.Catalog, f File) error {
+	if cat == nil {
+		return fmt.Errorf("missing catalog")
+	}
+	cat.Finalize()
+	for _, e := range f.Operations {
+		op := cat.ByID(e.Operation)
+		if op == nil {
+			return fmt.Errorf("unknown operation %q", e.Operation)
+		}
+		if e.SideEffect != nil {
+			side := catalog.SideEffect(*e.SideEffect)
+			switch side {
+			case catalog.SideEffectNone, catalog.SideEffectWrite, catalog.SideEffectDestructive:
+				op.SideEffect = side
+			default:
+				return fmt.Errorf("side effect %q is not none, write, or destructive", *e.SideEffect)
+			}
+		}
+		if e.Confirmation != nil {
+			op.RequiresConfirmation = *e.Confirmation
+		} else if e.SideEffect != nil && op.SideEffect == catalog.SideEffectDestructive {
+			op.RequiresConfirmation = true
+		}
+		if e.Permissions != nil {
+			op.Permissions = append([]string(nil), e.Permissions...)
+		}
+		if e.Idempotency != nil {
+			op.Idempotency = *e.Idempotency
+		}
+		if e.Retry != nil {
+			op.Retry = *e.Retry
+		}
+		if e.Exposure != nil {
+			switch *e.Exposure {
+			case catalog.ExposureDirect, catalog.ExposureGrouped, catalog.ExposureDiscovery:
+				op.Exposure = *e.Exposure
+			default:
+				return fmt.Errorf("exposure %q is not direct, grouped, or discovery-only", *e.Exposure)
+			}
+		}
+	}
+	return nil
+}

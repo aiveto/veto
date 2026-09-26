@@ -1,0 +1,64 @@
+openapi: 3.0.3
+info:
+  title: Assets API
+  version: 1.0.0
+servers:
+  - url: http://127.0.0.1:8080
+paths:
+  /assets:
+    get:
+      operationId: assets.list
+      summary: List assets
+      responses:
+        "200":
+          description: Asset list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Holding"
+          links:
+            getAsset:
+              operationId: assets.get
+  /assets/{id}:
+    get:
+      operationId: assets.get
+      summary: Get asset by id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: One asset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Holding"
+          links:
+            deleteAsset:
+              operationRef: "#/paths/~1assets~1{id}/delete"
+    delete:
+      operationId: assets.delete
+      summary: Delete asset
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+components:
+  schemas:
+    Holding:
+      type: object
+      properties:
+        id:
+          type: string
+        teamsId:
+          type: string
