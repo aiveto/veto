@@ -19,87 +19,173 @@ import (
 	"github.com/aiveto/veto/replay"
 	"github.com/aiveto/veto/semantics"
 	"github.com/aiveto/veto/telemetry"
-	"github.com/alecthomas/kong"
+	"github.com/spf13/cobra"
 )
 
 type (
-	CLI struct {
-		Validate ValidateCmd `cmd:"validate" help:"Load and validate an OpenAPI contract."`
-		Serve    ServeCmd    `cmd:"serve" help:"Serve MCP over stdio from the contract catalog."`
-		Eval     EvalCmd     `cmd:"eval" help:"Run a deterministic eval case."`
-		Generate GenerateCmd `cmd:"generate" help:"Write a typed SDK, CLI, and MCP dispatch."`
-		Replay   ReplayCmd   `cmd:"replay" help:"Run one message and print the recorded trace."`
+	validateCmd struct {
+		config    string
+		contract  []string
+		agent     string
+		relations string
 	}
 
-	ValidateCmd struct {
-		Config    string   `help:"Path to veto.yaml. Contracts and relations live here." name:"config"`
-		Contract  []string `help:"OpenAPI file. Repeat to register another API. Overrides config." name:"contract"`
-		Agent     string   `help:"Path to agent.yaml." name:"agent"`
-		Relations string   `help:"Relations file. Joins a schema field to an operation." name:"relations"`
+	serveCmd struct {
+		contract   []string
+		config     string
+		agent      string
+		relations  string
+		stdio      bool
+		pin        []string
+		directPins bool
+		grouped    bool
+		baseURL    string
 	}
 
-	ServeCmd struct {
-		Contract   []string `help:"OpenAPI file. Repeat to register another API. Overrides config." name:"contract"`
-		Config     string   `help:"Path to veto.yaml provider keys." name:"config"`
-		Agent      string   `help:"Path to agent.yaml. Overrides agent_file." name:"agent"`
-		Relations  string   `help:"Relations file. Overrides relations_file." name:"relations"`
-		Stdio      bool     `help:"Listen on stdio for MCP." default:"true"`
-		Pin        []string `help:"Pin operation ids."`
-		DirectPins bool     `help:"Register direct MCP tools for pinned ids only."`
-		Grouped    bool     `help:"Register one MCP tool per resource."`
-		BaseURL    string   `help:"Override the server URL on every operation. Empty uses each contract server."`
+	generateCmd struct {
+		config    string
+		contract  []string
+		out       string
+		module    string
+		agent     string
+		relations string
 	}
 
-	GenerateCmd struct {
-		Config    string   `help:"Path to veto.yaml. Contracts and relations live here." name:"config"`
-		Contract  []string `help:"OpenAPI file. Repeat to register another API. Overrides config." name:"contract"`
-		Out       string   `required:"" help:"Directory to write the generated module." name:"out"`
-		Module    string   `required:"" help:"Go module path for the generated module." name:"module"`
-		Agent     string   `help:"Path to agent.yaml." name:"agent"`
-		Relations string   `help:"Relations file." name:"relations"`
+	evalCmd struct {
+		contract  []string
+		casePath  string
+		config    string
+		agent     string
+		relations string
+		baseURL   string
 	}
 
-	EvalCmd struct {
-		Contract  []string `help:"OpenAPI file. Repeat to register another API. Overrides config." name:"contract"`
-		Case      string   `required:"" help:"Path to eval case yaml." name:"case"`
-		Config    string   `help:"Path to veto.yaml provider keys." name:"config"`
-		Agent     string   `help:"Path to agent.yaml. Overrides agent_file." name:"agent"`
-		Relations string   `help:"Relations file. Overrides relations_file." name:"relations"`
-		BaseURL   string   `help:"Override the server URL on every operation. Empty uses each contract server."`
-	}
-
-	ReplayCmd struct {
-		Contract      []string `help:"OpenAPI file. Repeat to register another API. Overrides config." name:"contract"`
-		Message       string   `required:"" help:"User message to run." name:"message"`
-		Config        string   `help:"Path to veto.yaml provider keys." name:"config"`
-		Agent         string   `help:"Path to agent.yaml. Overrides agent_file." name:"agent"`
-		Relations     string   `help:"Relations file. Overrides relations_file." name:"relations"`
-		BaseURL       string   `help:"Override the server URL on every operation. Empty uses each contract server."`
-		KeepSensitive bool     `help:"Keep user messages and parameter values in the trace." name:"keep-sensitive"`
+	replayCmd struct {
+		contract      []string
+		message       string
+		config        string
+		agent         string
+		relations     string
+		baseURL       string
+		keepSensitive bool
 	}
 )
 
 func main() {
-	var cli CLI
-	ctx := kong.Parse(&cli, kong.Name("veto"))
-	switch ctx.Command() {
-	case "validate":
-		runValidate(cli.Validate)
-	case "serve":
-		runServe(cli.Serve)
-	case "eval":
-		runEval(cli.Eval)
-	case "generate":
-		runGenerate(cli.Generate)
-	case "replay":
-		runReplay(cli.Replay)
-	default:
-		ctx.FatalIfErrorf(fmt.Errorf("unknown command"))
+	root := &cobra.Command{
+		Use:          "veto",
+		SilenceUsage: true,
+	}
+	root.AddCommand(
+		newValidateCommand(),
+		newServeCommand(),
+		newEvalCommand(),
+		newGenerateCommand(),
+		newReplayCommand(),
+	)
+	if err := root.Execute(); err != nil {
+		os.Exit(1)
 	}
 }
 
-func runValidate(cmd ValidateCmd) {
-	_, contracts, relations, agent, err := resolve(cmd.Config, cmd.Contract, cmd.Relations, cmd.Agent)
+func newValidateCommand() *cobra.Command {
+	cmd := &validateCmd{}
+	c := &cobra.Command{
+		Use:   "validate",
+		Short: "Load and validate an OpenAPI contract.",
+		Run: func(*cobra.Command, []string) {
+			runValidate(*cmd)
+		},
+	}
+	c.Flags().StringVar(&cmd.config, "config", "", "Path to veto.yaml. Contracts and relations live here.")
+	c.Flags().StringArrayVar(&cmd.contract, "contract", nil, "OpenAPI file. Repeat to register another API. Overrides config.")
+	c.Flags().StringVar(&cmd.agent, "agent", "", "Path to agent.yaml.")
+	c.Flags().StringVar(&cmd.relations, "relations", "", "Relations file. Joins a schema field to an operation.")
+	return c
+}
+
+func newServeCommand() *cobra.Command {
+	cmd := &serveCmd{stdio: true}
+	c := &cobra.Command{
+		Use:   "serve",
+		Short: "Serve MCP over stdio from the contract catalog.",
+		Run: func(*cobra.Command, []string) {
+			runServe(*cmd)
+		},
+	}
+	c.Flags().StringArrayVar(&cmd.contract, "contract", nil, "OpenAPI file. Repeat to register another API. Overrides config.")
+	c.Flags().StringVar(&cmd.config, "config", "", "Path to veto.yaml provider keys.")
+	c.Flags().StringVar(&cmd.agent, "agent", "", "Path to agent.yaml. Overrides agent_file.")
+	c.Flags().StringVar(&cmd.relations, "relations", "", "Relations file. Overrides relations_file.")
+	c.Flags().BoolVar(&cmd.stdio, "stdio", true, "Listen on stdio for MCP.")
+	c.Flags().StringArrayVar(&cmd.pin, "pin", nil, "Pin operation ids.")
+	c.Flags().BoolVar(&cmd.directPins, "direct-pins", false, "Register direct MCP tools for pinned ids only.")
+	c.Flags().BoolVar(&cmd.grouped, "grouped", false, "Register one MCP tool per resource.")
+	c.Flags().StringVar(&cmd.baseURL, "base-url", "", "Override the server URL on every operation. Empty uses each contract server.")
+	return c
+}
+
+func newGenerateCommand() *cobra.Command {
+	cmd := &generateCmd{}
+	c := &cobra.Command{
+		Use:   "generate",
+		Short: "Write a typed SDK, CLI, and MCP dispatch.",
+		Run: func(*cobra.Command, []string) {
+			runGenerate(*cmd)
+		},
+	}
+	c.Flags().StringVar(&cmd.config, "config", "", "Path to veto.yaml. Contracts and relations live here.")
+	c.Flags().StringArrayVar(&cmd.contract, "contract", nil, "OpenAPI file. Repeat to register another API. Overrides config.")
+	c.Flags().StringVar(&cmd.out, "out", "", "Directory to write the generated module.")
+	c.Flags().StringVar(&cmd.module, "module", "", "Go module path for the generated module.")
+	c.Flags().StringVar(&cmd.agent, "agent", "", "Path to agent.yaml.")
+	c.Flags().StringVar(&cmd.relations, "relations", "", "Relations file.")
+	_ = c.MarkFlagRequired("out")
+	_ = c.MarkFlagRequired("module")
+	return c
+}
+
+func newEvalCommand() *cobra.Command {
+	cmd := &evalCmd{}
+	c := &cobra.Command{
+		Use:   "eval",
+		Short: "Run a deterministic eval case.",
+		Run: func(*cobra.Command, []string) {
+			runEval(*cmd)
+		},
+	}
+	c.Flags().StringArrayVar(&cmd.contract, "contract", nil, "OpenAPI file. Repeat to register another API. Overrides config.")
+	c.Flags().StringVar(&cmd.casePath, "case", "", "Path to eval case yaml.")
+	c.Flags().StringVar(&cmd.config, "config", "", "Path to veto.yaml provider keys.")
+	c.Flags().StringVar(&cmd.agent, "agent", "", "Path to agent.yaml. Overrides agent_file.")
+	c.Flags().StringVar(&cmd.relations, "relations", "", "Relations file. Overrides relations_file.")
+	c.Flags().StringVar(&cmd.baseURL, "base-url", "", "Override the server URL on every operation. Empty uses each contract server.")
+	_ = c.MarkFlagRequired("case")
+	return c
+}
+
+func newReplayCommand() *cobra.Command {
+	cmd := &replayCmd{}
+	c := &cobra.Command{
+		Use:   "replay",
+		Short: "Run one message and print the recorded trace.",
+		Run: func(*cobra.Command, []string) {
+			runReplay(*cmd)
+		},
+	}
+	c.Flags().StringArrayVar(&cmd.contract, "contract", nil, "OpenAPI file. Repeat to register another API. Overrides config.")
+	c.Flags().StringVar(&cmd.message, "message", "", "User message to run.")
+	c.Flags().StringVar(&cmd.config, "config", "", "Path to veto.yaml provider keys.")
+	c.Flags().StringVar(&cmd.agent, "agent", "", "Path to agent.yaml. Overrides agent_file.")
+	c.Flags().StringVar(&cmd.relations, "relations", "", "Relations file. Overrides relations_file.")
+	c.Flags().StringVar(&cmd.baseURL, "base-url", "", "Override the server URL on every operation. Empty uses each contract server.")
+	c.Flags().BoolVar(&cmd.keepSensitive, "keep-sensitive", false, "Keep user messages and parameter values in the trace.")
+	_ = c.MarkFlagRequired("message")
+	return c
+}
+
+func runValidate(cmd validateCmd) {
+	_, contracts, relations, agent, err := resolve(cmd.config, cmd.contract, cmd.relations, cmd.agent)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "validate failed: %v\n", err)
 		os.Exit(1)
@@ -116,8 +202,8 @@ func runValidate(cmd ValidateCmd) {
 	fmt.Printf("ok: %s (%d operations)\n", cat.Title, len(cat.Operations))
 }
 
-func runGenerate(cmd GenerateCmd) {
-	_, contracts, relations, agent, err := resolve(cmd.Config, cmd.Contract, cmd.Relations, cmd.Agent)
+func runGenerate(cmd generateCmd) {
+	_, contracts, relations, agent, err := resolve(cmd.config, cmd.contract, cmd.relations, cmd.agent)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "generate: %v\n", err)
 		os.Exit(1)
@@ -131,15 +217,15 @@ func runGenerate(cmd GenerateCmd) {
 		fmt.Fprintf(os.Stderr, "generate: %v\n", err)
 		os.Exit(1)
 	}
-	if err := generate.Write(cmd.Out, cmd.Module, cat); err != nil {
+	if err := generate.Write(cmd.out, cmd.module, cat); err != nil {
 		fmt.Fprintf(os.Stderr, "generate: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("ok: %s\n", cmd.Out)
+	fmt.Printf("ok: %s\n", cmd.out)
 }
 
-func runServe(cmd ServeCmd) {
-	loop, cfg, err := buildLoop(cmd.Contract, cmd.Config, cmd.Agent, cmd.Relations, cmd.BaseURL)
+func runServe(cmd serveCmd) {
+	loop, cfg, err := buildLoop(cmd.contract, cmd.config, cmd.agent, cmd.relations, cmd.baseURL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "serve: %v\n", err)
 		os.Exit(1)
@@ -150,11 +236,11 @@ func runServe(cmd ServeCmd) {
 		os.Exit(1)
 	}
 	defer stop(context.Background())
-	if err := mcpserver.ValidatePins(loop.Catalog, cmd.Pin); err != nil {
+	if err := mcpserver.ValidatePins(loop.Catalog, cmd.pin); err != nil {
 		fmt.Fprintf(os.Stderr, "serve: %v\n", err)
 		os.Exit(1)
 	}
-	if !cmd.Stdio {
+	if !cmd.stdio {
 		fmt.Fprintf(os.Stderr, "only --stdio is supported\n")
 		os.Exit(1)
 	}
@@ -163,15 +249,15 @@ func runServe(cmd ServeCmd) {
 		Semantics: loop.Semantics,
 		Agent:     loop,
 	}
-	opt := mcpserver.Options{Pins: cmd.Pin, DirectPins: cmd.DirectPins, Grouped: cmd.Grouped}
+	opt := mcpserver.Options{Pins: cmd.pin, DirectPins: cmd.directPins, Grouped: cmd.grouped}
 	if err := mcpserver.RunStdio(context.Background(), srv, opt); err != nil {
 		fmt.Fprintf(os.Stderr, "serve: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func runEval(cmd EvalCmd) {
-	loop, cfg, err := buildLoop(cmd.Contract, cmd.Config, cmd.Agent, cmd.Relations, cmd.BaseURL)
+func runEval(cmd evalCmd) {
+	loop, cfg, err := buildLoop(cmd.contract, cmd.config, cmd.agent, cmd.relations, cmd.baseURL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "eval: %v\n", err)
 		os.Exit(1)
@@ -182,7 +268,7 @@ func runEval(cmd EvalCmd) {
 		os.Exit(1)
 	}
 	defer stop(context.Background())
-	c, err := eval.LoadCase(cmd.Case)
+	c, err := eval.LoadCase(cmd.casePath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "eval: %v\n", err)
 		os.Exit(1)
@@ -195,24 +281,24 @@ func runEval(cmd EvalCmd) {
 	fmt.Printf("ok: %s\n", c.Name)
 }
 
-func runReplay(cmd ReplayCmd) {
+func runReplay(cmd replayCmd) {
 	rec, err := telemetry.Record()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "replay: %v\n", err)
 		os.Exit(1)
 	}
 	defer rec.Stop(context.Background())
-	loop, cfg, err := buildLoop(cmd.Contract, cmd.Config, cmd.Agent, cmd.Relations, cmd.BaseURL)
+	loop, cfg, err := buildLoop(cmd.contract, cmd.config, cmd.agent, cmd.relations, cmd.baseURL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "replay: %v\n", err)
 		os.Exit(1)
 	}
-	if _, err := loop.Run(context.Background(), cmd.Message); err != nil {
+	if _, err := loop.Run(context.Background(), cmd.message); err != nil {
 		fmt.Fprintf(os.Stderr, "replay: %v\n", err)
 		os.Exit(1)
 	}
 	redact := cfg.Redact()
-	if cmd.KeepSensitive {
+	if cmd.keepSensitive {
 		redact = false
 	}
 	fmt.Print(replay.FromSpans(rec.Spans(), redact).String())

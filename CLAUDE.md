@@ -15,7 +15,7 @@ Take these. Do not import their code.
 - Eino: explicit steps, callbacks as spans, an interrupt is state you can resume.
 - A good default, replaced by one key. Unset means the default works.
 - Kong, Stainless, FastMCP: do not register one MCP tool per operation. Search, then describe, then invoke.
-- OpenTelemetry for traces. kin-openapi to load OpenAPI. `modelcontextprotocol/go-sdk` for MCP. kong for the `veto` binary. yaml.v3 for overlays.
+- OpenTelemetry for traces. kin-openapi to load OpenAPI. `modelcontextprotocol/go-sdk` for MCP. Cobra for the `veto` binary. yaml.v3 for overlays.
 - Go: Dave Cheney and Mat Ryer. The rules are below. No package named `context`. The pack is `runctx`.
 
 ## Layout
