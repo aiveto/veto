@@ -1,7 +1,6 @@
 # veto
 
-Module `github.com/aiveto/veto`. Command `veto`. GitHub path `aiveto/veto`.
-Local tree: `/Users/arun/development/workspace/github.com/aiveto/veto`.
+Module `github.com/aiveto/veto`. Command `veto`. Repository `github.com/aiveto/veto`.
 
 The name you say is veto. aiveto is the org.
 
@@ -104,7 +103,7 @@ Idiomatic Go. Dave Cheney and Mat Ryer.
 
 ## Where the code is
 
-Edit `/Users/arun/development/workspace/github.com/aiveto/veto` only. The cloud workspace is not this tree. `gofmt` the files you touch. Do not commit or push unless asked.
+Work in the checkout of `github.com/aiveto/veto`. `gofmt` the files you touch.
 
 ## Round table
 
