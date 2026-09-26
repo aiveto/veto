@@ -199,6 +199,14 @@ Philosophies in `CLAUDE.md` point here without importing their code: Eino-style 
 
 71. **Linear flows with step I/O.** Item 5: a step names an output field and the next step's parameter. Confirmation still stops a destructive step mid-flow. No graph engine (ADR 010).
 
+## Enterprise rollout
+
+Backend token validation and outbound auth often live on the API gateway or mesh. Veto does not replace that. `execute` may call a gateway base URL with no `Authorization` when the gateway attaches identity. Item 2 stays for teams that call APIs directly. Item 35 still needs a **caller identity** for invoke policy (who may ask for a delete), which is not the same as the gateway JWT to a microservice.
+
+### Killer not on the gateway
+
+72. **`veto check` for agent surface regression.** One CI command after items 64 and 65 exist: load `veto.yaml`, relations, and agent metadata; validate the graph; run the eval case directory; fail non-zero on any error. Optional `--against` a git ref or a committed snapshot: fail when an OpenAPI change removes an operation referenced by a relation or link, when a destructive operation loses `RequiresConfirmation` without an intentional `agent.yaml` change, or when an eval case changes expected operation or confirmation behavior. Gateways validate HTTP requests. They do not know whether `Holding.teamsId` still reaches `teams.get` or whether "delete asset 123" still stops before HTTP. Platform teams need that gate when API repos and agent config ship on different PRs.
+
 ### Do not chase for "wow"
 
 These do not belong in the must-use story:
