@@ -2,7 +2,36 @@
 
 This is the list of work left before veto is a public project. Pick an item by number. Leave the locked decisions alone.
 
-The product is one catalog for every API a user registers. They write config. Veto does the plumbing: a small MCP surface, a context pack that follows declared joins, a policy gate on the way out, and the same gate for the SDK, the CLI, and MCP. A flat OpenAPI-to-SDK tool is not the thing we are shipping.
+Numbered items **1 through 73**, the **Locked** section, and **Must-have map** below are the product checklist. Add or reorder work only with a short ADR, then update this file.
+
+The product is one catalog for every API a user registers. They write config. Veto does the plumbing: a small MCP surface, a context pack that follows declared joins, guardrails at invoke, and the same gate for the SDK, the CLI, and MCP. A flat OpenAPI-to-SDK tool is not the thing we are shipping.
+
+## Must-have map (locked)
+
+How common agent and MCP concerns map to veto. API gateways still own **data-plane** authZ on HTTP. Veto owns the **agent surface** and **capability guardrails**.
+
+| Concern | Veto owns | Items / ADR |
+|--------|-----------|-------------|
+| MCP tool surface (not one tool per operation) | search, describe, invoke, pins, grouped | ADR 003, 28–30 |
+| Context for the model (not dumping the spec) | pack selection, budget | 3, 22–23, 63 |
+| Semantics / capability descriptions | derived notes, overlay, relation sentences | 25–27, 70 |
+| Guardrails: which ops exist for this deployment | exposure, discovery-only, pins | `agent.yaml`, 28–29 |
+| Guardrails: may this invoke run | `policy.Hook`, confirmation | 33–36, 67–68, 73 |
+| Guardrails: safe params | validate and coerce before HTTP | 9–10 |
+| Guardrails: leaks in traces | replay allowlist | 43–46, 69 |
+| Guardrails: free-text / prompt (optional) | `decision:` provider, not core | 41 |
+| AuthZ to backend APIs | gateway or mesh (primary); direct auth optional | Enterprise rollout; item 2 when no gateway |
+| AuthZ on the agent surface | caller + permissions on invoke | 35, 73 |
+| Observability | OpenTelemetry, replay | 43–46, 69 |
+| Test agent config in CI | eval cases, `veto check` | 49–50, 64, 72 |
+| Multi-API joins | relations file, walk in invoke | 4, 16, 62 |
+| Human in the loop | confirmation, interrupt | 33–34, 67 |
+| Durable multi-step work | `execution: temporal` key | 40 |
+| Real calls | body, auth when needed, retry/idempotency | 1–8, 11–12 |
+
+## Guardrails in veto
+
+**Yes: guardrails on capabilities and actions are veto’s job.** That is the invoke gate, `agent.yaml`, the pack, param checks, confirmation, trace redaction, and CI (`eval`, item 72). **No: veto is not the only guardrail in the stack.** Row-level and token authZ on HTTP stay on the API layer. Content moderation on raw chat may use a `decision:` provider (item 41). External engines for invoke authZ use `policy: opa` or `policy: spicedb` (item 73). Confirmation on destructive calls stays in veto; an external decision provider does not approve a delete by itself.
 
 ## Already in the tree
 
@@ -206,6 +235,8 @@ Backend token validation and outbound auth often live on the API gateway or mesh
 ### Killer not on the gateway
 
 72. **`veto check` for agent surface regression.** One CI command after items 64 and 65 exist: load `veto.yaml`, relations, and agent metadata; validate the graph; run the eval case directory; fail non-zero on any error. Optional `--against` a git ref or a committed snapshot: fail when an OpenAPI change removes an operation referenced by a relation or link, when a destructive operation loses `RequiresConfirmation` without an intentional `agent.yaml` change, or when an eval case changes expected operation or confirmation behavior. Gateways validate HTTP requests. They do not know whether `Holding.teamsId` still reaches `teams.get` or whether "delete asset 123" still stops before HTTP. Platform teams need that gate when API repos and agent config ship on different PRs.
+
+73. **External invoke policy (`policy: opa` or `policy: spicedb`).** After item 35. Config key only until a provider package exists. Subject comes from caller identity (item 35) or MCP session metadata. Check `op.Permissions` and later resource ids from params against OPA or SpiceDB. Default stays `policy: builtin`. Eval and `veto check` must still pass with the key unset. This is agent-surface authZ, not replacement for gateway authZ on HTTP.
 
 ### Do not chase for "wow"
 
