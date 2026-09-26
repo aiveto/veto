@@ -14,17 +14,19 @@ import (
 	"github.com/aiveto/veto/telemetry"
 )
 
-// Config points invoke at a base URL and optional client.
-type Config struct {
-	BaseURL string
-	Client  *http.Client
-}
+type (
+	// Config points invoke at a base URL and optional client.
+	Config struct {
+		BaseURL string
+		Client  *http.Client
+	}
 
-// Client is the HTTP writer the agent loop calls after policy allows an operation.
-type Client struct {
-	BaseURL string
-	HTTP    *http.Client
-}
+	// Client is the HTTP writer the agent loop calls after policy allows an operation.
+	Client struct {
+		BaseURL string
+		HTTP    *http.Client
+	}
+)
 
 // Invoke performs the operation and returns the status and body.
 func (c Client) Invoke(ctx context.Context, op *catalog.Operation, params map[string]string) (agent.HTTPResult, error) {

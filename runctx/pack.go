@@ -10,29 +10,31 @@ import (
 
 const defaultRules = "Use capabilities_search, then capabilities_describe, then capabilities_invoke."
 
-// Turn is one conversation message.
-type Turn struct {
-	Role    string
-	Content string
-}
+type (
+	// Turn is one conversation message.
+	Turn struct {
+		Role    string
+		Content string
+	}
 
-// Pack is the bounded context given to the model.
-type Pack struct {
-	Rules                string
-	Index                string
-	Turns                []Turn
-	DescribedOperationID string
-	DescribedDetail      string
-	Related              []string
-	PendingConfirmation  *policy.PendingConfirmation
-	Bytes                int
-	Truncated            bool
-}
+	// Pack is the bounded context given to the model.
+	Pack struct {
+		Rules                string
+		Index                string
+		Turns                []Turn
+		DescribedOperationID string
+		DescribedDetail      string
+		Related              []string
+		PendingConfirmation  *policy.PendingConfirmation
+		Bytes                int
+		Truncated            bool
+	}
 
-// Builder constructs context packs from run inputs.
-type Builder struct {
-	MaxBytes int
-}
+	// Builder constructs context packs from run inputs.
+	Builder struct {
+		MaxBytes int
+	}
+)
 
 // NewBuilder creates a pack builder with a byte budget.
 func NewBuilder(maxBytes int) *Builder {

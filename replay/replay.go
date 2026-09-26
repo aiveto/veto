@@ -8,17 +8,6 @@ import (
 	"github.com/aiveto/veto/telemetry"
 )
 
-// Step is one recorded span after redaction.
-type Step struct {
-	Name  string
-	Attrs map[string]string
-}
-
-// View is a run read back from traces.
-type View struct {
-	Steps []Step
-}
-
 // kept is the only attributes replay prints while redaction is on.
 var kept = map[string]bool{
 	"operation.id": true,
@@ -29,6 +18,19 @@ var kept = map[string]bool{
 	"flow.name":    true,
 	"tools":        true,
 }
+
+type (
+	// Step is one recorded span after redaction.
+	Step struct {
+		Name  string
+		Attrs map[string]string
+	}
+
+	// View is a run read back from traces.
+	View struct {
+		Steps []Step
+	}
+)
 
 // FromSpans builds a view. When redact is set, only the allowlisted attributes are kept.
 func FromSpans(spans []telemetry.Span, redact bool) View {

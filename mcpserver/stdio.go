@@ -9,21 +9,34 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Options configures stdio MCP serving.
-type Options struct {
-	Pins       []string
-	DirectPins bool
-	Grouped    bool
-}
+type (
+	// Options configures stdio MCP serving.
+	Options struct {
+		Pins       []string
+		DirectPins bool
+		Grouped    bool
+	}
+
+	searchArgs struct {
+		Query string `json:"query" jsonschema:"search query"`
+	}
+
+	describeArgs struct {
+		OperationID string `json:"operation_id" jsonschema:"operation id"`
+	}
+
+	invokeArgs struct {
+		OperationID string            `json:"operation_id" jsonschema:"operation id"`
+		Params      map[string]string `json:"params" jsonschema:"parameters"`
+		ApprovalID  string            `json:"approval_id" jsonschema:"approval id from confirmation"`
+	}
+)
 
 // RunStdio serves MCP over stdin/stdout.
 func RunStdio(ctx context.Context, srv *Server, opt Options) error {
 	impl := &mcp.Implementation{Name: "veto", Version: "0.1.0"}
 	server := mcp.NewServer(impl, nil)
 
-	type searchArgs struct {
-		Query string `json:"query" jsonschema:"search query"`
-	}
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "capabilities_search",
 		Description: "Search operations in the contract catalog",
@@ -39,9 +52,6 @@ func RunStdio(ctx context.Context, srv *Server, opt Options) error {
 		return textResult(string(b))
 	})
 
-	type describeArgs struct {
-		OperationID string `json:"operation_id" jsonschema:"operation id"`
-	}
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "capabilities_describe",
 		Description: "Describe one operation by id",
@@ -53,11 +63,6 @@ func RunStdio(ctx context.Context, srv *Server, opt Options) error {
 		return textResult(string(b))
 	})
 
-	type invokeArgs struct {
-		OperationID string            `json:"operation_id" jsonschema:"operation id"`
-		Params      map[string]string `json:"params" jsonschema:"parameters"`
-		ApprovalID  string            `json:"approval_id" jsonschema:"approval id from confirmation"`
-	}
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "capabilities_invoke",
 		Description: "Invoke an operation through policy and HTTP",

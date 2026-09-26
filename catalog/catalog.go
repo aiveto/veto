@@ -2,85 +2,84 @@ package catalog
 
 import "sort"
 
-// Kind classifies what an operation does to server state.
-type Kind string
-
 const (
 	KindRead   Kind = "read"
 	KindCreate Kind = "create"
 	KindUpdate Kind = "update"
 	KindDelete Kind = "delete"
 	KindAction Kind = "action"
-)
 
-// SideEffect describes how invasive an operation is.
-type SideEffect string
-
-const (
 	SideEffectNone        SideEffect = "none"
 	SideEffectWrite       SideEffect = "write"
 	SideEffectDestructive SideEffect = "destructive"
-)
 
-// Exposure is how an operation may appear beyond search, describe, and invoke.
-const (
+	// ExposureDirect is a pinned tool. ExposureGrouped is one tool for the resource.
+	// ExposureDiscovery stays on search and describe.
 	ExposureDirect    = "direct"
 	ExposureGrouped   = "grouped"
 	ExposureDiscovery = "discovery-only"
 )
 
-// Param is one request parameter from the contract.
-type Param struct {
-	Name        string
-	In          string // path, query, header
-	Required    bool
-	Description string
-	Schema      string
-}
+type (
+	// Kind classifies what an operation does to server state.
+	Kind string
 
-// Operation is one callable capability from the contract catalog.
-type Operation struct {
-	ID                   string
-	Name                 string
-	Description          string
-	Group                string
-	Kind                 Kind
-	Method               string
-	PathTemplate         string
-	Params               []Param
-	ResponseSummary      string
-	SideEffect           SideEffect
-	RequiresConfirmation bool
-	Permissions          []string
-	Idempotency          string
-	Retry                string
-	Exposure             string
-	BaseURL              string
-}
+	// SideEffect describes how invasive an operation is.
+	SideEffect string
 
-// OpLink is an OpenAPI link from one operation to another.
-type OpLink struct {
-	From string
-	To   string
-	Note string
-}
+	// Param is one request parameter from the contract.
+	Param struct {
+		Name        string
+		In          string // path, query, header
+		Required    bool
+		Description string
+		Schema      string
+	}
 
-// SchemaUse records a component schema referenced by an operation.
-type SchemaUse struct {
-	OperationID string
-	Name        string
-}
+	// Operation is one callable capability from the contract catalog.
+	Operation struct {
+		ID                   string
+		Name                 string
+		Description          string
+		Group                string
+		Kind                 Kind
+		Method               string
+		PathTemplate         string
+		Params               []Param
+		ResponseSummary      string
+		SideEffect           SideEffect
+		RequiresConfirmation bool
+		Permissions          []string
+		Idempotency          string
+		Retry                string
+		Exposure             string
+		BaseURL              string
+	}
 
-// Catalog holds the operations and the capability graph for every loaded contract.
-type Catalog struct {
-	Title      string
-	Version    string
-	Operations []Operation
-	Links      []OpLink
-	Uses       []SchemaUse
-	Graph      Graph
-	byID       map[string]*Operation
-}
+	// OpLink is an OpenAPI link from one operation to another.
+	OpLink struct {
+		From string
+		To   string
+		Note string
+	}
+
+	// SchemaUse records a component schema referenced by an operation.
+	SchemaUse struct {
+		OperationID string
+		Name        string
+	}
+
+	// Catalog holds the operations and the capability graph for every loaded contract.
+	Catalog struct {
+		Title      string
+		Version    string
+		Operations []Operation
+		Links      []OpLink
+		Uses       []SchemaUse
+		Graph      Graph
+		byID       map[string]*Operation
+	}
+)
 
 // ByID returns the operation for id, or nil.
 func (c *Catalog) ByID(id string) *Operation {

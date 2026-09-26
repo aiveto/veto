@@ -12,14 +12,32 @@ import (
 	"github.com/aiveto/veto/telemetry"
 )
 
-// OpenAI calls an OpenAI-compatible chat completions endpoint.
-// The context pack is the system message. The reply is JSON for one operation.
-type OpenAI struct {
-	BaseURL string
-	APIKey  string
-	Name    string
-	Client  *http.Client
-}
+type (
+	// OpenAI calls an OpenAI-compatible chat completions endpoint.
+	// The context pack is the system message. The reply is JSON for one operation.
+	OpenAI struct {
+		BaseURL string
+		APIKey  string
+		Name    string
+		Client  *http.Client
+	}
+
+	chatRequest struct {
+		Model    string        `json:"model"`
+		Messages []chatMessage `json:"messages"`
+	}
+
+	chatMessage struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	}
+
+	chatResponse struct {
+		Choices []struct {
+			Message chatMessage `json:"message"`
+		} `json:"choices"`
+	}
+)
 
 // NewOpenAI builds a live model. An empty key is an error. An empty base URL uses the OpenAI API.
 func NewOpenAI(baseURL, apiKey, name string) (*OpenAI, error) {
@@ -105,20 +123,4 @@ func parseModelJSON(content string) (Response, error) {
 		return Response{}, fmt.Errorf("parse model json: %w", err)
 	}
 	return Response{OperationID: wire.OperationID, Params: wire.Params, FlowName: wire.FlowName}, nil
-}
-
-type chatRequest struct {
-	Model    string        `json:"model"`
-	Messages []chatMessage `json:"messages"`
-}
-
-type chatMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type chatResponse struct {
-	Choices []struct {
-		Message chatMessage `json:"message"`
-	} `json:"choices"`
 }

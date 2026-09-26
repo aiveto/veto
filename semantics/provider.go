@@ -9,15 +9,51 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Note holds human text and search synonyms for one operation.
-// Relation is a sentence veto derived from a declared edge, such as
-// "Holding.teamsId identifies teams.get".
-type Note struct {
-	OperationID string
-	Sentence    string
-	Synonyms    []string
-	Relation    string
+var builtin = map[string][]string{
+	"delete": {"remove", "retire", "destroy"},
+	"get":    {"fetch", "read", "load"},
+	"list":   {"enumerate", "browse"},
+	"create": {"add", "new"},
+	"update": {"patch", "change"},
 }
+
+type (
+	// Note holds human text and search synonyms for one operation.
+	// Relation is a sentence veto derived from a declared edge, such as
+	// "Holding.teamsId identifies teams.get".
+	Note struct {
+		OperationID string
+		Sentence    string
+		Synonyms    []string
+		Relation    string
+	}
+
+	// Provider supplies semantic notes for search and context.
+	Provider interface {
+		Note(operationID string) Note
+		Synonyms(operationID string) []string
+		AllSynonyms() map[string][]string
+	}
+
+	// Derived builds notes from operation summaries and a small builtin map.
+	Derived struct {
+		cat   *catalog.Catalog
+		notes map[string]Note
+	}
+
+	// OverlayEntry is one row in a semantics yaml file.
+	OverlayEntry struct {
+		OperationID string   `yaml:"operation"`
+		Sentence    string   `yaml:"sentence"`
+		Synonyms    []string `yaml:"synonyms"`
+	}
+
+	// FileOverlay merges yaml overrides onto a base provider.
+	FileOverlay struct {
+		base  Provider
+		notes map[string]Note
+	}
+)
 
 // Text is the sentence plus the relation, when one is declared.
 func (n Note) Text() string {
@@ -33,19 +69,6 @@ func (n Note) Text() string {
 	return n.Sentence + " " + n.Relation
 }
 
-// Provider supplies semantic notes for search and context.
-type Provider interface {
-	Note(operationID string) Note
-	Synonyms(operationID string) []string
-	AllSynonyms() map[string][]string
-}
-
-// Derived builds notes from operation summaries and a small builtin map.
-type Derived struct {
-	cat   *catalog.Catalog
-	notes map[string]Note
-}
-
 // NewDerived creates a semantics provider from the catalog.
 func NewDerived(cat *catalog.Catalog) *Derived {
 	d := &Derived{cat: cat, notes: map[string]Note{}}
@@ -58,14 +81,6 @@ func NewDerived(cat *catalog.Catalog) *Derived {
 		}
 	}
 	return d
-}
-
-var builtin = map[string][]string{
-	"delete": {"remove", "retire", "destroy"},
-	"get":    {"fetch", "read", "load"},
-	"list":   {"enumerate", "browse"},
-	"create": {"add", "new"},
-	"update": {"patch", "change"},
 }
 
 func deriveSynonyms(op catalog.Operation) []string {
@@ -136,19 +151,6 @@ func (d *Derived) AllSynonyms() map[string][]string {
 		out[id] = d.Synonyms(id)
 	}
 	return out
-}
-
-// OverlayEntry is one row in a semantics yaml file.
-type OverlayEntry struct {
-	OperationID string   `yaml:"operation"`
-	Sentence    string   `yaml:"sentence"`
-	Synonyms    []string `yaml:"synonyms"`
-}
-
-// FileOverlay merges yaml overrides onto a base provider.
-type FileOverlay struct {
-	base  Provider
-	notes map[string]Note
 }
 
 // LoadOverlay reads semantics yaml and wraps base.

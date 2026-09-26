@@ -18,6 +18,15 @@ import (
 	"github.com/aiveto/veto/semantics"
 )
 
+type flowPick struct{}
+
+func (flowPick) Complete(ctx context.Context, req model.Request) (model.Response, error) {
+	if strings.HasPrefix(req.UserMessage, "ok") {
+		return model.Response{}, nil
+	}
+	return model.Response{FlowName: "list-then-get", Params: map[string]string{"id": "9"}}, nil
+}
+
 func TestDeleteLoopStopsBeforeHTTPAndPacksOverlay(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
 	if err != nil {
@@ -66,15 +75,6 @@ func TestDeleteLoopStopsBeforeHTTPAndPacksOverlay(t *testing.T) {
 	if len(items) != 1 {
 		t.Fatalf("expected one memory item, got %d", len(items))
 	}
-}
-
-type flowPick struct{}
-
-func (flowPick) Complete(ctx context.Context, req model.Request) (model.Response, error) {
-	if strings.HasPrefix(req.UserMessage, "ok") {
-		return model.Response{}, nil
-	}
-	return model.Response{FlowName: "list-then-get", Params: map[string]string{"id": "9"}}, nil
 }
 
 func TestLoopRunsNamedFlow(t *testing.T) {

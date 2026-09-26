@@ -15,6 +15,22 @@ import (
 
 const tracerName = "github.com/aiveto/veto"
 
+type (
+	// Span is one finished span with string attributes.
+	Span struct {
+		Name  string
+		Start time.Time
+		Attrs map[string]string
+	}
+
+	// Recorder keeps finished spans in memory so replay can read them.
+	Recorder struct {
+		exp  *tracetest.InMemoryExporter
+		stop func(context.Context) error
+		prev trace.TracerProvider
+	}
+)
+
 // StartSpan begins a child span on the global tracer.
 func StartSpan(ctx context.Context, name string) trace.Span {
 	_, span := otel.Tracer(tracerName).Start(ctx, name)
@@ -42,20 +58,6 @@ func Install(export string) (func(context.Context) error, error) {
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exp))
 	otel.SetTracerProvider(tp)
 	return tp.Shutdown, nil
-}
-
-// Span is one finished span with string attributes.
-type Span struct {
-	Name  string
-	Start time.Time
-	Attrs map[string]string
-}
-
-// Recorder keeps finished spans in memory so replay can read them.
-type Recorder struct {
-	exp  *tracetest.InMemoryExporter
-	stop func(context.Context) error
-	prev trace.TracerProvider
 }
 
 // Record installs an in-memory tracer. Stop restores the previous provider.

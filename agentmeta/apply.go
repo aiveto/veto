@@ -8,21 +8,23 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Entry is one operation overlay. Nil pointers leave the derived value.
-type Entry struct {
-	Operation    string   `yaml:"operation"`
-	SideEffect   *string  `yaml:"side_effect"`
-	Confirmation *bool    `yaml:"confirmation"`
-	Permissions  []string `yaml:"permissions"`
-	Idempotency  *string  `yaml:"idempotency"`
-	Retry        *string  `yaml:"retry"`
-	Exposure     *string  `yaml:"exposure"`
-}
+type (
+	// Entry is one operation overlay. Nil pointers leave the derived value.
+	Entry struct {
+		Operation    string   `yaml:"operation"`
+		SideEffect   *string  `yaml:"side_effect"`
+		Confirmation *bool    `yaml:"confirmation"`
+		Permissions  []string `yaml:"permissions"`
+		Idempotency  *string  `yaml:"idempotency"`
+		Retry        *string  `yaml:"retry"`
+		Exposure     *string  `yaml:"exposure"`
+	}
 
-// File is the agent.yaml document.
-type File struct {
-	Operations []Entry `yaml:"operations"`
-}
+	// File is the agent.yaml document.
+	File struct {
+		Operations []Entry `yaml:"operations"`
+	}
+)
 
 // Load reads an agent.yaml overlay.
 func Load(path string) (File, error) {

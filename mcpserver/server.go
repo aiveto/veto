@@ -10,22 +10,24 @@ import (
 	"github.com/aiveto/veto/semantics"
 )
 
-// InvokeResult is returned from capabilities_invoke.
-type InvokeResult struct {
-	Status      string `json:"status"`
-	ApprovalID  string `json:"approval_id,omitempty"`
-	OperationID string `json:"operation_id,omitempty"`
-	HTTPStatus  int    `json:"http_status,omitempty"`
-	Body        string `json:"body,omitempty"`
-	Error       string `json:"error,omitempty"`
-}
+type (
+	// InvokeResult is returned from capabilities_invoke.
+	InvokeResult struct {
+		Status      string `json:"status"`
+		ApprovalID  string `json:"approval_id,omitempty"`
+		OperationID string `json:"operation_id,omitempty"`
+		HTTPStatus  int    `json:"http_status,omitempty"`
+		Body        string `json:"body,omitempty"`
+		Error       string `json:"error,omitempty"`
+	}
 
-// Server wires catalog search, describe, and policy-gated invoke.
-type Server struct {
-	Catalog   *catalog.Catalog
-	Semantics semantics.Provider
-	Agent     *agent.Loop
-}
+	// Server wires catalog search, describe, and policy-gated invoke.
+	Server struct {
+		Catalog   *catalog.Catalog
+		Semantics semantics.Provider
+		Agent     *agent.Loop
+	}
+)
 
 // Search runs capability search.
 func (s *Server) Search(ctx context.Context, query string) ([]catalog.Match, error) {

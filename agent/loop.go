@@ -15,35 +15,51 @@ import (
 	"github.com/google/uuid"
 )
 
-// HTTPResult is the status and body of one allowed HTTP call.
-type HTTPResult struct {
-	Status int
-	Body   string
-}
+type (
+	// HTTPResult is the status and body of one allowed HTTP call.
+	HTTPResult struct {
+		Status int
+		Body   string
+	}
 
-// Executor performs one HTTP call. The loop does not build the request.
-type Executor interface {
-	Invoke(ctx context.Context, op *catalog.Operation, params map[string]string) (HTTPResult, error)
-}
+	// Executor performs one HTTP call. The loop does not build the request.
+	Executor interface {
+		Invoke(ctx context.Context, op *catalog.Operation, params map[string]string) (HTTPResult, error)
+	}
 
-// Call is one policy-gated execution of an operation.
-type Call struct {
-	Status      string
-	ApprovalID  string
-	OperationID string
-	HTTPStatus  int
-	Body        string
-	Error       string
-}
+	// Call is one policy-gated execution of an operation.
+	Call struct {
+		Status      string
+		ApprovalID  string
+		OperationID string
+		HTTPStatus  int
+		Body        string
+		Error       string
+	}
 
-// Outcome is the result of one user turn.
-type Outcome struct {
-	OperationID string
-	Status      string
-	ApprovalID  string
-	Text        string
-	Pack        runctx.Pack
-}
+	// Outcome is the result of one user turn.
+	Outcome struct {
+		OperationID string
+		Status      string
+		ApprovalID  string
+		Text        string
+		Pack        runctx.Pack
+	}
+
+	// Loop runs one turn: model, policy, then HTTP when the call is allowed.
+	// The follow-up pack is returned to the caller. The model is not called again.
+	Loop struct {
+		Catalog   *catalog.Catalog
+		Semantics semantics.Provider
+		Model     model.Model
+		Policy    policy.Hook
+		State     *policy.State
+		Exec      Executor
+		Memory    memory.Memory
+		Flows     map[string]*flow.Definition
+		Packs     *runctx.Builder
+	}
+)
 
 // New builds a loop with the in-tree defaults. Catalog is required.
 func New(cat *catalog.Catalog, sem semantics.Provider, exec Executor) *Loop {
@@ -61,20 +77,6 @@ func New(cat *catalog.Catalog, sem semantics.Provider, exec Executor) *Loop {
 		Flows:     map[string]*flow.Definition{},
 		Packs:     runctx.NewBuilder(0),
 	}
-}
-
-// Loop runs one turn: model, policy, then HTTP when the call is allowed.
-// The follow-up pack is returned to the caller. The model is not called again.
-type Loop struct {
-	Catalog   *catalog.Catalog
-	Semantics semantics.Provider
-	Model     model.Model
-	Policy    policy.Hook
-	State     *policy.State
-	Exec      Executor
-	Memory    memory.Memory
-	Flows     map[string]*flow.Definition
-	Packs     *runctx.Builder
 }
 
 // Run executes the loop for one user message.

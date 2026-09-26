@@ -12,26 +12,28 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Case is one eval fixture.
-type Case struct {
-	Name   string       `yaml:"name"`
-	Input  string       `yaml:"input"`
-	Expect Expectations `yaml:"expect"`
-}
+type (
+	// Case is one eval fixture.
+	Case struct {
+		Name   string       `yaml:"name"`
+		Input  string       `yaml:"input"`
+		Expect Expectations `yaml:"expect"`
+	}
 
-// Expectations are deterministic assertions.
-type Expectations struct {
-	ConfirmationRequired bool   `yaml:"confirmation_required"`
-	OperationID          string `yaml:"operation"`
-}
+	// Expectations are deterministic assertions.
+	Expectations struct {
+		ConfirmationRequired bool   `yaml:"confirmation_required"`
+		OperationID          string `yaml:"operation"`
+	}
 
-// Runner executes eval cases without a network LLM.
-type Runner struct {
-	Catalog   *catalog.Catalog
-	Semantics semantics.Provider
-	Model     model.Model
-	Loop      *agent.Loop
-}
+	// Runner executes eval cases without a network LLM.
+	Runner struct {
+		Catalog   *catalog.Catalog
+		Semantics semantics.Provider
+		Model     model.Model
+		Loop      *agent.Loop
+	}
+)
 
 // LoadCase reads a case yaml file.
 func LoadCase(path string) (*Case, error) {

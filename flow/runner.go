@@ -8,16 +8,18 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Definition is a named sequence of operation ids.
-type Definition struct {
-	Name  string   `yaml:"name"`
-	Steps []string `yaml:"steps"`
-}
+type (
+	// Definition is a named sequence of operation ids.
+	Definition struct {
+		Name  string   `yaml:"name"`
+		Steps []string `yaml:"steps"`
+	}
 
-// Runner executes flow steps in order via invoke.
-type Runner struct {
-	Invoke func(ctx context.Context, operationID string, params map[string]string, approvalID string) (string, error)
-}
+	// Runner executes flow steps in order via invoke.
+	Runner struct {
+		Invoke func(ctx context.Context, operationID string, params map[string]string, approvalID string) (string, error)
+	}
+)
 
 // Load reads a flow yaml file.
 func Load(path string) (*Definition, error) {

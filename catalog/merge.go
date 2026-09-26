@@ -7,6 +7,19 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type (
+	// Relation asserts that a schema field identifies another operation.
+	Relation struct {
+		Schema string `yaml:"schema"`
+		Field  string `yaml:"field"`
+		To     string `yaml:"to"`
+	}
+
+	relationFile struct {
+		Relations []Relation `yaml:"relations"`
+	}
+)
+
 // Merge copies operations from each catalog into one. Duplicate ids are an error.
 func Merge(parts ...*Catalog) (*Catalog, error) {
 	out := &Catalog{Title: "catalog"}
@@ -30,17 +43,6 @@ func Merge(parts ...*Catalog) (*Catalog, error) {
 	}
 	out.Finalize()
 	return out, nil
-}
-
-// Relation asserts that a schema field identifies another operation.
-type Relation struct {
-	Schema string `yaml:"schema"`
-	Field  string `yaml:"field"`
-	To     string `yaml:"to"`
-}
-
-type relationFile struct {
-	Relations []Relation `yaml:"relations"`
 }
 
 // LoadRelations reads a relations file.

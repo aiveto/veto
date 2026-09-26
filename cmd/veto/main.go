@@ -22,60 +22,62 @@ import (
 	"github.com/alecthomas/kong"
 )
 
-type CLI struct {
-	Validate ValidateCmd `cmd:"validate" help:"Load and validate an OpenAPI contract."`
-	Serve    ServeCmd    `cmd:"serve" help:"Serve MCP over stdio from the contract catalog."`
-	Eval     EvalCmd     `cmd:"eval" help:"Run a deterministic eval case."`
-	Generate GenerateCmd `cmd:"generate" help:"Write a typed SDK, CLI, and MCP dispatch."`
-	Replay   ReplayCmd   `cmd:"replay" help:"Run one message and print the recorded trace."`
-}
+type (
+	CLI struct {
+		Validate ValidateCmd `cmd:"validate" help:"Load and validate an OpenAPI contract."`
+		Serve    ServeCmd    `cmd:"serve" help:"Serve MCP over stdio from the contract catalog."`
+		Eval     EvalCmd     `cmd:"eval" help:"Run a deterministic eval case."`
+		Generate GenerateCmd `cmd:"generate" help:"Write a typed SDK, CLI, and MCP dispatch."`
+		Replay   ReplayCmd   `cmd:"replay" help:"Run one message and print the recorded trace."`
+	}
 
-type ValidateCmd struct {
-	Config    string   `help:"Path to veto.yaml. Contracts and relations live here." name:"config"`
-	Contract  []string `help:"OpenAPI file. Repeat to register another API. Overrides config." name:"contract"`
-	Agent     string   `help:"Path to agent.yaml." name:"agent"`
-	Relations string   `help:"Relations file. Joins a schema field to an operation." name:"relations"`
-}
+	ValidateCmd struct {
+		Config    string   `help:"Path to veto.yaml. Contracts and relations live here." name:"config"`
+		Contract  []string `help:"OpenAPI file. Repeat to register another API. Overrides config." name:"contract"`
+		Agent     string   `help:"Path to agent.yaml." name:"agent"`
+		Relations string   `help:"Relations file. Joins a schema field to an operation." name:"relations"`
+	}
 
-type ServeCmd struct {
-	Contract   []string `help:"OpenAPI file. Repeat to register another API. Overrides config." name:"contract"`
-	Config     string   `help:"Path to veto.yaml provider keys." name:"config"`
-	Agent      string   `help:"Path to agent.yaml. Overrides agent_file." name:"agent"`
-	Relations  string   `help:"Relations file. Overrides relations_file." name:"relations"`
-	Stdio      bool     `help:"Listen on stdio for MCP." default:"true"`
-	Pin        []string `help:"Pin operation ids."`
-	DirectPins bool     `help:"Register direct MCP tools for pinned ids only."`
-	Grouped    bool     `help:"Register one MCP tool per resource."`
-	BaseURL    string   `help:"Override the server URL on every operation. Empty uses each contract server."`
-}
+	ServeCmd struct {
+		Contract   []string `help:"OpenAPI file. Repeat to register another API. Overrides config." name:"contract"`
+		Config     string   `help:"Path to veto.yaml provider keys." name:"config"`
+		Agent      string   `help:"Path to agent.yaml. Overrides agent_file." name:"agent"`
+		Relations  string   `help:"Relations file. Overrides relations_file." name:"relations"`
+		Stdio      bool     `help:"Listen on stdio for MCP." default:"true"`
+		Pin        []string `help:"Pin operation ids."`
+		DirectPins bool     `help:"Register direct MCP tools for pinned ids only."`
+		Grouped    bool     `help:"Register one MCP tool per resource."`
+		BaseURL    string   `help:"Override the server URL on every operation. Empty uses each contract server."`
+	}
 
-type GenerateCmd struct {
-	Config    string   `help:"Path to veto.yaml. Contracts and relations live here." name:"config"`
-	Contract  []string `help:"OpenAPI file. Repeat to register another API. Overrides config." name:"contract"`
-	Out       string   `required:"" help:"Directory to write the generated module." name:"out"`
-	Module    string   `required:"" help:"Go module path for the generated module." name:"module"`
-	Agent     string   `help:"Path to agent.yaml." name:"agent"`
-	Relations string   `help:"Relations file." name:"relations"`
-}
+	GenerateCmd struct {
+		Config    string   `help:"Path to veto.yaml. Contracts and relations live here." name:"config"`
+		Contract  []string `help:"OpenAPI file. Repeat to register another API. Overrides config." name:"contract"`
+		Out       string   `required:"" help:"Directory to write the generated module." name:"out"`
+		Module    string   `required:"" help:"Go module path for the generated module." name:"module"`
+		Agent     string   `help:"Path to agent.yaml." name:"agent"`
+		Relations string   `help:"Relations file." name:"relations"`
+	}
 
-type EvalCmd struct {
-	Contract  []string `help:"OpenAPI file. Repeat to register another API. Overrides config." name:"contract"`
-	Case      string   `required:"" help:"Path to eval case yaml." name:"case"`
-	Config    string   `help:"Path to veto.yaml provider keys." name:"config"`
-	Agent     string   `help:"Path to agent.yaml. Overrides agent_file." name:"agent"`
-	Relations string   `help:"Relations file. Overrides relations_file." name:"relations"`
-	BaseURL   string   `help:"Override the server URL on every operation. Empty uses each contract server."`
-}
+	EvalCmd struct {
+		Contract  []string `help:"OpenAPI file. Repeat to register another API. Overrides config." name:"contract"`
+		Case      string   `required:"" help:"Path to eval case yaml." name:"case"`
+		Config    string   `help:"Path to veto.yaml provider keys." name:"config"`
+		Agent     string   `help:"Path to agent.yaml. Overrides agent_file." name:"agent"`
+		Relations string   `help:"Relations file. Overrides relations_file." name:"relations"`
+		BaseURL   string   `help:"Override the server URL on every operation. Empty uses each contract server."`
+	}
 
-type ReplayCmd struct {
-	Contract      []string `help:"OpenAPI file. Repeat to register another API. Overrides config." name:"contract"`
-	Message       string   `required:"" help:"User message to run." name:"message"`
-	Config        string   `help:"Path to veto.yaml provider keys." name:"config"`
-	Agent         string   `help:"Path to agent.yaml. Overrides agent_file." name:"agent"`
-	Relations     string   `help:"Relations file. Overrides relations_file." name:"relations"`
-	BaseURL       string   `help:"Override the server URL on every operation. Empty uses each contract server."`
-	KeepSensitive bool     `help:"Keep user messages and parameter values in the trace." name:"keep-sensitive"`
-}
+	ReplayCmd struct {
+		Contract      []string `help:"OpenAPI file. Repeat to register another API. Overrides config." name:"contract"`
+		Message       string   `required:"" help:"User message to run." name:"message"`
+		Config        string   `help:"Path to veto.yaml provider keys." name:"config"`
+		Agent         string   `help:"Path to agent.yaml. Overrides agent_file." name:"agent"`
+		Relations     string   `help:"Relations file. Overrides relations_file." name:"relations"`
+		BaseURL       string   `help:"Override the server URL on every operation. Empty uses each contract server."`
+		KeepSensitive bool     `help:"Keep user messages and parameter values in the trace." name:"keep-sensitive"`
+	}
+)
 
 func main() {
 	var cli CLI

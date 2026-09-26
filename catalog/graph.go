@@ -1,42 +1,41 @@
 package catalog
 
-// NodeKind distinguishes resource hubs, operations, and component schemas.
-type NodeKind string
-
 const (
 	NodeResource  NodeKind = "resource"
 	NodeOperation NodeKind = "operation"
 	NodeSchema    NodeKind = "schema"
-)
 
-// Node is one vertex in the capability graph.
-type Node struct {
-	ID   string
-	Name string
-	Kind NodeKind
-}
-
-// Edge kind values.
-const (
 	EdgeOwns    = "owns"
 	EdgeUses    = "uses"
 	EdgeLinks   = "links"
 	EdgeRelates = "relates"
 )
 
-// Edge links two nodes. Owns is resource to operation. Uses is operation to schema. Links is operation to operation.
-type Edge struct {
-	From string
-	To   string
-	Kind string
-	Note string
-}
+type (
+	// NodeKind distinguishes resource hubs, operations, and component schemas.
+	NodeKind string
 
-// Graph connects resources to their operations.
-type Graph struct {
-	Nodes []Node
-	Edges []Edge
-}
+	// Node is one vertex in the capability graph.
+	Node struct {
+		ID   string
+		Name string
+		Kind NodeKind
+	}
+
+	// Edge links two nodes. Owns is resource to operation. Uses is operation to schema. Links is operation to operation.
+	Edge struct {
+		From string
+		To   string
+		Kind string
+		Note string
+	}
+
+	// Graph connects resources to their operations.
+	Graph struct {
+		Nodes []Node
+		Edges []Edge
+	}
+)
 
 // BuildGraph derives resource, operation, and schema nodes, plus link edges.
 func BuildGraph(ops []Operation, links []OpLink, uses []SchemaUse) Graph {

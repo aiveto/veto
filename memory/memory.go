@@ -7,25 +7,27 @@ import (
 	"sync"
 )
 
-// Item is one stored memory entry.
-type Item struct {
-	ID      string
-	Content string
-	Tags    []string
-}
+type (
+	// Item is one stored memory entry.
+	Item struct {
+		ID      string
+		Content string
+		Tags    []string
+	}
 
-// Memory stores and retrieves items across runs.
-type Memory interface {
-	Store(ctx context.Context, item Item) error
-	Search(ctx context.Context, query string) ([]Item, error)
-	Delete(ctx context.Context, id string) error
-}
+	// Memory stores and retrieves items across runs.
+	Memory interface {
+		Store(ctx context.Context, item Item) error
+		Search(ctx context.Context, query string) ([]Item, error)
+		Delete(ctx context.Context, id string) error
+	}
 
-// LocalMap is an in-memory implementation.
-type LocalMap struct {
-	mu    sync.RWMutex
-	items map[string]Item
-}
+	// LocalMap is an in-memory implementation.
+	LocalMap struct {
+		mu    sync.RWMutex
+		items map[string]Item
+	}
+)
 
 // NewLocalMap creates an empty memory store.
 func NewLocalMap() *LocalMap {

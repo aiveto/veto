@@ -14,6 +14,12 @@ import (
 
 var pathNoun = regexp.MustCompile(`^/([a-zA-Z0-9_-]+)`)
 
+type rawLink struct {
+	from         string
+	operationID  string
+	operationRef string
+}
+
 // Load reads an OpenAPI 3 document from path into a catalog.
 func Load(ctx context.Context, path string) (*catalog.Catalog, error) {
 	data, err := os.ReadFile(path)
@@ -158,12 +164,6 @@ func sideEffectFor(id, name, method string) (catalog.SideEffect, bool) {
 	default:
 		return catalog.SideEffectNone, false
 	}
-}
-
-type rawLink struct {
-	from         string
-	operationID  string
-	operationRef string
 }
 
 func collectLinks(from string, op *openapi3.Operation) []rawLink {

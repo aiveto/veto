@@ -100,6 +100,7 @@ Idiomatic Go. Dave Cheney and Mat Ryer.
 - Never start a goroutine without knowing how it stops.
 - Exported names are one sentence.
 - `gofmt` every file you touch.
+- Package block order is const, then var, then type, then func. When a file has more than one of a kind, group them: `const ( )`, `var ( )`, `type ( )`. The doc comment stays on the declaration it describes. Methods sit with the funcs, grouped by receiver: constructor, then methods, then helpers. A const or var inside a function stays in that function.
 
 ## Where the code is
 

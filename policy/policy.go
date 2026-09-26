@@ -10,40 +10,42 @@ import (
 	"github.com/google/uuid"
 )
 
-// Decision is the outcome of a policy check.
-type Decision string
-
 const (
 	DecisionAllow              Decision = "allow"
 	DecisionDeny               Decision = "deny"
 	DecisionConfirmationNeeded Decision = "confirmation_required"
 )
 
-// PendingConfirmation records an approval token for a destructive invoke.
-type PendingConfirmation struct {
-	ID          string
-	OperationID string
-	Params      map[string]string
-}
+type (
+	// Decision is the outcome of a policy check.
+	Decision string
 
-// State holds per-run policy and confirmation state.
-type State struct {
-	mu      sync.Mutex
-	pending map[string]PendingConfirmation
-}
+	// PendingConfirmation records an approval token for a destructive invoke.
+	PendingConfirmation struct {
+		ID          string
+		OperationID string
+		Params      map[string]string
+	}
+
+	// State holds per-run policy and confirmation state.
+	State struct {
+		mu      sync.Mutex
+		pending map[string]PendingConfirmation
+	}
+
+	// Hook evaluates whether an operation may run.
+	Hook interface {
+		Check(ctx context.Context, op *catalog.Operation) (Decision, error)
+	}
+
+	// Builtin allows a call unless the operation requires confirmation.
+	Builtin struct{}
+)
 
 // NewState creates empty run policy state.
 func NewState() *State {
 	return &State{pending: map[string]PendingConfirmation{}}
 }
-
-// Hook evaluates whether an operation may run.
-type Hook interface {
-	Check(ctx context.Context, op *catalog.Operation) (Decision, error)
-}
-
-// Builtin allows a call unless the operation requires confirmation.
-type Builtin struct{}
 
 func (Builtin) Check(ctx context.Context, op *catalog.Operation) (Decision, error) {
 	_ = ctx

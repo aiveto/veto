@@ -8,34 +8,36 @@ import (
 	"github.com/aiveto/veto/telemetry"
 )
 
-// Request is input to the model provider.
-type Request struct {
-	UserMessage string
-	Context     string
-}
+type (
+	// Request is input to the model provider.
+	Request struct {
+		UserMessage string
+		Context     string
+	}
 
-// Response is the model's chosen operation and parameters.
-type Response struct {
-	OperationID string
-	Params      map[string]string
-	FlowName    string
-}
+	// Response is the model's chosen operation and parameters.
+	Response struct {
+		OperationID string
+		Params      map[string]string
+		FlowName    string
+	}
 
-// Model selects operations from user text.
-type Model interface {
-	Complete(ctx context.Context, req Request) (Response, error)
-}
+	// Model selects operations from user text.
+	Model interface {
+		Complete(ctx context.Context, req Request) (Response, error)
+	}
 
-// Scripted maps phrases to operations for evals and tests.
-type Scripted struct {
-	patterns []scriptPattern
-}
+	// Scripted maps phrases to operations for evals and tests.
+	Scripted struct {
+		patterns []scriptPattern
+	}
 
-type scriptPattern struct {
-	re          *regexp.Regexp
-	operationID string
-	paramNames  []string
-}
+	scriptPattern struct {
+		re          *regexp.Regexp
+		operationID string
+		paramNames  []string
+	}
+)
 
 // NewScripted builds the default scripted model for asset delete evals.
 func NewScripted() *Scripted {
