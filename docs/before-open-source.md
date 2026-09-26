@@ -165,6 +165,51 @@ Done when each generated method uses the operation base URL from the catalog, an
 
 61. The loop is one model call. It returns a follow-up pack to the caller and does not call the model again with the tool result. A later loop may do that. The scripted eval must stay one decision, so a delete still stops on confirmation instead of calling HTTP.
 
+## Wow slice
+
+Ship items 1 through 8 first. Nothing below replaces them. Flat OpenAPI-to-MCP generators already exist. Veto wins when several contracts, declared joins, a small MCP surface, a bounded pack, and one invoke gate are real in one config.
+
+**Pitch for open source (when item 60 is done):** Register your OpenAPI files, declare joins, run MCP. Veto merges catalogs, builds the pack, gates every call, and lets you test the agent config in CI.
+
+Philosophies in `CLAUDE.md` point here without importing their code: Eino-style explicit steps and interrupts; Kong, Stainless, and FastMCP-style search then describe then invoke; OpenTelemetry for prove and replay; provider keys for Temporal, Jev, and Ossie later.
+
+### P0 (must-use differentiators)
+
+62. **Executable catalog.** Item 4 walks a declared relation in code, not only as a sentence in the pack. One user intent can call `assets.get`, read `teamsId`, then call `teams.get`. Every hop uses `agent.Invoke`. The trace shows each operation. OpenAPI links use the spec mapping when item 16 lands.
+
+63. **`veto pack`.** A command prints the pack for a message: `veto pack --config veto.yaml --message "..."`. A `--json` flag for CI. Assert the index contains expected operation ids, relation sentences, and neighbors, and does not contain unrelated operations. Same builder as `serve` and the live model.
+
+64. **Eval suite as product.** A directory of case yaml files and `veto eval ./cases/` (or repeat `--case`). Cases assert operation choice, confirmation, no HTTP when expected, pack substrings, and related ids. Document one standard layout under `testdata/` or `examples/`. CI runs eval when contracts or `relations.yaml` change.
+
+### P1 (trust and onboarding)
+
+65. **`veto validate` explains the graph.** After load, print each join as a line, for example `assets.get --[Holding.teamsId]--> teams.get`. Item 15 overlaps; keep one implementation. Optional later: warn when a contract version removes an operation a relation or link still references.
+
+66. **`veto doctor`.** Before `serve`, check contracts load, relations are consistent, required env vars for security schemes are set (names only, never values), pins are not discovery-only, and optional `--ping` reaches server URLs. One stderr report, exit non-zero on blockers.
+
+67. **Interrupt and resume on confirmation.** Generalize confirmation to an Eino-style interrupt: pending state ties to the trace (approval id or resume token). MCP `capabilities_invoke` documents the round trip. Process memory stays the default; a signed token the caller holds is optional later (item 34).
+
+68. **Stable invoke errors to the model and MCP.** Beyond item 12: JSON or structured text with `code`, `retryable`, `missing_param`, `confirmation_required`. Same shape from MCP invoke and generated SDK. Replay keeps the allowlist; do not log secrets.
+
+### P2 (ops and semantics)
+
+69. **Replay from exported traces.** Item 43 and 44: optional write of redacted spans to a file; `veto replay --from trace.json`. OTLP export as a config key. Default replay stays run-now, in memory.
+
+70. **Semantics without Ossie in v1.** Item 25 and 26: tags and path nouns in derived notes; relation sentences on notes; file overlay optional. `semantics: ossie` waits on a reader, not on Ossie 0.2 drafts.
+
+71. **Linear flows with step I/O.** Item 5: a step names an output field and the next step's parameter. Confirmation still stops a destructive step mid-flow. No graph engine (ADR 010).
+
+### Do not chase for "wow"
+
+These do not belong in the must-use story:
+
+- One MCP tool per operation (ADR 003).
+- Guessed foreign keys from field names.
+- Default Postgres, Redis, or a vector store for memory.
+- Subagents and LangGraph-style orchestration in the first public release.
+- Competing with Stainless on prettiest SDK alone. Generate stays typed and policy-gated.
+- Protobuf parity before OpenAPI is boring (ADR 006).
+
 ## Not this release
 
 - A database for sessions or approvals.
