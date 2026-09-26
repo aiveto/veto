@@ -32,7 +32,10 @@ func RunStdio(ctx context.Context, srv *Server, opt Options) error {
 		if err != nil {
 			return toolError(err)
 		}
-		b, _ := json.Marshal(matches)
+		b, err := json.Marshal(matches)
+		if err != nil {
+			return toolError(err)
+		}
 		return textResult(string(b))
 	})
 
@@ -63,7 +66,10 @@ func RunStdio(ctx context.Context, srv *Server, opt Options) error {
 		if err != nil && res.Status == "error" {
 			return toolError(err)
 		}
-		b, _ := json.Marshal(res)
+		b, err := json.Marshal(res)
+		if err != nil {
+			return toolError(err)
+		}
 		return textResult(string(b))
 	})
 
@@ -82,7 +88,10 @@ func RunStdio(ctx context.Context, srv *Server, opt Options) error {
 				if err != nil && res.Status == "error" {
 					return toolError(err)
 				}
-				b, _ := json.Marshal(res)
+				b, err := json.Marshal(res)
+				if err != nil {
+					return toolError(err)
+				}
 				return textResult(string(b))
 			})
 		}
@@ -104,7 +113,10 @@ func RunStdio(ctx context.Context, srv *Server, opt Options) error {
 				if err != nil && res.Status == "error" {
 					return toolError(err)
 				}
-				b, _ := json.Marshal(res)
+				b, err := json.Marshal(res)
+				if err != nil {
+					return toolError(err)
+				}
 				return textResult(string(b))
 			})
 		}

@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/aiveto/veto/agent"
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/telemetry"
 )
@@ -17,6 +18,25 @@ import (
 type Config struct {
 	BaseURL string
 	Client  *http.Client
+}
+
+// Client is the HTTP writer the agent loop calls after policy allows an operation.
+type Client struct {
+	BaseURL string
+	HTTP    *http.Client
+}
+
+// Invoke performs the operation and returns the status and body.
+func (c Client) Invoke(ctx context.Context, op *catalog.Operation, params map[string]string) (agent.HTTPResult, error) {
+	resp, err := Invoke(ctx, Config{BaseURL: c.BaseURL, Client: c.HTTP}, op, params)
+	if err != nil {
+		return agent.HTTPResult{}, err
+	}
+	body, err := ReadBody(resp)
+	if err != nil {
+		return agent.HTTPResult{}, err
+	}
+	return agent.HTTPResult{Status: resp.StatusCode, Body: body}, nil
 }
 
 // Invoke performs the HTTP call described by op.

@@ -29,7 +29,7 @@ semantics/   Provider. Derived notes, file overlay
 runctx/      Context pack. Budget, select, truncate
 policy/      Allow, check, confirm. Run state
 flow/        Sequential steps. The model may pick the flow. Code runs it
-agent/       One loop. Model, policy, execute, result back to the model
+agent/       One turn. Model, policy, execute. The follow-up pack goes to the caller
 generate/    Typed SDK and CLI. Dispatch calls agent.Invoke
 execute/     HTTP from an Operation
 model/       Model interface. Scripted default

@@ -7,7 +7,6 @@ import (
 // Match describes one search hit. Related are the graph neighbors veto already walked.
 type Match struct {
 	Operation Operation
-	Score     int
 	Related   []string
 }
 
@@ -34,7 +33,7 @@ func Search(cat *Catalog, query string, synonyms map[string][]string) []Match {
 }
 
 func hit(cat *Catalog, op Operation) Match {
-	return Match{Operation: op, Score: 1, Related: cat.Graph.Related(op.ID)}
+	return Match{Operation: op, Related: cat.Graph.Related(op.ID)}
 }
 
 func relationMatch(cat *Catalog, operationID, q string) bool {

@@ -27,7 +27,7 @@ Work left before a public release is in `docs/before-open-source.md`.
 - `semantics/`: derived synonyms and yaml overlay
 - `runctx/`: context pack builder (never embeds the raw spec)
 - `policy/`: allow, check, confirmation state
-- `agent/`: one loop: model, policy, execute, result back to the model
+- `agent/`: one turn: model, policy, execute. The follow-up pack goes to the caller
 - `config/`: provider keys (`testdata/veto.yaml`)
 - `mcpserver/`: MCP stdio server
 - `execute/`: HTTP invoke from catalog operations

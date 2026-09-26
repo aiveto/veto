@@ -1,5 +1,7 @@
 package catalog
 
+import "sort"
+
 // Kind classifies what an operation does to server state.
 type Kind string
 
@@ -69,7 +71,7 @@ type SchemaUse struct {
 	Name        string
 }
 
-// Catalog holds all operations and the capability graph for one contract.
+// Catalog holds the operations and the capability graph for every loaded contract.
 type Catalog struct {
 	Title      string
 	Version    string
@@ -107,8 +109,9 @@ func (c *Catalog) index() {
 	}
 }
 
-// Finalize builds indexes and the capability graph after load.
+// Finalize sorts operations by id, then builds indexes and the capability graph.
 func (c *Catalog) Finalize() {
+	sort.Slice(c.Operations, func(i, j int) bool { return c.Operations[i].ID < c.Operations[j].ID })
 	c.index()
 	c.Graph = BuildGraph(c.Operations, c.Links, c.Uses)
 }

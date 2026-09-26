@@ -161,6 +161,10 @@ Done when each generated method uses the operation base URL from the catalog, an
 59. Scan for secrets before the first public push. Keys live in the environment.
 60. The GitHub repo stays private until items 1, 2, 3, 52, 54, and 55 are done. Those are the ones that make a public demo honest: a real call, auth, a pack the model can fill, a license, a way to report a hole, and tests on every change.
 
+## Loop
+
+61. The loop is one model call. It returns a follow-up pack to the caller and does not call the model again with the tool result. A later loop may do that. The scripted eval must stay one decision, so a delete still stops on confirmation instead of calling HTTP.
+
 ## Not this release
 
 - A database for sessions or approvals.

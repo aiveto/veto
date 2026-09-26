@@ -3,6 +3,7 @@ package policy
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/telemetry"
@@ -27,6 +28,7 @@ type PendingConfirmation struct {
 
 // State holds per-run policy and confirmation state.
 type State struct {
+	mu      sync.Mutex
 	pending map[string]PendingConfirmation
 }
 
@@ -75,12 +77,16 @@ func Check(ctx context.Context, hook Hook, op *catalog.Operation) (Decision, err
 // RequestConfirmation stores pending approval and returns its id.
 func (s *State) RequestConfirmation(opID string, params map[string]string) string {
 	id := uuid.NewString()
-	s.pending[id] = PendingConfirmation{ID: id, OperationID: opID, Params: params}
+	s.mu.Lock()
+	s.pending[id] = PendingConfirmation{ID: id, OperationID: opID, Params: cloneParams(params)}
+	s.mu.Unlock()
 	return id
 }
 
 // ConsumeConfirmation marks approval id as used if it matches op.
 func (s *State) ConsumeConfirmation(approvalID, opID string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	p, ok := s.pending[approvalID]
 	if !ok || p.OperationID != opID {
 		return false
@@ -89,11 +95,25 @@ func (s *State) ConsumeConfirmation(approvalID, opID string) bool {
 	return true
 }
 
-// Pending returns the confirmation for id, if any.
+// Pending returns a copy of the confirmation for id, if any.
 func (s *State) Pending(id string) *PendingConfirmation {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	p, ok := s.pending[id]
 	if !ok {
 		return nil
 	}
+	p.Params = cloneParams(p.Params)
 	return &p
+}
+
+func cloneParams(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }

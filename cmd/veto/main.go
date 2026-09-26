@@ -308,7 +308,7 @@ func buildLoop(contracts []string, configPath, agentPath, relationsPath, baseURL
 		}
 		flows[def.Name] = def
 	}
-	loop := agent.New(cat, sem, execute.Config{BaseURL: baseURL})
+	loop := agent.New(cat, sem, execute.Client{BaseURL: baseURL})
 	loop.Flows = flows
 	if cfg.Model == "openai" {
 		live, err := model.NewOpenAI("", os.Getenv("OPENAI_API_KEY"), cfg.ModelName)

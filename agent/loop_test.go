@@ -40,7 +40,7 @@ func TestDeleteLoopStopsBeforeHTTPAndPacksOverlay(t *testing.T) {
 		Model:     model.NewScripted(),
 		Policy:    policy.Builtin{},
 		State:     policy.NewState(),
-		Execute:   execute.Config{BaseURL: ts.URL},
+		Exec:      execute.Client{BaseURL: ts.URL},
 	}
 	out, err := loop.Run(context.Background(), "Delete asset 123")
 	if err != nil {
@@ -96,7 +96,7 @@ func TestLoopRunsNamedFlow(t *testing.T) {
 		Catalog:   cat,
 		Semantics: semantics.NewDerived(cat),
 		Model:     flowPick{},
-		Execute:   execute.Config{BaseURL: ts.URL, Client: ts.Client()},
+		Exec:      execute.Client{BaseURL: ts.URL, HTTP: ts.Client()},
 		Flows:     map[string]*flow.Definition{def.Name: def},
 	}
 	out, err := loop.Run(context.Background(), "list assets")

@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/aiveto/veto/catalog"
-	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/flow"
 	"github.com/aiveto/veto/memory"
 	"github.com/aiveto/veto/model"
@@ -15,6 +14,17 @@ import (
 	"github.com/aiveto/veto/telemetry"
 	"github.com/google/uuid"
 )
+
+// HTTPResult is the status and body of one allowed HTTP call.
+type HTTPResult struct {
+	Status int
+	Body   string
+}
+
+// Executor performs one HTTP call. The loop does not build the request.
+type Executor interface {
+	Invoke(ctx context.Context, op *catalog.Operation, params map[string]string) (HTTPResult, error)
+}
 
 // Call is one policy-gated execution of an operation.
 type Call struct {
@@ -36,7 +46,7 @@ type Outcome struct {
 }
 
 // New builds a loop with the in-tree defaults. Catalog is required.
-func New(cat *catalog.Catalog, sem semantics.Provider, exec execute.Config) *Loop {
+func New(cat *catalog.Catalog, sem semantics.Provider, exec Executor) *Loop {
 	if sem == nil && cat != nil {
 		sem = semantics.NewDerived(cat)
 	}
@@ -46,21 +56,22 @@ func New(cat *catalog.Catalog, sem semantics.Provider, exec execute.Config) *Loo
 		Model:     model.NewScripted(),
 		Policy:    policy.Builtin{},
 		State:     policy.NewState(),
-		Execute:   exec,
+		Exec:      exec,
 		Memory:    memory.NewLocalMap(),
 		Flows:     map[string]*flow.Definition{},
 		Packs:     runctx.NewBuilder(0),
 	}
 }
 
-// Loop runs one agent turn: model, policy, execute, result back to the model.
+// Loop runs one turn: model, policy, then HTTP when the call is allowed.
+// The follow-up pack is returned to the caller. The model is not called again.
 type Loop struct {
 	Catalog   *catalog.Catalog
 	Semantics semantics.Provider
 	Model     model.Model
 	Policy    policy.Hook
 	State     *policy.State
-	Execute   execute.Config
+	Exec      Executor
 	Memory    memory.Memory
 	Flows     map[string]*flow.Definition
 	Packs     *runctx.Builder
@@ -73,7 +84,10 @@ func (l *Loop) Run(ctx context.Context, userText string) (Outcome, error) {
 	l.ready()
 	span.SetAttributes(telemetry.Attr("user_message", userText))
 
-	turns := l.memoryTurns(ctx, userText)
+	turns, err := l.memoryTurns(ctx, userText)
+	if err != nil {
+		return Outcome{}, fmt.Errorf("memory: %w", err)
+	}
 	turns = append(turns, runctx.Turn{Role: "user", Content: userText})
 	pack := l.Packs.Build(l.Catalog, turns, nil, l.Semantics, nil)
 	span.SetAttributes(telemetry.Attr("tools", pack.Index))
@@ -162,16 +176,18 @@ func (l *Loop) Invoke(ctx context.Context, operationID string, params map[string
 	if decision != policy.DecisionAllow {
 		return Call{Status: "denied", OperationID: operationID}, nil
 	}
-	resp, err := execute.Invoke(ctx, l.Execute, op, params)
+	if l.Exec == nil {
+		return Call{Status: "error", Error: "missing executor"}, fmt.Errorf("missing executor")
+	}
+	result, err := l.Exec.Invoke(ctx, op, params)
 	if err != nil {
 		return Call{Status: "error", Error: err.Error(), OperationID: operationID}, err
 	}
-	body, _ := execute.ReadBody(resp)
 	return Call{
 		Status:      "ok",
 		OperationID: operationID,
-		HTTPStatus:  resp.StatusCode,
-		Body:        body,
+		HTTPStatus:  result.Status,
+		Body:        result.Body,
 	}, nil
 }
 
@@ -226,17 +242,20 @@ func (l *Loop) ready() {
 	}
 }
 
-func (l *Loop) memoryTurns(ctx context.Context, userText string) []runctx.Turn {
+func (l *Loop) memoryTurns(ctx context.Context, userText string) ([]runctx.Turn, error) {
 	if l.Memory == nil {
-		return nil
+		return nil, nil
 	}
 	items, err := l.Memory.Search(ctx, userText)
-	if err != nil || len(items) == 0 {
-		return nil
+	if err != nil {
+		return nil, err
+	}
+	if len(items) == 0 {
+		return nil, nil
 	}
 	turns := make([]runctx.Turn, 0, len(items))
 	for _, it := range items {
 		turns = append(turns, runctx.Turn{Role: "memory", Content: it.Content})
 	}
-	return turns
+	return turns, nil
 }

@@ -30,7 +30,7 @@ func TestInvokeDeleteRequiresApprovalBeforeHTTP(t *testing.T) {
 	srv := &mcpserver.Server{
 		Catalog:   cat,
 		Semantics: sem,
-		Agent:     agent.New(cat, sem, execute.Config{BaseURL: ts.URL}),
+		Agent:     agent.New(cat, sem, execute.Client{BaseURL: ts.URL}),
 	}
 	ctx := context.Background()
 	first, err := srv.Invoke(ctx, "assets.delete", map[string]string{"id": "123"}, "")

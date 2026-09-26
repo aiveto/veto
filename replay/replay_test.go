@@ -23,7 +23,7 @@ func TestReplayShowsConfirmationAndOmitsTheMessage(t *testing.T) {
 	}
 	defer rec.Stop(context.Background())
 
-	loop := agent.New(cat, nil, execute.Config{BaseURL: "http://127.0.0.1:9"})
+	loop := agent.New(cat, nil, execute.Client{BaseURL: "http://127.0.0.1:9"})
 	out, err := loop.Run(context.Background(), "Delete asset 123")
 	if err != nil {
 		t.Fatal(err)

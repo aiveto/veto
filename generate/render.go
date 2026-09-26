@@ -245,7 +245,7 @@ func New(baseURL string, httpClient *http.Client) *Client {
 		},
 	}
 	cat.Finalize()
-	return &Client{Loop: agent.New(cat, nil, execute.Config{BaseURL: baseURL, Client: httpClient})}
+	return &Client{Loop: agent.New(cat, nil, execute.Client{BaseURL: baseURL, HTTP: httpClient})}
 }
 
 {{range .Ops}}
