@@ -43,6 +43,7 @@ func New(baseURL string, httpClient *http.Client) *Client {
 				Method: {{quote .Method}},
 				PathTemplate: {{quote .Path}},
 				Description: {{quote .Description}},
+				RequestBody: {{quote .RequestBody}},
 				SideEffect: {{.SideConst}},
 				RequiresConfirmation: {{.Confirm}},
 				Permissions: {{list .Permissions}},
@@ -60,7 +61,7 @@ func New(baseURL string, httpClient *http.Client) *Client {
 }
 
 {{range .Ops}}
-func (c *Client) {{.GoName}}(ctx context.Context{{range .Params}}, {{.GoName}} string{{end}}, approvalID string) (agent.Call, error) {
+func (c *Client) {{.GoName}}(ctx context.Context{{range .Params}}, {{.GoName}} string{{end}}{{if .RequestBody}}, body string{{end}}, approvalID string) (agent.Call, error) {
 {{- range .Params}}
 {{- if .Required}}
 	if {{.GoName}} == "" {
@@ -68,11 +69,17 @@ func (c *Client) {{.GoName}}(ctx context.Context{{range .Params}}, {{.GoName}} s
 	}
 {{- end}}
 {{- end}}
-	return c.Loop.Invoke(ctx, {{quote .ID}}, map[string]string{
+	params := map[string]string{
 {{- range .Params}}
 		{{quote .Name}}: {{.GoName}},
 {{- end}}
-	}, approvalID)
+	}
+{{- if .RequestBody}}
+	if body != "" {
+		params["_body"] = body
+	}
+{{- end}}
+	return c.Loop.Invoke(ctx, {{quote .ID}}, params, approvalID)
 }
 {{end}}
 `
@@ -158,6 +165,9 @@ func run{{.GoName}}(args []string) {
 {{- if .Confirm}}
 	confirm := fs.Bool("confirm", false, "confirm this destructive call")
 {{- end}}
+{{- if .RequestBody}}
+	body := fs.String("body", "", "JSON request body")
+{{- end}}
 {{- range .Params}}
 	{{.GoName}} := fs.String({{quote .Name}}, "", {{quote .Description}})
 {{- end}}
@@ -185,7 +195,7 @@ func run{{.GoName}}(args []string) {
 		return
 	}
 	c := client()
-	call, err := c.{{.GoName}}(context.Background(){{range .Params}}, *{{.GoName}}{{end}}, "")
+	call, err := c.{{.GoName}}(context.Background(){{range .Params}}, *{{.GoName}}{{end}}{{if .RequestBody}}, *body{{end}}, "")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -196,7 +206,7 @@ func run{{.GoName}}(args []string) {
 			fmt.Fprintln(os.Stderr, "confirmation required")
 			os.Exit(2)
 		}
-		call, err = c.{{.GoName}}(context.Background(){{range .Params}}, *{{.GoName}}{{end}}, call.ApprovalID)
+		call, err = c.{{.GoName}}(context.Background(){{range .Params}}, *{{.GoName}}{{end}}{{if .RequestBody}}, *body{{end}}, call.ApprovalID)
 	}
 {{- end}}
 	finish(call.Status, call.HTTPStatus, err)
@@ -247,6 +257,7 @@ type (
 		Method      string
 		Path        string
 		Description string
+		RequestBody  string
 		SideEffect  string
 		SideConst   string
 		Confirm     bool
@@ -313,6 +324,7 @@ func views(cat *catalog.Catalog) []opView {
 			Method:      op.Method,
 			Path:        op.PathTemplate,
 			Description: op.Description,
+			RequestBody:  op.RequestBody,
 			SideEffect:  string(op.SideEffect),
 			SideConst:   sideConst(op.SideEffect),
 			Confirm:     op.RequiresConfirmation,

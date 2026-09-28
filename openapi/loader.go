@@ -122,6 +122,13 @@ func mapOperation(method, path, group, base string, op *openapi3.Operation) cata
 		}
 	}
 
+	requestBody := ""
+	if op.RequestBody != nil && op.RequestBody.Value != nil {
+		if mt := op.RequestBody.Value.Content.Get("application/json"); mt != nil && mt.Schema != nil {
+			requestBody = schemaName(mt.Schema.Ref)
+		}
+	}
+
 	return catalog.Operation{
 		ID:                   id,
 		Name:                 name,
@@ -131,6 +138,7 @@ func mapOperation(method, path, group, base string, op *openapi3.Operation) cata
 		Method:               strings.ToUpper(method),
 		PathTemplate:         path,
 		Params:               params,
+		RequestBody:          requestBody,
 		ResponseSummary:      respSummary,
 		SideEffect:           side,
 		RequiresConfirmation: confirm,

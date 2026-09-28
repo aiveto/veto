@@ -46,6 +46,7 @@ type (
 		Method               string
 		PathTemplate         string
 		Params               []Param
+		RequestBody          string
 		ResponseSummary      string
 		SideEffect           SideEffect
 		RequiresConfirmation bool

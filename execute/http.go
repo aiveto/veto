@@ -94,6 +94,18 @@ func Invoke(ctx context.Context, cfg Config, op *catalog.Operation, params map[s
 		}
 	}
 
+	var body io.Reader
+	if op.RequestBody != "" {
+		bodyStr := params["_body"]
+		if bodyStr != "" {
+			body = strings.NewReader(bodyStr)
+			req.Header.Set("Content-Type", "application/json")
+		}
+	}
+
+	if body != nil {
+		req.Body = io.NopCloser(body)
+	}
 	return cfg.Client.Do(req)
 }
 
