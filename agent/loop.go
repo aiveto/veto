@@ -79,6 +79,11 @@ func New(cat *catalog.Catalog, sem semantics.Provider, exec Executor) *Loop {
 	}
 }
 
+// WrapPolicy installs a hook that calls Builtin unless around stops.
+func (l *Loop) WrapPolicy(around policy.Around) {
+	l.Policy = policy.Wrap(around)
+}
+
 // Run executes the loop for one user message.
 func (l *Loop) Run(ctx context.Context, userText string) (Outcome, error) {
 	span := telemetry.StartSpan(ctx, "agent.run")

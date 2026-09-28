@@ -38,9 +38,38 @@ type (
 		Check(ctx context.Context, op *catalog.Operation) (Decision, error)
 	}
 
+	// Around is one check in front of Builtin. A true stop skips Builtin.
+	Around func(ctx context.Context, op *catalog.Operation) (Decision, bool, error)
+
 	// Builtin allows a call unless the operation requires confirmation.
 	Builtin struct{}
+
+	// Wrapped calls Around, then Builtin, unless Around stops.
+	Wrapped struct {
+		next   Hook
+		around Around
+	}
 )
+
+// Wrap returns a hook whose next is Builtin. A nil around is Builtin alone.
+func Wrap(around Around) Wrapped {
+	return Wrapped{next: Builtin{}, around: around}
+}
+
+// Check runs around and then Builtin. stop or an error skips Builtin.
+func (w Wrapped) Check(ctx context.Context, op *catalog.Operation) (Decision, error) {
+	if w.around != nil {
+		decision, stop, err := w.around(ctx, op)
+		if err != nil || stop {
+			return decision, err
+		}
+	}
+	next := w.next
+	if next == nil {
+		next = Builtin{}
+	}
+	return next.Check(ctx, op)
+}
 
 // NewState creates empty run policy state.
 func NewState() *State {

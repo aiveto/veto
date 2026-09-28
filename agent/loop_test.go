@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/aiveto/veto/agent"
+	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/flow"
 	"github.com/aiveto/veto/model"
@@ -74,6 +75,39 @@ func TestDeleteLoopStopsBeforeHTTPAndPacksOverlay(t *testing.T) {
 	}
 	if len(items) != 1 {
 		t.Fatalf("expected one memory item, got %d", len(items))
+	}
+}
+
+func TestWrapPolicyKeepsBuiltinUnlessItStops(t *testing.T) {
+	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hits atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+	}))
+	defer ts.Close()
+	loop := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
+	loop.WrapPolicy(func(ctx context.Context, op *catalog.Operation) (policy.Decision, bool, error) {
+		return policy.DecisionAllow, false, nil
+	})
+	out, err := loop.Invoke(context.Background(), "assets.delete", map[string]string{"id": "123"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Status != "confirmation_required" || hits.Load() != 0 {
+		t.Fatalf("status %q hits %d", out.Status, hits.Load())
+	}
+	loop.WrapPolicy(func(ctx context.Context, op *catalog.Operation) (policy.Decision, bool, error) {
+		return policy.DecisionAllow, true, nil
+	})
+	out, err = loop.Invoke(context.Background(), "assets.delete", map[string]string{"id": "123"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Status != "ok" || hits.Load() != 1 {
+		t.Fatalf("status %q hits %d", out.Status, hits.Load())
 	}
 }
 

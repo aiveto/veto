@@ -12,6 +12,7 @@ import (
 type File struct {
 	Model         string   `yaml:"model"`
 	ModelName     string   `yaml:"model_name"`
+	ModelBaseURL  string   `yaml:"model_base_url"`
 	Memory        string   `yaml:"memory"`
 	Semantics     string   `yaml:"semantics"`
 	SemanticsFile string   `yaml:"semantics_file"`

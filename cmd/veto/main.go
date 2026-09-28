@@ -14,8 +14,10 @@ import (
 	"github.com/aiveto/veto/flow"
 	"github.com/aiveto/veto/generate"
 	"github.com/aiveto/veto/mcpserver"
+	"github.com/aiveto/veto/memory"
 	"github.com/aiveto/veto/model"
 	"github.com/aiveto/veto/openapi"
+	"github.com/aiveto/veto/policy"
 	"github.com/aiveto/veto/replay"
 	"github.com/aiveto/veto/semantics"
 	"github.com/aiveto/veto/telemetry"
@@ -398,12 +400,37 @@ func buildLoop(contracts []string, configPath, agentPath, relationsPath, baseURL
 	}
 	loop := agent.New(cat, sem, execute.Client{BaseURL: baseURL})
 	loop.Flows = flows
-	if cfg.Model == "openai" {
-		live, err := model.NewOpenAI("", os.Getenv("OPENAI_API_KEY"), cfg.ModelName)
-		if err != nil {
-			return nil, cfg, err
-		}
-		loop.Model = live
+	if err := applyProviders(loop, cfg); err != nil {
+		return nil, cfg, err
 	}
 	return loop, cfg, nil
+}
+
+// applyProviders constructs the providers named in the config. The accepted values are the defaults.
+func applyProviders(loop *agent.Loop, cfg config.File) error {
+	switch cfg.Memory {
+	case "local":
+		loop.Memory = memory.NewLocalMap()
+	default:
+		return fmt.Errorf("memory provider %q is not in this slice", cfg.Memory)
+	}
+	switch cfg.Policy {
+	case "builtin":
+		loop.Policy = policy.Builtin{}
+	default:
+		return fmt.Errorf("policy provider %q is not in this slice", cfg.Policy)
+	}
+	switch cfg.Model {
+	case "scripted":
+		loop.Model = model.NewScripted()
+	case "openai":
+		live, err := model.NewOpenAI(cfg.ModelBaseURL, os.Getenv("OPENAI_API_KEY"), cfg.ModelName)
+		if err != nil {
+			return err
+		}
+		loop.Model = live
+	default:
+		return fmt.Errorf("model provider %q is not in this slice", cfg.Model)
+	}
+	return nil
 }

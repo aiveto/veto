@@ -50,6 +50,24 @@ func TestOpenAIModelIsAllowed(t *testing.T) {
 	if cfg.Model != "openai" || cfg.ModelName != "gpt-test" {
 		t.Fatalf("%+v", cfg)
 	}
+	if cfg.ModelBaseURL != "" {
+		t.Fatalf("empty host should stay empty: %q", cfg.ModelBaseURL)
+	}
+}
+
+func TestModelBaseURLIsLoaded(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "veto.yaml")
+	if err := os.WriteFile(path, []byte("model: openai\nmodel_base_url: http://127.0.0.1:9/v1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ModelBaseURL != "http://127.0.0.1:9/v1" {
+		t.Fatalf("base: %q", cfg.ModelBaseURL)
+	}
 }
 
 func TestSubagentsRejected(t *testing.T) {

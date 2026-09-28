@@ -11,6 +11,16 @@ import (
 	"github.com/aiveto/veto/model"
 )
 
+func TestOpenAIEmptyBaseURLUsesDefaultHost(t *testing.T) {
+	m, err := model.NewOpenAI("", "test-key", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.BaseURL != "https://api.openai.com/v1" {
+		t.Fatalf("base: %s", m.BaseURL)
+	}
+}
+
 func TestOpenAIRequiresKeyAndPack(t *testing.T) {
 	if _, err := model.NewOpenAI("", "", ""); err == nil || !strings.Contains(err.Error(), "API key") {
 		t.Fatalf("key: %v", err)
