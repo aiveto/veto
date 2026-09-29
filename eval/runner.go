@@ -7,7 +7,6 @@ import (
 
 	"github.com/aiveto/veto/agent"
 	"github.com/aiveto/veto/catalog"
-	"github.com/aiveto/veto/model"
 	"github.com/aiveto/veto/semantics"
 	"gopkg.in/yaml.v3"
 )
@@ -30,7 +29,7 @@ type (
 	Runner struct {
 		Catalog   *catalog.Catalog
 		Semantics semantics.Provider
-		Model     model.Model
+		Model     agent.Completer
 		Loop      *agent.Loop
 	}
 )

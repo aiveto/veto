@@ -14,7 +14,7 @@ Early interfaces for Jev, OSSIE, or Temporal tempt premature abstraction.
 
 ## Decision
 
-Interfaces: `memory.Memory`, `model.Model`, `semantics.Provider`, `policy.Hook`. Defaults: local map memory, scripted model, derived+file semantics, builtin policy. Document optional provider keys (Jev, OSSIE, Temporal) in ADR 012. They are not packages in this slice.
+Interfaces: `memory.Memory`, `agent.Completer`, `semantics.Provider`, `policy.Hook`. Defaults: local map memory, scripted model, derived+file semantics, builtin policy. Document optional provider keys (Jev, OSSIE, Temporal) in ADR 012. They are not packages in this slice.
 
 ## What we refused
 

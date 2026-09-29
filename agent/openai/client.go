@@ -1,4 +1,4 @@
-package model
+package openai
 
 import (
 	"bytes"
@@ -9,17 +9,18 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/aiveto/veto/agent"
 	"github.com/aiveto/veto/telemetry"
 )
 
 type (
-	// OpenAI calls an OpenAI-compatible chat completions endpoint.
-	// The context pack is the system message. The reply is JSON for one operation.
-	OpenAI struct {
+	// Client calls an OpenAI-compatible chat completions endpoint.
+	// The pack is the system message. The reply is JSON for one operation.
+	Client struct {
 		BaseURL string
 		APIKey  string
 		Name    string
-		Client  *http.Client
+		HTTP    *http.Client
 	}
 
 	chatRequest struct {
@@ -39,8 +40,8 @@ type (
 	}
 )
 
-// NewOpenAI builds a live model. An empty key is an error. An empty base URL uses the OpenAI API.
-func NewOpenAI(baseURL, apiKey, name string) (*OpenAI, error) {
+// New builds a client. An empty key is an error. An empty base URL uses the OpenAI API.
+func New(baseURL, apiKey, name string) (*Client, error) {
 	if strings.TrimSpace(apiKey) == "" {
 		return nil, fmt.Errorf("openai model requires an API key")
 	}
@@ -50,65 +51,65 @@ func NewOpenAI(baseURL, apiKey, name string) (*OpenAI, error) {
 	if name == "" {
 		name = "gpt-4o-mini"
 	}
-	return &OpenAI{BaseURL: baseURL, APIKey: apiKey, Name: name, Client: http.DefaultClient}, nil
+	return &Client{BaseURL: baseURL, APIKey: apiKey, Name: name, HTTP: http.DefaultClient}, nil
 }
 
-func (m *OpenAI) Complete(ctx context.Context, req Request) (Response, error) {
+func (c *Client) Complete(ctx context.Context, req agent.Request) (agent.Response, error) {
 	span := telemetry.StartSpan(ctx, "model.request")
 	defer span.End()
 	if strings.TrimSpace(req.UserMessage) != "" {
 		span.SetAttributes(telemetry.Attr("user_message", req.UserMessage))
 	}
 	if strings.TrimSpace(req.Context) == "" {
-		return Response{}, fmt.Errorf("openai model requires a context pack")
+		return agent.Response{}, fmt.Errorf("openai model requires a context pack")
 	}
-	if m.Client == nil {
-		m.Client = http.DefaultClient
+	if c.HTTP == nil {
+		c.HTTP = http.DefaultClient
 	}
 	body, err := json.Marshal(chatRequest{
-		Model: m.Name,
+		Model: c.Name,
 		Messages: []chatMessage{
 			{Role: "system", Content: req.Context + "\nReply with JSON only: {\"operation_id\":\"\",\"params\":{},\"flow_name\":\"\"}"},
 			{Role: "user", Content: req.UserMessage},
 		},
 	})
 	if err != nil {
-		return Response{}, fmt.Errorf("encode model request: %w", err)
+		return agent.Response{}, fmt.Errorf("encode model request: %w", err)
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(m.BaseURL, "/")+"/chat/completions", bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(c.BaseURL, "/")+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
-		return Response{}, fmt.Errorf("build model request: %w", err)
+		return agent.Response{}, fmt.Errorf("build model request: %w", err)
 	}
-	httpReq.Header.Set("Authorization", "Bearer "+m.APIKey)
+	httpReq.Header.Set("Authorization", "Bearer "+c.APIKey)
 	httpReq.Header.Set("Content-Type", "application/json")
-	resp, err := m.Client.Do(httpReq)
+	resp, err := c.HTTP.Do(httpReq)
 	if err != nil {
-		return Response{}, fmt.Errorf("model request: %w", err)
+		return agent.Response{}, fmt.Errorf("model request: %w", err)
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return Response{}, fmt.Errorf("read model response: %w", err)
+		return agent.Response{}, fmt.Errorf("read model response: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return Response{}, fmt.Errorf("model status %d", resp.StatusCode)
+		return agent.Response{}, fmt.Errorf("model status %d", resp.StatusCode)
 	}
 	var parsed chatResponse
 	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return Response{}, fmt.Errorf("parse model response: %w", err)
+		return agent.Response{}, fmt.Errorf("parse model response: %w", err)
 	}
 	if len(parsed.Choices) == 0 {
-		return Response{}, fmt.Errorf("model returned no choices")
+		return agent.Response{}, fmt.Errorf("model returned no choices")
 	}
-	out, err := parseModelJSON(parsed.Choices[0].Message.Content)
+	out, err := parseReply(parsed.Choices[0].Message.Content)
 	if err != nil {
-		return Response{}, err
+		return agent.Response{}, err
 	}
 	span.SetAttributes(telemetry.Attr("operation.id", out.OperationID))
 	return out, nil
 }
 
-func parseModelJSON(content string) (Response, error) {
+func parseReply(content string) (agent.Response, error) {
 	content = strings.TrimSpace(content)
 	content = strings.TrimPrefix(content, "```json")
 	content = strings.TrimPrefix(content, "```")
@@ -120,7 +121,7 @@ func parseModelJSON(content string) (Response, error) {
 		FlowName    string            `json:"flow_name"`
 	}
 	if err := json.Unmarshal([]byte(content), &wire); err != nil {
-		return Response{}, fmt.Errorf("parse model json: %w", err)
+		return agent.Response{}, fmt.Errorf("parse model json: %w", err)
 	}
-	return Response{OperationID: wire.OperationID, Params: wire.Params, FlowName: wire.FlowName}, nil
+	return agent.Response{OperationID: wire.OperationID, Params: wire.Params, FlowName: wire.FlowName}, nil
 }

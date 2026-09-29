@@ -1,4 +1,4 @@
-package model_test
+package openai_test
 
 import (
 	"context"
@@ -8,11 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aiveto/veto/model"
+	"github.com/aiveto/veto/agent"
+	"github.com/aiveto/veto/agent/openai"
 )
 
 func TestOpenAIEmptyBaseURLUsesDefaultHost(t *testing.T) {
-	m, err := model.NewOpenAI("", "test-key", "")
+	m, err := openai.New("", "test-key", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,14 +23,14 @@ func TestOpenAIEmptyBaseURLUsesDefaultHost(t *testing.T) {
 }
 
 func TestOpenAIRequiresKeyAndPack(t *testing.T) {
-	if _, err := model.NewOpenAI("", "", ""); err == nil || !strings.Contains(err.Error(), "API key") {
+	if _, err := openai.New("", "", ""); err == nil || !strings.Contains(err.Error(), "API key") {
 		t.Fatalf("key: %v", err)
 	}
-	m, err := model.NewOpenAI("http://127.0.0.1", "test-key", "")
+	m, err := openai.New("http://127.0.0.1", "test-key", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.Complete(context.Background(), model.Request{UserMessage: "delete asset 123"}); err == nil || !strings.Contains(err.Error(), "context pack") {
+	if _, err := m.Complete(context.Background(), agent.Request{UserMessage: "delete asset 123"}); err == nil || !strings.Contains(err.Error(), "context pack") {
 		t.Fatalf("pack: %v", err)
 	}
 }
@@ -45,11 +46,11 @@ func TestOpenAIReadsThePack(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	m, err := model.NewOpenAI(srv.URL, "test-key", "gpt-test")
+	m, err := openai.New(srv.URL, "test-key", "gpt-test")
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := m.Complete(context.Background(), model.Request{
+	got, err := m.Complete(context.Background(), agent.Request{
 		UserMessage: "delete asset 123",
 		Context:     "index: assets.delete\nuser: delete asset 123",
 	})

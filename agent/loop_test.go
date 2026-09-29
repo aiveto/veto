@@ -12,7 +12,6 @@ import (
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/flow"
-	"github.com/aiveto/veto/model"
 	"github.com/aiveto/veto/openapi"
 	"github.com/aiveto/veto/policy"
 	"github.com/aiveto/veto/runctx"
@@ -21,11 +20,11 @@ import (
 
 type flowPick struct{}
 
-func (flowPick) Complete(ctx context.Context, req model.Request) (model.Response, error) {
+func (flowPick) Complete(ctx context.Context, req agent.Request) (agent.Response, error) {
 	if strings.HasPrefix(req.UserMessage, "ok") {
-		return model.Response{}, nil
+		return agent.Response{}, nil
 	}
-	return model.Response{FlowName: "list-then-get", Params: map[string]string{"id": "9"}}, nil
+	return agent.Response{FlowName: "list-then-get", Params: map[string]string{"id": "9"}}, nil
 }
 
 func TestDeleteLoopStopsBeforeHTTPAndPacksOverlay(t *testing.T) {
@@ -47,7 +46,7 @@ func TestDeleteLoopStopsBeforeHTTPAndPacksOverlay(t *testing.T) {
 	loop := &agent.Loop{
 		Catalog:   cat,
 		Semantics: sem,
-		Model:     model.NewScripted(),
+		Model:     agent.NewScripted(),
 		Policy:    policy.Builtin{},
 		State:     policy.NewState(),
 		Exec:      execute.Client{BaseURL: ts.URL},

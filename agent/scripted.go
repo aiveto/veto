@@ -1,4 +1,4 @@
-package model
+package agent
 
 import (
 	"context"
@@ -9,24 +9,6 @@ import (
 )
 
 type (
-	// Request is input to the model provider.
-	Request struct {
-		UserMessage string
-		Context     string
-	}
-
-	// Response is the model's chosen operation and parameters.
-	Response struct {
-		OperationID string
-		Params      map[string]string
-		FlowName    string
-	}
-
-	// Model selects operations from user text.
-	Model interface {
-		Complete(ctx context.Context, req Request) (Response, error)
-	}
-
 	// Scripted maps phrases to operations for evals and tests.
 	Scripted struct {
 		patterns []scriptPattern
@@ -39,7 +21,7 @@ type (
 	}
 )
 
-// NewScripted builds the default scripted model for asset delete evals.
+// NewScripted builds the default scripted completer for asset delete evals.
 func NewScripted() *Scripted {
 	return &Scripted{
 		patterns: []scriptPattern{

@@ -29,10 +29,10 @@ semantics/   Provider. Derived notes, file overlay
 runctx/      Context pack. Budget, select, truncate
 policy/      Allow, check, confirm. Run state
 flow/        Sequential steps. The model may pick the flow. Code runs it
-agent/       One turn. Model, policy, execute. The follow-up pack goes to the caller
+agent/       One turn. Completer, scripted default, policy, execute. The follow-up pack goes to the caller
+agent/openai OpenAI HTTP client for the openai provider key
 generate/    Typed SDK and CLI. Dispatch calls agent.Invoke
 execute/     HTTP from an Operation
-model/       Model interface. Scripted default
 memory/      Memory interface. Local map default
 config/      Provider keys. One file, defaults when unset
 mcpserver/   capabilities_search, capabilities_describe, capabilities_invoke, pins
@@ -77,7 +77,7 @@ Tests use the standard `testing` package and lock behavior: graph grouping, sear
 
 Modular. The core decides. The edge adapts.
 
-- Core packages hold the logic: catalog, semantics, runctx, policy, flow, model, memory, and the `agent` loop. They return values and errors. They do not log, print, exit, or know about MCP or the CLI. `agent.Invoke` is the only policy gate. `execute` is the only HTTP writer. Generated code calls `agent.Invoke`.
+- Core packages hold the logic: catalog, semantics, runctx, policy, flow, memory, and the `agent` loop. They return values and errors. They do not log, print, exit, or know about MCP or the CLI. `agent.Invoke` is the only policy gate. `execute` is the only HTTP writer. Generated code calls `agent.Invoke`.
 - Edges are `cmd/veto`, `mcpserver`, and `execute`. They parse input, call the core, and handle the error once: an exit code, an MCP error, or an HTTP status.
 - Wrap an error on the way out. Do not log it and return it.
 - Validate at the edge. Pass typed values inward. Do not pass a raw request, a flag set, or the environment into the core.

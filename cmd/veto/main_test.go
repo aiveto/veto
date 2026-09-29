@@ -6,9 +6,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aiveto/veto/agent"
+	"github.com/aiveto/veto/agent/openai"
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/memory"
-	"github.com/aiveto/veto/model"
 	"github.com/aiveto/veto/policy"
 )
 
@@ -60,7 +61,7 @@ func TestBuildLoopConstructsDefaultsAndOpenAIHost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := loop.Model.(*model.Scripted); !ok {
+	if _, ok := loop.Model.(*agent.Scripted); !ok {
 		t.Fatalf("model: %T", loop.Model)
 	}
 	if _, ok := loop.Policy.(policy.Builtin); !ok {
@@ -89,7 +90,7 @@ func TestBuildLoopConstructsDefaultsAndOpenAIHost(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			live, ok := loop.Model.(*model.OpenAI)
+			live, ok := loop.Model.(*openai.Client)
 			if !ok {
 				t.Fatalf("model: %T", loop.Model)
 			}

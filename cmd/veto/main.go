@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/aiveto/veto/agent"
+	"github.com/aiveto/veto/agent/openai"
 	"github.com/aiveto/veto/agentmeta"
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/config"
@@ -15,7 +16,6 @@ import (
 	"github.com/aiveto/veto/generate"
 	"github.com/aiveto/veto/mcpserver"
 	"github.com/aiveto/veto/memory"
-	"github.com/aiveto/veto/model"
 	"github.com/aiveto/veto/openapi"
 	"github.com/aiveto/veto/policy"
 	"github.com/aiveto/veto/replay"
@@ -422,9 +422,9 @@ func applyProviders(loop *agent.Loop, cfg config.File) error {
 	}
 	switch cfg.Model {
 	case "scripted":
-		loop.Model = model.NewScripted()
+		loop.Model = agent.NewScripted()
 	case "openai":
-		live, err := model.NewOpenAI(cfg.ModelBaseURL, os.Getenv("OPENAI_API_KEY"), cfg.ModelName)
+		live, err := openai.New(cfg.ModelBaseURL, os.Getenv("OPENAI_API_KEY"), cfg.ModelName)
 		if err != nil {
 			return err
 		}

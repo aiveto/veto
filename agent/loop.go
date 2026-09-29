@@ -7,7 +7,6 @@ import (
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/flow"
 	"github.com/aiveto/veto/memory"
-	"github.com/aiveto/veto/model"
 	"github.com/aiveto/veto/policy"
 	"github.com/aiveto/veto/runctx"
 	"github.com/aiveto/veto/semantics"
@@ -46,12 +45,30 @@ type (
 		Pack        runctx.Pack
 	}
 
+	// Request is input to Complete.
+	Request struct {
+		UserMessage string
+		Context     string
+	}
+
+	// Response is the chosen operation and parameters.
+	Response struct {
+		OperationID string
+		Params      map[string]string
+		FlowName    string
+	}
+
+	// Completer selects an operation or flow from the pack.
+	Completer interface {
+		Complete(ctx context.Context, req Request) (Response, error)
+	}
+
 	// Loop runs one turn: model, policy, then HTTP when the call is allowed.
 	// The follow-up pack is returned to the caller. The model is not called again.
 	Loop struct {
 		Catalog   *catalog.Catalog
 		Semantics semantics.Provider
-		Model     model.Model
+		Model     Completer
 		Policy    policy.Hook
 		State     *policy.State
 		Exec      Executor
@@ -69,7 +86,7 @@ func New(cat *catalog.Catalog, sem semantics.Provider, exec Executor) *Loop {
 	return &Loop{
 		Catalog:   cat,
 		Semantics: sem,
-		Model:     model.NewScripted(),
+		Model:     NewScripted(),
 		Policy:    policy.Builtin{},
 		State:     policy.NewState(),
 		Exec:      exec,
@@ -98,7 +115,7 @@ func (l *Loop) Run(ctx context.Context, userText string) (Outcome, error) {
 	turns = append(turns, runctx.Turn{Role: "user", Content: userText})
 	pack := l.Packs.Build(l.Catalog, turns, nil, l.Semantics, nil)
 	span.SetAttributes(telemetry.Attr("tools", pack.Index))
-	resp, err := l.Model.Complete(ctx, model.Request{UserMessage: userText, Context: pack.Serialize()})
+	resp, err := l.Model.Complete(ctx, Request{UserMessage: userText, Context: pack.Serialize()})
 	if err != nil {
 		return Outcome{}, fmt.Errorf("model: %w", err)
 	}
@@ -198,7 +215,7 @@ func (l *Loop) Invoke(ctx context.Context, operationID string, params map[string
 	}, nil
 }
 
-func (l *Loop) runFlow(ctx context.Context, resp model.Response) (Call, error) {
+func (l *Loop) runFlow(ctx context.Context, resp Response) (Call, error) {
 	def := l.Flows[resp.FlowName]
 	if def == nil {
 		return Call{}, fmt.Errorf("unknown flow %q", resp.FlowName)
@@ -239,7 +256,7 @@ func (l *Loop) ready() {
 		l.State = policy.NewState()
 	}
 	if l.Model == nil {
-		l.Model = model.NewScripted()
+		l.Model = NewScripted()
 	}
 	if l.Memory == nil {
 		l.Memory = memory.NewLocalMap()
