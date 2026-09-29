@@ -10,6 +10,7 @@ import (
 	"github.com/aiveto/veto/flow"
 	"github.com/aiveto/veto/memory"
 	"github.com/aiveto/veto/policy"
+	httpresult "github.com/aiveto/veto/result"
 	"github.com/aiveto/veto/runctx"
 	"github.com/aiveto/veto/semantics"
 	"github.com/aiveto/veto/telemetry"
@@ -17,21 +18,9 @@ import (
 )
 
 type (
-	HTTPResult struct {
-		Status    int
-		Body      string
-		Code      string
-		Retryable bool
-	}
-
 	// The loop does not build the request.
 	Executor interface {
-		InvokeHTTPResult(ctx context.Context, op *catalog.Operation, params map[string]string) (HTTPResult, error)
-	}
-
-	ParamError struct {
-		Operation string
-		Name      string
+		InvokeHTTPResult(ctx context.Context, op *catalog.Operation, params map[string]string) (httpresult.HTTPResult, error)
 	}
 
 	Call struct {
@@ -92,13 +81,6 @@ type (
 		Packs     *runctx.Builder
 	}
 )
-
-func (e ParamError) Error() string {
-	if e.Name == "" {
-		return fmt.Sprintf("operation %s: empty path parameter", e.Operation)
-	}
-	return fmt.Sprintf("operation %s: %s required", e.Operation, e.Name)
-}
 
 func New(cat *catalog.Catalog, sem Notes, exec Executor) (*Loop, error) {
 	if cat == nil {
@@ -231,7 +213,11 @@ func (l *Loop) Invoke(ctx context.Context, operationID string, params map[string
 				OperationID: operationID,
 			}, nil
 		}
-		if !l.State.ConsumeConfirmation(approvalID, operationID, params) {
+		ok, err := l.State.ConsumeConfirmation(approvalID, operationID, params)
+		if err != nil {
+			return Call{Status: "error"}, err
+		}
+		if !ok {
 			return Call{Status: "error"}, fmt.Errorf("invalid approval")
 		}
 		span.SetAttributes(telemetry.Attr("approval.id", approvalID))
@@ -246,7 +232,7 @@ func (l *Loop) Invoke(ctx context.Context, operationID string, params map[string
 	result, err := l.Exec.InvokeHTTPResult(ctx, op, params)
 	if err != nil {
 		call := Call{Status: "error", OperationID: operationID}
-		if _, ok := errors.AsType[ParamError](err); ok {
+		if _, ok := errors.AsType[httpresult.ParamError](err); ok {
 			call.Code = "missing_param"
 		}
 		return call, err

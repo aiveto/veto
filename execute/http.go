@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/aiveto/veto/agent"
 	"github.com/aiveto/veto/catalog"
+	"github.com/aiveto/veto/result"
 	"github.com/aiveto/veto/telemetry"
 	"github.com/google/uuid"
 )
@@ -38,27 +38,27 @@ type (
 	}
 )
 
-func (c Client) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, params map[string]string) (agent.HTTPResult, error) {
+func (c Client) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, params map[string]string) (result.HTTPResult, error) {
 	cfg := Config{BaseURL: c.BaseURL, Client: c.HTTP, RecordBody: c.RecordBody, Auth: c.Auth, MaxBody: c.MaxBody}
 	resp, err := InvokeResponse(ctx, cfg, op, params)
 	if err != nil {
-		return agent.HTTPResult{}, err
+		return result.HTTPResult{}, err
 	}
 	body, err := readBody(resp, cfg.MaxBody)
 	if err != nil {
-		return agent.HTTPResult{}, err
+		return result.HTTPResult{}, err
 	}
 	code, retryable := classify(resp.StatusCode)
-	result := agent.HTTPResult{Status: resp.StatusCode, Body: body, Code: code, Retryable: retryable}
+	out := result.HTTPResult{Status: resp.StatusCode, Body: body, Code: code, Retryable: retryable}
 	if c.FollowPages <= 1 || len(op.Page) == 0 {
-		return result, nil
+		return out, nil
 	}
 	merged, err := followPages(ctx, cfg, op, params, body, c.FollowPages)
 	if err != nil {
-		return agent.HTTPResult{}, err
+		return result.HTTPResult{}, err
 	}
-	result.Body = merged
-	return result, nil
+	out.Body = merged
+	return out, nil
 }
 
 func InvokeResponse(ctx context.Context, cfg Config, op *catalog.Operation, params map[string]string) (*http.Response, error) {
@@ -273,7 +273,7 @@ func requireParams(op *catalog.Operation, params map[string]string) error {
 			v = strings.TrimSpace(p.Default)
 		}
 		if v == "" {
-			return agent.ParamError{Operation: op.ID, Name: p.Name}
+			return result.ParamError{Operation: op.ID, Name: p.Name}
 		}
 	}
 	return nil

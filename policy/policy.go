@@ -5,8 +5,13 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
+	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -35,14 +40,14 @@ type (
 		Params      map[string]string
 	}
 
-	// Consumed nonces live in this process. A restart forgets them until the token expires.
+	// Consumed nonces are files in the signer directory. Two machines that share the secret and not that directory can each accept the token until expiry.
 	State struct {
-		mu      sync.Mutex
-		pending map[string]PendingConfirmation
-		used    map[string]int64
-		secret  []byte
-		ttl     time.Duration
-		now     func() time.Time
+		mu       sync.Mutex
+		pending  map[string]PendingConfirmation
+		secret   []byte
+		nonceDir string
+		ttl      time.Duration
+		now      func() time.Time
 	}
 
 	Input struct {
@@ -74,8 +79,11 @@ func Wrap(around Around) Wrapped {
 func (w Wrapped) Check(ctx context.Context, op *catalog.Operation) (Decision, error) {
 	if w.around != nil {
 		decision, stop, err := w.around(ctx, op)
-		if err != nil || stop {
+		if err != nil {
 			return decision, err
+		}
+		if stop && !allowNeedsConfirmation(decision, op) {
+			return decision, nil
 		}
 	}
 	next := w.next
@@ -85,17 +93,42 @@ func (w Wrapped) Check(ctx context.Context, op *catalog.Operation) (Decision, er
 	return next.Check(ctx, op)
 }
 
+func allowNeedsConfirmation(decision Decision, op *catalog.Operation) bool {
+	return decision == DecisionAllow && op != nil && op.RequiresConfirmation
+}
+
 func NewState() *State {
 	return &State{pending: map[string]PendingConfirmation{}, now: time.Now}
 }
 
-func (s *State) SetSigner(secret []byte, ttl time.Duration) {
-	if s == nil || len(secret) == 0 {
+func (s *State) SetNonceDir(dir string) {
+	if s == nil {
 		return
 	}
 	s.mu.Lock()
+	s.nonceDir = dir
+	s.mu.Unlock()
+}
+
+func (s *State) SetSigner(secret []byte, ttl time.Duration) error {
+	if s == nil || len(secret) == 0 {
+		return nil
+	}
+	s.mu.Lock()
 	defer s.mu.Unlock()
+	dir := s.nonceDir
+	if dir == "" {
+		var err error
+		dir, err = defaultNonceDir(secret)
+		if err != nil {
+			return err
+		}
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("approval nonce dir: %w", err)
+	}
 	s.secret = append([]byte(nil), secret...)
+	s.nonceDir = dir
 	s.ttl = ttl
 	if s.ttl <= 0 {
 		s.ttl = 15 * time.Minute
@@ -103,6 +136,16 @@ func (s *State) SetSigner(secret []byte, ttl time.Duration) {
 	if s.now == nil {
 		s.now = time.Now
 	}
+	return nil
+}
+
+func defaultNonceDir(secret []byte) (string, error) {
+	root, err := os.UserConfigDir()
+	if err != nil {
+		return "", fmt.Errorf("approval nonce dir: %w", err)
+	}
+	sum := sha256.Sum256(secret)
+	return filepath.Join(root, "veto", "approval-nonces", hex.EncodeToString(sum[:16])), nil
 }
 
 func (s *State) RequestConfirmation(opID string, params map[string]string) string {
@@ -128,7 +171,7 @@ func InputFrom(ctx context.Context) Input {
 	return in
 }
 
-func (s *State) ConsumeConfirmation(approvalID, opID string, params map[string]string) bool {
+func (s *State) ConsumeConfirmation(approvalID, opID string, params map[string]string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(s.secret) > 0 {
@@ -136,10 +179,10 @@ func (s *State) ConsumeConfirmation(approvalID, opID string, params map[string]s
 	}
 	p, ok := s.pending[approvalID]
 	if !ok || p.OperationID != opID || !sameParams(p.Params, params) {
-		return false
+		return false, nil
 	}
 	delete(s.pending, approvalID)
-	return true
+	return true, nil
 }
 
 func (s *State) Pending(id string) *PendingConfirmation {
@@ -224,36 +267,54 @@ func signApproval(secret []byte, opID string, params map[string]string, exp time
 	return fmt.Sprintf("v1.%d.%s.%s", unix, nonce, sum)
 }
 
-func (s *State) consumeSigned(token, opID string, params map[string]string, now time.Time) bool {
+func (s *State) consumeSigned(token, opID string, params map[string]string, now time.Time) (bool, error) {
 	parts := strings.Split(token, ".")
-	if len(parts) != 4 || parts[0] != "v1" || parts[2] == "" {
-		return false
+	if len(parts) != 4 || parts[0] != "v1" || !plainNonce(parts[2]) {
+		return false, nil
 	}
 	unix, err := strconv.ParseInt(parts[1], 10, 64)
 	if err != nil || !now.Before(time.Unix(unix, 0)) {
-		return false
+		return false, nil
 	}
 	got, err := base64.RawURLEncoding.DecodeString(parts[3])
 	if err != nil {
-		return false
+		return false, nil
 	}
 	mac := hmac.New(sha256.New, s.secret)
 	_, _ = mac.Write([]byte(approvalPayload(opID, params, unix, parts[2])))
 	if !hmac.Equal(got, mac.Sum(nil)) {
+		return false, nil
+	}
+	if s.nonceDir == "" {
+		return false, fmt.Errorf("approval nonce dir is not set")
+	}
+	f, err := os.OpenFile(filepath.Join(s.nonceDir, parts[2]), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return false, nil
+		}
+		return false, fmt.Errorf("approval nonce: %w", err)
+	}
+	_, werr := fmt.Fprintf(f, "%d\n", unix)
+	cerr := f.Close()
+	if werr != nil {
+		return false, fmt.Errorf("approval nonce: %w", werr)
+	}
+	if cerr != nil {
+		return false, fmt.Errorf("approval nonce: %w", cerr)
+	}
+	return true, nil
+}
+
+func plainNonce(nonce string) bool {
+	if nonce == "" || len(nonce) > 128 {
 		return false
 	}
-	if s.used == nil {
-		s.used = map[string]int64{}
-	}
-	for id, until := range s.used {
-		if !now.Before(time.Unix(until, 0)) {
-			delete(s.used, id)
+	for _, r := range nonce {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '-' {
+			return false
 		}
 	}
-	if _, ok := s.used[parts[2]]; ok {
-		return false
-	}
-	s.used[parts[2]] = unix
 	return true
 }
 

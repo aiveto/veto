@@ -10,6 +10,7 @@ import (
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/eval"
 	"github.com/aiveto/veto/openapi"
+	"github.com/aiveto/veto/result"
 	"github.com/aiveto/veto/semantics"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,8 +25,8 @@ func (pickGet) Complete(context.Context, agent.Request) (agent.Response, error) 
 	return agent.Response{OperationID: "orders.get", Params: map[string]string{"id": "1"}}, nil
 }
 
-func (hitExec) InvokeHTTPResult(context.Context, *catalog.Operation, map[string]string) (agent.HTTPResult, error) {
-	return agent.HTTPResult{Status: 200, Code: "ok"}, nil
+func (hitExec) InvokeHTTPResult(context.Context, *catalog.Operation, map[string]string) (result.HTTPResult, error) {
+	return result.HTTPResult{Status: 200, Code: "ok"}, nil
 }
 
 func TestNeighborCaseSelectsTheRelationAndDropsBilling(t *testing.T) {

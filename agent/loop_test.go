@@ -124,7 +124,7 @@ func TestWrapPolicyKeepsBuiltinUnlessItStops(t *testing.T) {
 		hits   int32
 	}{
 		{name: "falls through to confirmation", status: "confirmation_required"},
-		{name: "stop allows the call", stop: true, status: "ok", hits: 1},
+		{name: "stop still confirms a delete", stop: true, status: "confirmation_required"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -185,9 +185,11 @@ func TestSignedApprovalResumesOnAnotherLoop(t *testing.T) {
 	}))
 	defer ts.Close()
 	secret := []byte("approval-secret")
+	dir := t.TempDir()
 	first, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
 	require.NoError(t, err)
-	first.State.SetSigner(secret, time.Hour)
+	first.State.SetNonceDir(dir)
+	require.NoError(t, first.State.SetSigner(secret, time.Hour))
 	out, err := first.Run(context.Background(), "Delete order 123")
 	require.NoError(t, err)
 	assert.Equal(t, "confirmation_required", out.Status)
@@ -197,9 +199,17 @@ func TestSignedApprovalResumesOnAnotherLoop(t *testing.T) {
 	assert.Equal(t, int32(0), hits.Load())
 	second, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
 	require.NoError(t, err)
-	second.State.SetSigner(secret, time.Hour)
+	second.State.SetNonceDir(dir)
+	require.NoError(t, second.State.SetSigner(secret, time.Hour))
 	resumed, err := second.Invoke(context.Background(), "orders.delete", map[string]string{"id": "123"}, out.ApprovalID)
 	require.NoError(t, err)
 	assert.Equal(t, "ok", resumed.Status)
+	assert.Equal(t, int32(1), hits.Load())
+	third, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
+	require.NoError(t, err)
+	third.State.SetNonceDir(dir)
+	require.NoError(t, third.State.SetSigner(secret, time.Hour))
+	_, err = third.Invoke(context.Background(), "orders.delete", map[string]string{"id": "123"}, out.ApprovalID)
+	assert.Error(t, err)
 	assert.Equal(t, int32(1), hits.Load())
 }
