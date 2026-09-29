@@ -15,10 +15,12 @@ import (
 )
 
 type (
-	// HTTPResult is the status and body of one allowed HTTP call.
+	// HTTPResult is the status, body, and stable code of one allowed HTTP call.
 	HTTPResult struct {
-		Status int
-		Body   string
+		Status    int
+		Body      string
+		Code      string
+		Retryable bool
 	}
 
 	// Executor performs one HTTP call. The loop does not build the request.
@@ -33,6 +35,8 @@ type (
 		OperationID string
 		HTTPStatus  int
 		Body        string
+		Code        string
+		Retryable   bool
 		Error       string
 	}
 
@@ -141,9 +145,13 @@ func (l *Loop) Run(ctx context.Context, userText string) (Outcome, error) {
 	if call.ApprovalID != "" {
 		pending = l.State.Pending(call.ApprovalID)
 	}
-	followTurns := append(turns, runctx.Turn{Role: "tool", Content: call.Status + " " + call.OperationID})
+	summary := call.Status
+	if call.Code != "" {
+		summary = fmt.Sprintf("%s code=%s retryable=%t", call.Status, call.Code, call.Retryable)
+	}
+	followTurns := append(turns, runctx.Turn{Role: "tool", Content: summary + " " + call.OperationID})
 	follow := l.Packs.Build(l.Catalog, followTurns, described, l.Semantics, pending)
-	text := call.Status
+	text := summary
 	if l.Memory != nil {
 		id := uuid.NewString()
 		if err := l.Memory.Store(ctx, memory.Item{
@@ -212,6 +220,8 @@ func (l *Loop) Invoke(ctx context.Context, operationID string, params map[string
 		OperationID: operationID,
 		HTTPStatus:  result.Status,
 		Body:        result.Body,
+		Code:        result.Code,
+		Retryable:   result.Retryable,
 	}, nil
 }
 

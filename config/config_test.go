@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aiveto/veto/config"
 )
@@ -34,6 +35,9 @@ func TestLoadResolvesFilesAndDefaults(t *testing.T) {
 	}
 	if !cfg.Redact() {
 		t.Fatal("replay redacts unless replay_redact is false")
+	}
+	if cfg.Timeout != 30*time.Second {
+		t.Fatalf("timeout: %s", cfg.Timeout)
 	}
 }
 

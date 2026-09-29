@@ -64,3 +64,22 @@ func TestOpenAIReadsThePack(t *testing.T) {
 		t.Fatalf("response: %+v", got)
 	}
 }
+
+func TestOpenAICoercesNumberAndObjectParams(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"{\"operation_id\":\"assets.create\",\"params\":{\"id\":123,\"body\":{\"name\":\"kit\"}},\"flow_name\":\"\"}"}}]}`)
+	}))
+	defer srv.Close()
+	m, err := openai.New(srv.URL, "test-key", "gpt-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := m.Complete(context.Background(), agent.Request{UserMessage: "create", Context: "index: assets.create"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Params["id"] != "123" || got.Params["body"] != `{"name":"kit"}` {
+		t.Fatalf("params: %#v", got.Params)
+	}
+}

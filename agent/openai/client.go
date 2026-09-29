@@ -116,12 +116,55 @@ func parseReply(content string) (agent.Response, error) {
 	content = strings.TrimSuffix(content, "```")
 	content = strings.TrimSpace(content)
 	var wire struct {
-		OperationID string            `json:"operation_id"`
-		Params      map[string]string `json:"params"`
-		FlowName    string            `json:"flow_name"`
+		OperationID string          `json:"operation_id"`
+		Params      json.RawMessage `json:"params"`
+		FlowName    string          `json:"flow_name"`
 	}
 	if err := json.Unmarshal([]byte(content), &wire); err != nil {
 		return agent.Response{}, fmt.Errorf("parse model json: %w", err)
 	}
-	return agent.Response{OperationID: wire.OperationID, Params: wire.Params, FlowName: wire.FlowName}, nil
+	params, err := coerceParams(wire.Params)
+	if err != nil {
+		return agent.Response{}, err
+	}
+	return agent.Response{OperationID: wire.OperationID, Params: params, FlowName: wire.FlowName}, nil
+}
+
+func coerceParams(raw json.RawMessage) (map[string]string, error) {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" {
+		return map[string]string{}, nil
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return nil, fmt.Errorf("parse model params: %w", err)
+	}
+	out := make(map[string]string, len(obj))
+	for k, v := range obj {
+		s, err := coerceValue(v)
+		if err != nil {
+			return nil, fmt.Errorf("param %s: %w", k, err)
+		}
+		out[k] = s
+	}
+	return out, nil
+}
+
+func coerceValue(raw json.RawMessage) (string, error) {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" {
+		return "", nil
+	}
+	switch raw[0] {
+	case '"':
+		var s string
+		if err := json.Unmarshal(raw, &s); err != nil {
+			return "", err
+		}
+		return s, nil
+	case '{', '[':
+		return string(raw), nil
+	default:
+		return string(raw), nil
+	}
 }

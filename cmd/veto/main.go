@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 
 	"github.com/aiveto/veto/agent"
@@ -295,13 +296,19 @@ func runReplay(cmd replayCmd) {
 		fmt.Fprintf(os.Stderr, "replay: %v\n", err)
 		os.Exit(1)
 	}
-	if _, err := loop.Run(context.Background(), cmd.message); err != nil {
-		fmt.Fprintf(os.Stderr, "replay: %v\n", err)
-		os.Exit(1)
-	}
 	redact := cfg.Redact()
 	if cmd.keepSensitive {
 		redact = false
+	}
+	if !redact {
+		if c, ok := loop.Exec.(execute.Client); ok {
+			c.RecordBody = true
+			loop.Exec = c
+		}
+	}
+	if _, err := loop.Run(context.Background(), cmd.message); err != nil {
+		fmt.Fprintf(os.Stderr, "replay: %v\n", err)
+		os.Exit(1)
 	}
 	fmt.Print(replay.FromSpans(rec.Spans(), redact).String())
 }
@@ -398,7 +405,10 @@ func buildLoop(contracts []string, configPath, agentPath, relationsPath, baseURL
 		}
 		flows[def.Name] = def
 	}
-	loop := agent.New(cat, sem, execute.Client{BaseURL: baseURL})
+	loop := agent.New(cat, sem, execute.Client{
+		BaseURL: baseURL,
+		HTTP:    &http.Client{Timeout: cfg.Timeout},
+	})
 	loop.Flows = flows
 	if err := applyProviders(loop, cfg); err != nil {
 		return nil, cfg, err

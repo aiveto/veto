@@ -77,6 +77,35 @@ func TestDeleteLoopStopsBeforeHTTPAndPacksOverlay(t *testing.T) {
 	}
 }
 
+type getPick struct{}
+
+func (getPick) Complete(ctx context.Context, req agent.Request) (agent.Response, error) {
+	return agent.Response{OperationID: "assets.get", Params: map[string]string{"id": "1"}}, nil
+}
+
+func TestLoopShowsStableHTTPCode(t *testing.T) {
+	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "down", http.StatusBadGateway)
+	}))
+	defer ts.Close()
+	loop := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
+	loop.Model = getPick{}
+	out, err := loop.Run(context.Background(), "get asset 1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.Text, "code=upstream") || !strings.Contains(out.Text, "retryable=true") {
+		t.Fatalf("text: %s", out.Text)
+	}
+	if out.Text == "down" {
+		t.Fatal("model saw only the raw body")
+	}
+}
+
 func TestWrapPolicyKeepsBuiltinUnlessItStops(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
 	if err != nil {

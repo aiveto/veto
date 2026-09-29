@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/aiveto/veto/agent"
@@ -18,20 +19,22 @@ import (
 type (
 	// Config points invoke at a base URL and optional client.
 	Config struct {
-		BaseURL string
-		Client  *http.Client
+		BaseURL    string
+		Client     *http.Client
+		RecordBody bool
 	}
 
 	// Client is the HTTP writer the agent loop calls after policy allows an operation.
 	Client struct {
-		BaseURL string
-		HTTP    *http.Client
+		BaseURL    string
+		HTTP       *http.Client
+		RecordBody bool
 	}
 )
 
 // Invoke performs the operation and returns the status and body.
 func (c Client) Invoke(ctx context.Context, op *catalog.Operation, params map[string]string) (agent.HTTPResult, error) {
-	resp, err := Invoke(ctx, Config{BaseURL: c.BaseURL, Client: c.HTTP}, op, params)
+	resp, err := Invoke(ctx, Config{BaseURL: c.BaseURL, Client: c.HTTP, RecordBody: c.RecordBody}, op, params)
 	if err != nil {
 		return agent.HTTPResult{}, err
 	}
@@ -39,7 +42,8 @@ func (c Client) Invoke(ctx context.Context, op *catalog.Operation, params map[st
 	if err != nil {
 		return agent.HTTPResult{}, err
 	}
-	return agent.HTTPResult{Status: resp.StatusCode, Body: body}, nil
+	code, retryable := classify(resp.StatusCode)
+	return agent.HTTPResult{Status: resp.StatusCode, Body: body, Code: code, Retryable: retryable}, nil
 }
 
 // Invoke performs the HTTP call described by op.
@@ -111,7 +115,44 @@ func Invoke(ctx context.Context, cfg Config, op *catalog.Operation, params map[s
 		span.SetAttributes(telemetry.Attr("params", formatted))
 	}
 
-	return cfg.Client.Do(req)
+	resp, err := cfg.Client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		return nil, fmt.Errorf("read body: %w", err)
+	}
+	resp.Body = io.NopCloser(bytes.NewReader(raw))
+	span.SetAttributes(telemetry.Attr("http.status", strconv.Itoa(resp.StatusCode)))
+	if cfg.RecordBody && len(raw) > 0 {
+		span.SetAttributes(telemetry.Attr("http.body", string(raw)))
+	}
+	return resp, nil
+}
+
+func classify(status int) (string, bool) {
+	switch {
+	case status >= 200 && status < 400:
+		return "ok", false
+	case status == http.StatusBadRequest:
+		return "invalid", false
+	case status == http.StatusUnauthorized:
+		return "unauthorized", false
+	case status == http.StatusForbidden:
+		return "forbidden", false
+	case status == http.StatusNotFound:
+		return "not_found", false
+	case status == http.StatusConflict:
+		return "conflict", false
+	case status == http.StatusTooManyRequests:
+		return "rate_limited", true
+	case status >= 500:
+		return "upstream", true
+	default:
+		return "rejected", false
+	}
 }
 
 func requireParams(op *catalog.Operation, params map[string]string) error {
