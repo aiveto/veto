@@ -13,7 +13,6 @@ import (
 // Follow runs operationID through Invoke, then each declared relation or link that names a value.
 // A link with no parameter mapping is not called. A missing response field is an error.
 func (l *Loop) Follow(ctx context.Context, operationID string, params map[string]string, approvalID string) ([]Call, error) {
-	l.ready()
 	first, err := l.Invoke(ctx, operationID, params, approvalID)
 	if err != nil || first.Status != "ok" {
 		if err != nil {

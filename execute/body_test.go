@@ -39,7 +39,7 @@ func TestJSONBodySetsContentHeaders(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	resp, err := execute.Invoke(context.Background(), execute.Config{BaseURL: ts.URL}, op, map[string]string{"body": raw})
+	resp, err := execute.InvokeResponse(context.Background(), execute.Config{BaseURL: ts.URL}, op, map[string]string{"body": raw})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestRequiredEmptyBodyDoesNotCallDo(t *testing.T) {
 	op := cat.ByID("assets.create")
 	trip := &failTrip{}
 	client := &http.Client{Transport: trip}
-	_, err := execute.Invoke(context.Background(), execute.Config{BaseURL: "http://127.0.0.1:9", Client: client}, op, map[string]string{"_body": `{"name":"kit"}`})
+	_, err := execute.InvokeResponse(context.Background(), execute.Config{BaseURL: "http://127.0.0.1:9", Client: client}, op, map[string]string{"_body": `{"name":"kit"}`})
 	if err == nil || !strings.Contains(err.Error(), "body required") {
 		t.Fatalf("err: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestNoBodySchemaOmitsContentType(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer ts.Close()
-	resp, err := execute.Invoke(context.Background(), execute.Config{BaseURL: ts.URL}, op, map[string]string{"id": "1"})
+	resp, err := execute.InvokeResponse(context.Background(), execute.Config{BaseURL: ts.URL}, op, map[string]string{"id": "1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestEmptyPathParamDoesNotCallDo(t *testing.T) {
 	cat := loadSpec(t, bodySpec)
 	op := cat.ByID("assets.get")
 	trip := &failTrip{}
-	_, err := execute.Invoke(context.Background(), execute.Config{
+	_, err := execute.InvokeResponse(context.Background(), execute.Config{
 		BaseURL: "http://127.0.0.1:9",
 		Client:  &http.Client{Transport: trip},
 	}, op, map[string]string{"id": "  "})

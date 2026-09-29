@@ -7,24 +7,23 @@ import (
 
 const hitLimit = 8
 
-// Match describes one search hit. Related are the graph neighbors veto already walked.
-type Match struct {
-	Operation Operation
-	Related   []string
-}
+type (
+	Match struct {
+		Operation Operation
+		Related   []string
+	}
 
-type scored struct {
-	op    Operation
-	score int
-}
+	scored struct {
+		op    Operation
+		score int
+	}
+)
 
-// Search ranks operations and returns at most hitLimit.
 // An exact id outranks a synonym. A synonym outranks a weaker substring.
 func Search(cat *Catalog, query string, synonyms map[string][]string) []Match {
 	return SearchPage(cat, query, synonyms, 0, hitLimit)
 }
 
-// SearchPage returns a window of the ranked hits. A non-positive limit uses the default page size.
 func SearchPage(cat *Catalog, query string, synonyms map[string][]string, offset, limit int) []Match {
 	q := strings.ToLower(strings.TrimSpace(query))
 	if cat == nil || q == "" {

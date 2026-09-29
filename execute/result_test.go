@@ -28,7 +28,7 @@ func TestHTTPResultCarriesCodeAndReplayOmitsBody(t *testing.T) {
 	}
 	defer rec.Stop(context.Background())
 
-	got, err := execute.Client{BaseURL: ts.URL}.Invoke(context.Background(), op, map[string]string{"id": "1"})
+	got, err := execute.Client{BaseURL: ts.URL}.InvokeHTTPResult(context.Background(), op, map[string]string{"id": "1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestHTTPResultCarriesCodeAndReplayOmitsBody(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer rec2.Stop(context.Background())
-	if _, err := (execute.Client{BaseURL: ts.URL, RecordBody: true}).Invoke(context.Background(), op, map[string]string{"id": "1"}); err != nil {
+	if _, err := (execute.Client{BaseURL: ts.URL, RecordBody: true}).InvokeHTTPResult(context.Background(), op, map[string]string{"id": "1"}); err != nil {
 		t.Fatal(err)
 	}
 	kept := spanText(t, rec2)
@@ -61,7 +61,7 @@ func TestClientTimeoutEndsAHungCall(t *testing.T) {
 		<-r.Context().Done()
 	}))
 	defer ts.Close()
-	_, err := execute.Invoke(context.Background(), execute.Config{
+	_, err := execute.InvokeResponse(context.Background(), execute.Config{
 		BaseURL: ts.URL,
 		Client:  &http.Client{Timeout: 30 * time.Millisecond},
 	}, op, map[string]string{"id": "1"})

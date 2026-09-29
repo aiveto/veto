@@ -12,7 +12,6 @@ import (
 )
 
 type (
-	// InvokeResult is returned from capabilities_invoke.
 	InvokeResult struct {
 		Status      string `json:"status"`
 		ApprovalID  string `json:"approval_id,omitempty"`
@@ -24,30 +23,30 @@ type (
 		Error       string `json:"error,omitempty"`
 	}
 
-	// Server wires catalog search, describe, and policy-gated invoke.
 	Server struct {
 		Catalog   *catalog.Catalog
-		Semantics semantics.Provider
+		Semantics agent.Notes
 		Agent     *agent.Loop
 	}
 )
 
-// Search runs capability search.
-func (s *Server) Search(ctx context.Context, query string, offset, limit int) ([]catalog.Match, error) {
+func (s *Server) Search(ctx context.Context, query string, offset, limit int) []catalog.Match {
 	var syns map[string][]string
 	if s.Semantics != nil {
 		syns = s.Semantics.AllSynonyms()
 	}
-	return catalog.SearchPage(s.Catalog, query, syns, offset, limit), nil
+	return catalog.SearchPage(s.Catalog, query, syns, offset, limit)
 }
 
-// Describe returns one operation as JSON.
 func (s *Server) Describe(ctx context.Context, operationID string) ([]byte, error) {
 	op := s.Catalog.ByID(operationID)
 	if op == nil {
 		return nil, fmt.Errorf("unknown operation %q", operationID)
 	}
-	note := s.Semantics.Note(operationID)
+	var note semantics.Note
+	if s.Semantics != nil {
+		note = s.Semantics.Note(operationID)
+	}
 	payload := map[string]any{
 		"operation": *op,
 		"semantics": note,
@@ -59,7 +58,6 @@ func (s *Server) Describe(ctx context.Context, operationID string) ([]byte, erro
 	return json.Marshal(payload)
 }
 
-// Invoke checks policy and optionally calls HTTP through the agent loop.
 func (s *Server) Invoke(ctx context.Context, operationID string, params map[string]string, approvalID string) (InvokeResult, error) {
 	if s.Agent == nil {
 		return InvokeResult{Status: "error", Error: "agent required"}, fmt.Errorf("agent required")
@@ -77,7 +75,6 @@ func (s *Server) Invoke(ctx context.Context, operationID string, params map[stri
 	}, err
 }
 
-// ToolNames returns MCP tool names for the server configuration.
 // Grouped mode adds one tool per resource, never one tool per operation.
 func ToolNames(cat *catalog.Catalog, pins []string, directPins, grouped bool) []string {
 	names := []string{

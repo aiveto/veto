@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/flow"
@@ -16,7 +17,6 @@ import (
 )
 
 type (
-	// HTTPResult is the status, body, and stable code of one allowed HTTP call.
 	HTTPResult struct {
 		Status    int
 		Body      string
@@ -24,18 +24,16 @@ type (
 		Retryable bool
 	}
 
-	// Executor performs one HTTP call. The loop does not build the request.
+	// The loop does not build the request.
 	Executor interface {
-		Invoke(ctx context.Context, op *catalog.Operation, params map[string]string) (HTTPResult, error)
+		InvokeHTTPResult(ctx context.Context, op *catalog.Operation, params map[string]string) (HTTPResult, error)
 	}
 
-	// ParamError is a required parameter that was empty.
 	ParamError struct {
 		Operation string
 		Name      string
 	}
 
-	// Call is one policy-gated execution of an operation.
 	Call struct {
 		Status      string
 		ApprovalID  string
@@ -47,7 +45,6 @@ type (
 		Error       string
 	}
 
-	// Outcome is the result of one user turn.
 	Outcome struct {
 		OperationID string
 		Status      string
@@ -56,42 +53,58 @@ type (
 		Pack        runctx.Pack
 	}
 
-	// Request is input to Complete.
 	Request struct {
 		UserMessage string
 		Context     string
 	}
 
-	// Response is the chosen operation and parameters.
 	Response struct {
 		OperationID string
 		Params      map[string]string
 		FlowName    string
 	}
 
-	// Completer selects an operation or flow from the pack.
 	Completer interface {
 		Complete(ctx context.Context, req Request) (Response, error)
 	}
 
-	// Loop runs one turn: model, policy, then HTTP when the call is allowed.
-	// The follow-up pack is returned to the caller. The model is not called again.
+	Memory interface {
+		Store(ctx context.Context, item memory.Item) error
+		Search(ctx context.Context, query string) ([]memory.Item, error)
+		Recent(ctx context.Context, n int) ([]memory.Item, error)
+	}
+
+	Notes interface {
+		Note(operationID string) semantics.Note
+		AllSynonyms() map[string][]string
+	}
+
+	// The follow-up pack is returned. The model is not called again.
 	Loop struct {
 		Catalog   *catalog.Catalog
-		Semantics semantics.Provider
+		Semantics Notes
 		Model     Completer
 		Policy    policy.Hook
 		State     *policy.State
 		Exec      Executor
-		Memory    memory.Memory
+		Memory    Memory
 		Flows     map[string]*flow.Definition
 		Packs     *runctx.Builder
 	}
 )
 
-// New builds a loop with the in-tree defaults. Catalog is required.
-func New(cat *catalog.Catalog, sem semantics.Provider, exec Executor) *Loop {
-	if sem == nil && cat != nil {
+func (e ParamError) Error() string {
+	if e.Name == "" {
+		return fmt.Sprintf("operation %s: empty path parameter", e.Operation)
+	}
+	return fmt.Sprintf("operation %s: %s required", e.Operation, e.Name)
+}
+
+func New(cat *catalog.Catalog, sem Notes, exec Executor) (*Loop, error) {
+	if cat == nil {
+		return nil, fmt.Errorf("catalog required")
+	}
+	if sem == nil {
 		sem = semantics.NewDerived(cat)
 	}
 	return &Loop{
@@ -104,19 +117,16 @@ func New(cat *catalog.Catalog, sem semantics.Provider, exec Executor) *Loop {
 		Memory:    memory.NewLocalMap(),
 		Flows:     map[string]*flow.Definition{},
 		Packs:     runctx.NewBuilder(0),
-	}
+	}, nil
 }
 
-// WrapPolicy installs a hook that calls Builtin unless around stops.
 func (l *Loop) WrapPolicy(around policy.Around) {
 	l.Policy = policy.Wrap(around)
 }
 
-// Run executes the loop for one user message.
 func (l *Loop) Run(ctx context.Context, userText string) (Outcome, error) {
 	span := telemetry.StartSpan(ctx, "agent.run")
 	defer span.End()
-	l.ready()
 	span.SetAttributes(telemetry.Attr("user_message", userText))
 
 	turns, err := l.memoryTurns(ctx, userText)
@@ -195,32 +205,20 @@ func (l *Loop) Run(ctx context.Context, userText string) (Outcome, error) {
 	}, nil
 }
 
-func (e ParamError) Error() string {
-	if e.Name == "" {
-		return fmt.Sprintf("operation %s: empty path parameter", e.Operation)
-	}
-	return fmt.Sprintf("operation %s: %s required", e.Operation, e.Name)
-}
-
-// Invoke checks policy and calls HTTP only when the call is allowed.
 func (l *Loop) Invoke(ctx context.Context, operationID string, params map[string]string, approvalID string) (Call, error) {
-	l.ready()
 	op := l.Catalog.ByID(operationID)
 	if op == nil {
-		return Call{Status: "error", Error: "unknown operation"}, fmt.Errorf("unknown operation %q", operationID)
+		return Call{Status: "error"}, fmt.Errorf("unknown operation %q", operationID)
 	}
 	decision, err := policy.Check(ctx, l.Policy, op)
 	if err != nil {
-		return Call{Status: "error", Error: err.Error()}, err
+		return Call{Status: "error"}, err
 	}
 	if decision == policy.DecisionConfirmationNeeded {
 		span := telemetry.StartSpan(ctx, "policy.confirmation")
 		defer span.End()
 		span.SetAttributes(telemetry.Attr("operation.id", operationID))
-		if approvalID != "" && l.State.ConsumeConfirmation(approvalID, operationID, params) {
-			span.SetAttributes(telemetry.Attr("approval.id", approvalID))
-			decision = policy.DecisionAllow
-		} else if approvalID == "" {
+		if approvalID == "" {
 			id := l.State.RequestConfirmation(operationID, params)
 			span.SetAttributes(telemetry.Attr("approval.id", id))
 			return Call{
@@ -228,21 +226,23 @@ func (l *Loop) Invoke(ctx context.Context, operationID string, params map[string
 				ApprovalID:  id,
 				OperationID: operationID,
 			}, nil
-		} else {
-			return Call{Status: "error", Error: "invalid approval"}, fmt.Errorf("invalid approval")
 		}
+		if !l.State.ConsumeConfirmation(approvalID, operationID, params) {
+			return Call{Status: "error"}, fmt.Errorf("invalid approval")
+		}
+		span.SetAttributes(telemetry.Attr("approval.id", approvalID))
+		decision = policy.DecisionAllow
 	}
 	if decision != policy.DecisionAllow {
 		return Call{Status: "denied", OperationID: operationID}, nil
 	}
 	if l.Exec == nil {
-		return Call{Status: "error", Error: "missing executor"}, fmt.Errorf("missing executor")
+		return Call{Status: "error"}, fmt.Errorf("missing executor")
 	}
-	result, err := l.Exec.Invoke(ctx, op, params)
+	result, err := l.Exec.InvokeHTTPResult(ctx, op, params)
 	if err != nil {
-		call := Call{Status: "error", Error: err.Error(), OperationID: operationID}
-		var missing ParamError
-		if errors.As(err, &missing) {
+		call := Call{Status: "error", OperationID: operationID}
+		if _, ok := errors.AsType[ParamError](err); ok {
 			call.Code = "missing_param"
 		}
 		return call, err
@@ -273,12 +273,11 @@ func (l *Loop) runFlow(ctx context.Context, resp Response) (Call, error) {
 		return call.Status, call.Body, nil
 	}}
 	results, err := runner.Run(ctx, def, resp.Params)
-	var stopped flow.Stopped
-	if errors.As(err, &stopped) {
+	if stopped, ok := errors.AsType[flow.Stopped](err); ok {
 		return Call{Status: stopped.Status, OperationID: stopped.Operation}, nil
 	}
 	if err != nil {
-		return Call{Status: "error", OperationID: resp.OperationID, Error: err.Error()}, err
+		return Call{Status: "error", OperationID: resp.OperationID}, err
 	}
 	last := ""
 	if n := len(def.Steps); n > 0 {
@@ -295,29 +294,7 @@ func copyParams(in map[string]string) map[string]string {
 	if len(in) == 0 {
 		return nil
 	}
-	out := make(map[string]string, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
-}
-
-func (l *Loop) ready() {
-	if l.Packs == nil {
-		l.Packs = runctx.NewBuilder(0)
-	}
-	if l.State == nil {
-		l.State = policy.NewState()
-	}
-	if l.Model == nil {
-		l.Model = NewScripted()
-	}
-	if l.Memory == nil {
-		l.Memory = memory.NewLocalMap()
-	}
-	if l.Flows == nil {
-		l.Flows = map[string]*flow.Definition{}
-	}
+	return maps.Clone(in)
 }
 
 func (l *Loop) memoryTurns(ctx context.Context, userText string) ([]runctx.Turn, error) {

@@ -18,16 +18,13 @@ import (
 )
 
 type (
-	// Config points invoke at a base URL and optional client.
-	// Auth maps a scheme name to the secret. The value never comes from yaml.
 	Config struct {
 		BaseURL    string
 		Client     *http.Client
 		RecordBody bool
-		Auth       map[string]string
+		Auth       map[string]string // secret by scheme name; never read from yaml
 	}
 
-	// Client is the HTTP writer the agent loop calls after policy allows an operation.
 	Client struct {
 		BaseURL     string
 		HTTP        *http.Client
@@ -37,9 +34,8 @@ type (
 	}
 )
 
-// Invoke performs the operation and returns the status and body.
-func (c Client) Invoke(ctx context.Context, op *catalog.Operation, params map[string]string) (agent.HTTPResult, error) {
-	resp, err := Invoke(ctx, Config{BaseURL: c.BaseURL, Client: c.HTTP, RecordBody: c.RecordBody, Auth: c.Auth}, op, params)
+func (c Client) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, params map[string]string) (agent.HTTPResult, error) {
+	resp, err := InvokeResponse(ctx, Config{BaseURL: c.BaseURL, Client: c.HTTP, RecordBody: c.RecordBody, Auth: c.Auth}, op, params)
 	if err != nil {
 		return agent.HTTPResult{}, err
 	}
@@ -60,8 +56,7 @@ func (c Client) Invoke(ctx context.Context, op *catalog.Operation, params map[st
 	return result, nil
 }
 
-// Invoke performs the HTTP call described by op.
-func Invoke(ctx context.Context, cfg Config, op *catalog.Operation, params map[string]string) (*http.Response, error) {
+func InvokeResponse(ctx context.Context, cfg Config, op *catalog.Operation, params map[string]string) (*http.Response, error) {
 	if cfg.Client == nil {
 		cfg.Client = http.DefaultClient
 	}
@@ -147,7 +142,9 @@ func Invoke(ctx context.Context, cfg Config, op *catalog.Operation, params map[s
 		return nil, err
 	}
 	raw, err := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	if closeErr := resp.Body.Close(); closeErr != nil && err == nil {
+		err = closeErr
+	}
 	if err != nil {
 		return nil, fmt.Errorf("read body: %w", err)
 	}
@@ -181,7 +178,9 @@ func doRetry(client *http.Client, req *http.Request, op *catalog.Operation) (*ht
 		if try+1 == attempts || !retryStatus(resp.StatusCode) {
 			return resp, nil
 		}
-		resp.Body.Close()
+		if err := resp.Body.Close(); err != nil {
+			return nil, fmt.Errorf("close body: %w", err)
+		}
 	}
 	return resp, err
 }
@@ -285,7 +284,6 @@ func formatParams(params map[string]string) string {
 	return strings.Join(parts, ",")
 }
 
-// ReadBody drains and closes the response body.
 func ReadBody(resp *http.Response) (string, error) {
 	if resp == nil || resp.Body == nil {
 		return "", nil

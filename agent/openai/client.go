@@ -14,7 +14,6 @@ import (
 )
 
 type (
-	// Client calls an OpenAI-compatible chat completions endpoint.
 	// The pack is the system message. The reply is JSON for one operation.
 	Client struct {
 		BaseURL string
@@ -40,7 +39,7 @@ type (
 	}
 )
 
-// New builds a client. An empty key is an error. An empty base URL uses the OpenAI API.
+// An empty base URL uses the OpenAI API.
 func New(baseURL, apiKey, name string) (*Client, error) {
 	if strings.TrimSpace(apiKey) == "" {
 		return nil, fmt.Errorf("openai model requires an API key")

@@ -27,7 +27,11 @@ func TestOverlayMissingKeyKeepsDerivedSentence(t *testing.T) {
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	over, err := LoadOverlay(path, NewDerived(cat))
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	over, err := ParseOverlay(data, NewDerived(cat))
 	if err != nil {
 		t.Fatal(err)
 	}

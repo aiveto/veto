@@ -11,13 +11,16 @@ import (
 const defaultRules = "Use capabilities_search, then capabilities_describe, then capabilities_invoke."
 
 type (
-	// Turn is one conversation message.
+	notes interface {
+		Note(operationID string) semantics.Note
+		AllSynonyms() map[string][]string
+	}
+
 	Turn struct {
 		Role    string
 		Content string
 	}
 
-	// Pack is the bounded context given to the model.
 	Pack struct {
 		Rules                string
 		Index                string
@@ -30,13 +33,11 @@ type (
 		Truncated            bool
 	}
 
-	// Builder constructs context packs from run inputs.
 	Builder struct {
 		MaxBytes int
 	}
 )
 
-// NewBuilder creates a pack builder with a byte budget.
 func NewBuilder(maxBytes int) *Builder {
 	if maxBytes <= 0 {
 		maxBytes = 8192
@@ -44,8 +45,8 @@ func NewBuilder(maxBytes int) *Builder {
 	return &Builder{MaxBytes: maxBytes}
 }
 
-// Build assembles a pack without embedding the raw OpenAPI document.
-func (b *Builder) Build(cat *catalog.Catalog, turns []Turn, described *catalog.Operation, sem semantics.Provider, pending *policy.PendingConfirmation) Pack {
+// Build does not embed the raw OpenAPI document.
+func (b *Builder) Build(cat *catalog.Catalog, turns []Turn, described *catalog.Operation, sem notes, pending *policy.PendingConfirmation) Pack {
 	p := Pack{
 		Rules: defaultRules,
 		Index: selectedIndex(cat, turns, described, sem),
@@ -131,12 +132,11 @@ func (p Pack) Serialize() string {
 	return strings.Join(parts, "\n")
 }
 
-// ContainsRawSpec reports whether s looks like an OpenAPI root document.
 func ContainsRawSpec(s string) bool {
 	return strings.Contains(s, "openapi:") || strings.Contains(s, "\"openapi\"")
 }
 
-func selectedIndex(cat *catalog.Catalog, turns []Turn, described *catalog.Operation, sem semantics.Provider) string {
+func selectedIndex(cat *catalog.Catalog, turns []Turn, described *catalog.Operation, sem notes) string {
 	if cat == nil {
 		return ""
 	}
@@ -188,7 +188,6 @@ func selectedIndex(cat *catalog.Catalog, turns []Turn, described *catalog.Operat
 	return strings.Join(parts, "; ")
 }
 
-// OperationLine is one operation as the pack and describe show it.
 func OperationLine(cat *catalog.Catalog, op catalog.Operation, note string) string {
 	var b strings.Builder
 	b.WriteString(op.ID)

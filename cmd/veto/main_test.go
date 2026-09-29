@@ -21,12 +21,23 @@ import (
 )
 
 func TestHelpJSONStaysOffTheHumanHelpPath(t *testing.T) {
-	root := newRoot()
+	root, err := newRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
 	var buf bytes.Buffer
-	if jsonHelp(&buf, root, []string{"serve", "--help"}) {
+	got, err := jsonHelp(&buf, root, []string{"serve", "--help"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got {
 		t.Fatal("human help was treated as JSON")
 	}
-	if !jsonHelp(&buf, root, []string{"serve", "--help-json"}) {
+	got, err = jsonHelp(&buf, root, []string{"serve", "--help-json"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got {
 		t.Fatal("expected JSON help")
 	}
 	var doc struct {
@@ -52,7 +63,11 @@ func TestHelpJSONStaysOffTheHumanHelpPath(t *testing.T) {
 		t.Fatalf("flags: %+v", doc.Flags)
 	}
 	buf.Reset()
-	if !jsonHelp(&buf, root, []string{"--help-json"}) {
+	got, err = jsonHelp(&buf, root, []string{"--help-json"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got {
 		t.Fatal("expected root JSON help")
 	}
 	if err := json.Unmarshal(buf.Bytes(), &doc); err != nil {
@@ -253,7 +268,15 @@ func TestFinishReplayWritesARedactedFile(t *testing.T) {
 		t.Fatalf("file:\n%s", raw)
 	}
 	var buf bytes.Buffer
-	if !jsonHelp(&buf, newRoot(), []string{"replay", "--help-json"}) {
+	root, err := newRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := jsonHelp(&buf, root, []string{"replay", "--help-json"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got {
 		t.Fatal("expected replay JSON help")
 	}
 	if !strings.Contains(buf.String(), `"name": "from"`) {

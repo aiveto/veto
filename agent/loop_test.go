@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -36,7 +37,11 @@ func TestDeleteLoopStopsBeforeHTTPAndPacksOverlay(t *testing.T) {
 		t.Fatal(err)
 	}
 	base := semantics.NewDerived(cat)
-	sem, err := semantics.LoadOverlay("../testdata/semantics.yaml", base)
+	overlay, err := os.ReadFile("../testdata/semantics.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sem, err := semantics.ParseOverlay(overlay, base)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,6 +58,8 @@ func TestDeleteLoopStopsBeforeHTTPAndPacksOverlay(t *testing.T) {
 		Policy:    policy.Builtin{},
 		State:     policy.NewState(),
 		Exec:      execute.Client{BaseURL: ts.URL},
+		Memory:    memory.NewLocalMap(),
+		Packs:     runctx.NewBuilder(0),
 	}
 	out, err := loop.Run(context.Background(), "Delete asset 123")
 	if err != nil {
@@ -101,7 +108,10 @@ func TestRecentTurnsStayInThePack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	loop := agent.New(cat, nil, nil)
+	loop, err := agent.New(cat, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := loop.Memory.Store(context.Background(), memory.Item{ID: "old", Content: "earlier turn about widgets"}); err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +135,10 @@ func TestLoopShowsStableHTTPCode(t *testing.T) {
 		http.Error(w, "down", http.StatusBadGateway)
 	}))
 	defer ts.Close()
-	loop := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
+	loop, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
 	loop.Model = getPick{}
 	out, err := loop.Run(context.Background(), "get asset 1")
 	if err != nil {
@@ -149,7 +162,10 @@ func TestWrapPolicyKeepsBuiltinUnlessItStops(t *testing.T) {
 		hits.Add(1)
 	}))
 	defer ts.Close()
-	loop := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
+	loop, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
 	loop.WrapPolicy(func(ctx context.Context, op *catalog.Operation) (policy.Decision, bool, error) {
 		return policy.DecisionAllow, false, nil
 	})
@@ -177,7 +193,11 @@ func TestLoopRunsNamedFlow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	def, err := flow.Load("../testdata/flow.yaml")
+	flowData, err := os.ReadFile("../testdata/flow.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	def, err := flow.Parse(flowData)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,6 +213,8 @@ func TestLoopRunsNamedFlow(t *testing.T) {
 		Model:     flowPick{},
 		Exec:      execute.Client{BaseURL: ts.URL, HTTP: ts.Client()},
 		Flows:     map[string]*flow.Definition{def.Name: def},
+		State:     policy.NewState(),
+		Packs:     runctx.NewBuilder(0),
 	}
 	out, err := loop.Run(context.Background(), "list assets")
 	if err != nil {
@@ -218,7 +240,10 @@ func TestSignedApprovalResumesOnAnotherLoop(t *testing.T) {
 	}))
 	defer ts.Close()
 	secret := []byte("approval-secret")
-	first := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
+	first, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
 	first.State.SetSigner(secret, time.Hour)
 	out, err := first.Run(context.Background(), "Delete asset 123")
 	if err != nil {
@@ -233,7 +258,10 @@ func TestSignedApprovalResumesOnAnotherLoop(t *testing.T) {
 	if hits.Load() != 0 {
 		t.Fatalf("HTTP ran before approval, hits=%d", hits.Load())
 	}
-	second := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
+	second, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
 	second.State.SetSigner(secret, time.Hour)
 	resumed, err := second.Invoke(context.Background(), "assets.delete", map[string]string{"id": "123"}, out.ApprovalID)
 	if err != nil {

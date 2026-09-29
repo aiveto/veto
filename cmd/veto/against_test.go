@@ -13,7 +13,11 @@ import (
 )
 
 func TestCheckAgainstFlag(t *testing.T) {
-	if newCheckCommand().Flags().Lookup("against") == nil {
+	cmd, err := newCheckCommand()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cmd.Flags().Lookup("against") == nil {
 		t.Fatal("missing --against")
 	}
 }

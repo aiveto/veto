@@ -24,15 +24,17 @@ type (
 	}
 )
 
-func jsonHelp(w io.Writer, root *cobra.Command, args []string) bool {
+func jsonHelp(w io.Writer, root *cobra.Command, args []string) (bool, error) {
 	if !wantsHelpJSON(args) {
-		return false
+		return false, nil
 	}
 	doc := describeCommand(targetCommand(root, args))
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
-	_ = enc.Encode(doc)
-	return true
+	if err := enc.Encode(doc); err != nil {
+		return true, err
+	}
+	return true, nil
 }
 
 func wantsHelpJSON(args []string) bool {

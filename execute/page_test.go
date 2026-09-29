@@ -34,7 +34,7 @@ func TestPageFollowCollectsAndDefaultStaysOne(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	one, err := execute.Client{BaseURL: ts.URL}.Invoke(context.Background(), op, nil)
+	one, err := execute.Client{BaseURL: ts.URL}.InvokeHTTPResult(context.Background(), op, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestPageFollowCollectsAndDefaultStaysOne(t *testing.T) {
 	}
 
 	hits.Store(0)
-	many, err := execute.Client{BaseURL: ts.URL, FollowPages: 5}.Invoke(context.Background(), op, nil)
+	many, err := execute.Client{BaseURL: ts.URL, FollowPages: 5}.InvokeHTTPResult(context.Background(), op, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

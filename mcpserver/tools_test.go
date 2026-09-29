@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"os"
+
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/mcpserver"
 	"github.com/aiveto/veto/openapi"
@@ -110,7 +112,11 @@ func TestDescribeMatchesThePack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rels, err := catalog.LoadRelations("../testdata/relations.yaml")
+	relData, err := os.ReadFile("../testdata/relations.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rels, err := catalog.ParseRelations(relData)
 	if err != nil {
 		t.Fatal(err)
 	}

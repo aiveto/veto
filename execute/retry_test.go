@@ -29,7 +29,7 @@ func TestIdempotencyKeyAndRetryBound(t *testing.T) {
 		Idempotency: "key", Retry: "2",
 		Params: []catalog.Param{{Name: "body", In: "body", Required: true}},
 	}
-	resp, err := execute.Invoke(context.Background(), execute.Config{BaseURL: ts.URL}, op, map[string]string{"body": `{"name":"a"}`})
+	resp, err := execute.InvokeResponse(context.Background(), execute.Config{BaseURL: ts.URL}, op, map[string]string{"body": `{"name":"a"}`})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestRetryNeverAndDestructiveWithoutKeyDoNotRetry(t *testing.T) {
 	defer ts.Close()
 
 	get := &catalog.Operation{ID: "assets.get", Method: http.MethodGet, PathTemplate: "/assets", Retry: "never"}
-	resp, err := execute.Invoke(context.Background(), execute.Config{BaseURL: ts.URL}, get, nil)
+	resp, err := execute.InvokeResponse(context.Background(), execute.Config{BaseURL: ts.URL}, get, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestRetryNeverAndDestructiveWithoutKeyDoNotRetry(t *testing.T) {
 		ID: "assets.delete", Method: http.MethodDelete, PathTemplate: "/assets/{id}", Retry: "2",
 		Params: []catalog.Param{{Name: "id", In: "path", Required: true}},
 	}
-	resp, err = execute.Invoke(context.Background(), execute.Config{BaseURL: ts.URL}, del, map[string]string{"id": "1"})
+	resp, err = execute.InvokeResponse(context.Background(), execute.Config{BaseURL: ts.URL}, del, map[string]string{"id": "1"})
 	if err != nil {
 		t.Fatal(err)
 	}

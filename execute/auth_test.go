@@ -28,7 +28,7 @@ func TestBearerHeaderIsSentAndKeptOffTheSpan(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer rec.Stop(context.Background())
-	_, err = execute.Client{BaseURL: ts.URL, Auth: map[string]string{"bearerAuth": secret}}.Invoke(context.Background(), op, map[string]string{"id": "1"})
+	_, err = execute.Client{BaseURL: ts.URL, Auth: map[string]string{"bearerAuth": secret}}.InvokeHTTPResult(context.Background(), op, map[string]string{"id": "1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestUnsetBearerDoesNotCallDo(t *testing.T) {
 	cat := loadSpec(t, bearerSpec)
 	op := cat.ByID("assets.get")
 	trip := &failTrip{}
-	_, err := execute.Invoke(context.Background(), execute.Config{
+	_, err := execute.InvokeResponse(context.Background(), execute.Config{
 		BaseURL: "http://127.0.0.1:9",
 		Client:  &http.Client{Transport: trip},
 	}, op, map[string]string{"id": "1"})
@@ -72,7 +72,7 @@ func TestNoSchemeSendsNoAuthorization(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer ts.Close()
-	if _, err := (execute.Client{BaseURL: ts.URL, Auth: map[string]string{"bearerAuth": "nope"}}).Invoke(context.Background(), op, map[string]string{"id": "1"}); err != nil {
+	if _, err := (execute.Client{BaseURL: ts.URL, Auth: map[string]string{"bearerAuth": "nope"}}).InvokeHTTPResult(context.Background(), op, map[string]string{"id": "1"}); err != nil {
 		t.Fatal(err)
 	}
 	if got != "" {

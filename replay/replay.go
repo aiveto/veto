@@ -11,19 +11,17 @@ import (
 )
 
 type (
-	// Step is one recorded span after redaction.
 	Step struct {
 		Name  string            `json:"name"`
 		Attrs map[string]string `json:"attrs,omitempty"`
 	}
 
-	// View is a run read back from traces.
 	View struct {
 		Steps []Step `json:"steps"`
 	}
 )
 
-// FromSpans builds a view. When redact is set, only the allowlisted attributes are kept.
+// When redact is set, only the allowlisted attributes are kept.
 func FromSpans(spans []telemetry.Span, redact bool) View {
 	ordered := append([]telemetry.Span(nil), spans...)
 	sort.Slice(ordered, func(i, j int) bool {
@@ -46,7 +44,6 @@ func FromSpans(spans []telemetry.Span, redact bool) View {
 	return view
 }
 
-// String renders one line per step, attributes sorted by key.
 func (v View) String() string {
 	var b strings.Builder
 	for _, s := range v.Steps {
@@ -64,7 +61,6 @@ func (v View) String() string {
 	return b.String()
 }
 
-// Save writes a view. Callers pass an already redacted view.
 func Save(path string, view View) error {
 	data, err := json.MarshalIndent(view, "", "  ")
 	if err != nil {
@@ -77,7 +73,6 @@ func Save(path string, view View) error {
 	return nil
 }
 
-// Load reads a trace file written by Save.
 func Load(path string) (View, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

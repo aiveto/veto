@@ -27,7 +27,10 @@ func TestFollowWalksDeclaredRelation(t *testing.T) {
 		_, _ = w.Write([]byte(`{"id":"9"}`))
 	}))
 	defer ts.Close()
-	loop := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
+	loop, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
 	calls, err := loop.Follow(context.Background(), "assets.get", map[string]string{"id": "1"}, "")
 	if err != nil {
 		t.Fatal(err)
@@ -48,8 +51,11 @@ func TestFollowErrorsWhenTheFieldIsMissing(t *testing.T) {
 		_, _ = w.Write([]byte(`{"id":"1"}`))
 	}))
 	defer ts.Close()
-	loop := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
-	_, err := loop.Follow(context.Background(), "assets.get", map[string]string{"id": "1"}, "")
+	loop, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = loop.Follow(context.Background(), "assets.get", map[string]string{"id": "1"}, "")
 	if err == nil || !strings.Contains(err.Error(), "teamsId") {
 		t.Fatalf("err: %v", err)
 	}
@@ -77,7 +83,10 @@ func TestFollowDoesNotInventAnEdge(t *testing.T) {
 		_, _ = w.Write([]byte(`{"id":"1","teamsId":"9"}`))
 	}))
 	defer ts.Close()
-	loop := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
+	loop, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
 	calls, err := loop.Follow(context.Background(), "assets.get", map[string]string{"id": "1"}, "")
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +115,10 @@ func TestFollowUsesLinkParameterMapping(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer ts.Close()
-	loop := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
+	loop, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
 	calls, err := loop.Follow(context.Background(), "assets.get", map[string]string{"id": "1"}, "")
 	if err != nil {
 		t.Fatal(err)
@@ -121,7 +133,10 @@ func TestFollowUsesLinkParameterMapping(t *testing.T) {
 		_, _ = w.Write([]byte(`[{"teamsId":"9"}]`))
 	}))
 	defer ts2.Close()
-	loop = agent.New(cat, nil, execute.Client{BaseURL: ts2.URL})
+	loop, err = agent.New(cat, nil, execute.Client{BaseURL: ts2.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
 	calls, err = loop.Follow(context.Background(), "assets.list", nil, "")
 	if err != nil {
 		t.Fatal(err)
@@ -144,7 +159,10 @@ func TestFollowStopsOnConfirmation(t *testing.T) {
 		_, _ = w.Write([]byte(`{"id":"7"}`))
 	}))
 	defer ts.Close()
-	loop := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
+	loop, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
 	calls, err := loop.Follow(context.Background(), "assets.get", map[string]string{"id": "7"}, "")
 	if err != nil {
 		t.Fatal(err)
@@ -171,7 +189,11 @@ func joined(t *testing.T) *catalog.Catalog {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rels, err := catalog.LoadRelations("../testdata/relations.yaml")
+	relData, err := os.ReadFile("../testdata/relations.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rels, err := catalog.ParseRelations(relData)
 	if err != nil {
 		t.Fatal(err)
 	}

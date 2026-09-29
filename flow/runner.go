@@ -5,32 +5,27 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 
 	"gopkg.in/yaml.v3"
 )
 
 type (
-	// Step is one operation. Output names a response field copied to the next step's parameter To.
 	Step struct {
 		Operation string `yaml:"operation"`
-		Output    string `yaml:"output"`
+		Output    string `yaml:"output"` // copied onto the next step's parameter To
 		To        string `yaml:"to"`
 	}
 
-	// Definition is a named sequence of steps.
 	Definition struct {
 		Name  string `yaml:"name"`
 		Steps []Step `yaml:"steps"`
 	}
 
-	// Stopped means a step returned a non-ok status, including confirmation.
 	Stopped struct {
 		Status    string
 		Operation string
 	}
 
-	// Runner executes flow steps in order via invoke.
 	Runner struct {
 		Invoke func(ctx context.Context, operationID string, params map[string]string, approvalID string) (string, string, error)
 	}
@@ -57,12 +52,7 @@ func (s *Step) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
-// Load reads a flow yaml file.
-func Load(path string) (*Definition, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read flow: %w", err)
-	}
+func Parse(data []byte) (*Definition, error) {
 	var def Definition
 	if err := yaml.Unmarshal(data, &def); err != nil {
 		return nil, fmt.Errorf("parse flow: %w", err)
@@ -70,8 +60,6 @@ func Load(path string) (*Definition, error) {
 	return &def, nil
 }
 
-// Run executes each step through the invoke callback.
-// The output field of a step is copied onto the next step's named parameter.
 func (r *Runner) Run(ctx context.Context, def *Definition, params map[string]string) ([]string, error) {
 	current := cloneParams(params)
 	var results []string

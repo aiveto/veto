@@ -14,6 +14,7 @@ import (
 	"github.com/aiveto/veto/agentmeta"
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/eval"
+	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
 
@@ -29,9 +30,64 @@ type (
 		Cases         []eval.CaseExpect         `json:"cases"`
 		Confirmations map[string]*bool          `json:"confirmations,omitempty"`
 	}
+
+	configFile struct {
+		Contracts     []string
+		RelationsFile string
+		AgentFile     string
+	}
+
+	checkCmd struct {
+		evalCmd
+		against string
+	}
 )
 
 var errNotInRef = errors.New("path is not in the git ref")
+
+func newCheckCommand() (*cobra.Command, error) {
+	cmd := &checkCmd{}
+	c := &cobra.Command{
+		Use:   "check",
+		Short: "Load the catalog, print joins, and run eval cases.",
+		Run: func(*cobra.Command, []string) {
+			runCheck(*cmd)
+		},
+	}
+	c.Flags().StringArrayVar(&cmd.contract, "contract", nil, "OpenAPI file. Repeat to register another API. Overrides config.")
+	c.Flags().StringArrayVar(&cmd.cases, "case", nil, "Eval case file or directory. Repeat to add another.")
+	c.Flags().StringVar(&cmd.config, "config", "", "Path to veto.yaml provider keys.")
+	c.Flags().StringVar(&cmd.agent, "agent", "", "Path to agent.yaml. Overrides agent_file.")
+	c.Flags().StringVar(&cmd.relations, "relations", "", "Relations file. Overrides relations_file.")
+	c.Flags().StringVar(&cmd.baseURL, "base-url", "", "Override the server URL on every operation. Empty uses each contract server.")
+	c.Flags().StringVar(&cmd.against, "against", "", "Git ref or snapshot JSON. Fail if a joined operation disappeared, confirmation was dropped without an agent.yaml change, or an eval expectation changed.")
+	if err := c.MarkFlagRequired("case"); err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+func runCheck(cmd checkCmd) {
+	loop, _, err := buildLoop(cmd.contract, cmd.config, cmd.agent, cmd.relations, cmd.baseURL)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "check: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("ok: %s (%d operations)\n", loop.Catalog.Title, len(loop.Catalog.Operations))
+	for _, line := range loop.Catalog.Joins() {
+		fmt.Println(line)
+	}
+	if cmd.against != "" {
+		if err := diffAgainst(cmd, loop.Catalog); err != nil {
+			fmt.Fprintf(os.Stderr, "check: %v\n", err)
+			os.Exit(1)
+		}
+	}
+	if err := runCases(loop, cmd.cases); err != nil {
+		fmt.Fprintf(os.Stderr, "check: %v\n", err)
+		os.Exit(1)
+	}
+}
 
 func diffAgainst(cmd checkCmd, cat *catalog.Catalog) error {
 	base, err := loadBaseline(cmd)
@@ -244,12 +300,6 @@ func loadConfigAt(configPath string) (configFile, error) {
 		return configFile{}, err
 	}
 	return configFile{Contracts: cfg.Contracts, RelationsFile: cfg.RelationsFile, AgentFile: cfg.AgentFile}, nil
-}
-
-type configFile struct {
-	Contracts     []string
-	RelationsFile string
-	AgentFile     string
 }
 
 func casesAtRef(root, ref string, paths []string) ([]eval.CaseExpect, error) {

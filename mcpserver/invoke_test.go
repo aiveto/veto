@@ -28,10 +28,14 @@ func TestInvokeDeleteRequiresApprovalBeforeHTTP(t *testing.T) {
 	defer ts.Close()
 
 	sem := semantics.NewDerived(cat)
+	loop, err := agent.New(cat, sem, execute.Client{BaseURL: ts.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
 	srv := &mcpserver.Server{
 		Catalog:   cat,
 		Semantics: sem,
-		Agent:     agent.New(cat, sem, execute.Client{BaseURL: ts.URL}),
+		Agent:     loop,
 	}
 	ctx := context.Background()
 	first, err := srv.Invoke(ctx, "assets.delete", map[string]string{"id": "123"}, "")
@@ -77,10 +81,14 @@ func TestInvokeJSONCarriesCodeAndRetryable(t *testing.T) {
 	}))
 	defer ts.Close()
 	sem := semantics.NewDerived(cat)
+	loop, err := agent.New(cat, sem, execute.Client{BaseURL: ts.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
 	srv := &mcpserver.Server{
 		Catalog:   cat,
 		Semantics: sem,
-		Agent:     agent.New(cat, sem, execute.Client{BaseURL: ts.URL}),
+		Agent:     loop,
 	}
 	missing, err := srv.Invoke(context.Background(), "assets.get", nil, "")
 	if err == nil || missing.Code != "missing_param" {

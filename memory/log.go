@@ -16,7 +16,6 @@ type Log struct {
 	inner *LocalMap
 }
 
-// NewLog reads an existing turn log. A missing file starts empty.
 func NewLog(path string) (*Log, error) {
 	if path == "" {
 		return nil, fmt.Errorf("memory file required")

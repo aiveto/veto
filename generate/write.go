@@ -8,7 +8,6 @@ import (
 	"github.com/aiveto/veto/catalog"
 )
 
-// Write renders the SDK, CLI, and MCP dispatch into dir.
 func Write(dir, module string, cat *catalog.Catalog) error {
 	files, err := Render(module, cat)
 	if err != nil {
@@ -23,7 +22,7 @@ func Write(dir, module string, cat *catalog.Catalog) error {
 	if err := os.MkdirAll(filepath.Join(dir, "dispatch"), 0o755); err != nil {
 		return fmt.Errorf("mkdir dispatch: %w", err)
 	}
-	mod := "module " + module + "\n\ngo 1.23.0\n\nrequire github.com/aiveto/veto v0.0.0\n"
+	mod := "module " + module + "\n\ngo 1.26.0\n\nrequire github.com/aiveto/veto v0.0.0\n"
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(mod), 0o644); err != nil {
 		return fmt.Errorf("write go.mod: %w", err)
 	}

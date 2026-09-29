@@ -29,9 +29,7 @@ func TestPackOmitsRawSpecAndIncludesDescribed(t *testing.T) {
 	if runctx.ContainsRawSpec(ser) {
 		t.Fatal("pack must not contain openapi markers")
 	}
-	if runctx.ContainsRawSpec(string(spec)) {
-		// sanity
-	} else {
+	if !runctx.ContainsRawSpec(string(spec)) {
 		t.Fatal("fixture should look like openapi")
 	}
 	if pack.DescribedOperationID != "assets.delete" {
@@ -53,7 +51,11 @@ func joinedCatalog(t *testing.T) *catalog.Catalog {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rels, err := catalog.LoadRelations("../testdata/relations.yaml")
+	relData, err := os.ReadFile("../testdata/relations.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rels, err := catalog.ParseRelations(relData)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +78,11 @@ func TestPackWalksDeclaredRelation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rels, err := catalog.LoadRelations("../testdata/relations.yaml")
+	relData, err := os.ReadFile("../testdata/relations.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rels, err := catalog.ParseRelations(relData)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +160,11 @@ func TestPackKeepsSearchHitsAndDropsTheRest(t *testing.T) {
 		ID: "billing.list", Description: "List invoices", Group: "billing", Name: "List invoices",
 	})
 	cat.Finalize()
-	rels, err := catalog.LoadRelations("../testdata/relations.yaml")
+	relData, err := os.ReadFile("../testdata/relations.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rels, err := catalog.ParseRelations(relData)
 	if err != nil {
 		t.Fatal(err)
 	}

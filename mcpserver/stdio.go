@@ -10,7 +10,6 @@ import (
 )
 
 type (
-	// Options configures stdio MCP serving.
 	Options struct {
 		Pins       []string
 		DirectPins bool
@@ -34,7 +33,6 @@ type (
 	}
 )
 
-// RunStdio serves MCP over stdin/stdout.
 func RunStdio(ctx context.Context, srv *Server, opt Options) error {
 	impl := &mcp.Implementation{Name: "veto", Version: "0.1.0"}
 	server := mcp.NewServer(impl, nil)
@@ -43,10 +41,7 @@ func RunStdio(ctx context.Context, srv *Server, opt Options) error {
 		Name:        "capabilities_search",
 		Description: "Search operations in the contract catalog",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args searchArgs) (*mcp.CallToolResult, any, error) {
-		matches, err := srv.Search(ctx, args.Query, args.Offset, args.Limit)
-		if err != nil {
-			return toolError(err)
-		}
+		matches := srv.Search(ctx, args.Query, args.Offset, args.Limit)
 		b, err := json.Marshal(matches)
 		if err != nil {
 			return toolError(err)
@@ -139,12 +134,10 @@ func toolError(err error) (*mcp.CallToolResult, any, error) {
 	}, nil, err
 }
 
-// RegisterTools lists tool names that would be registered (for tests).
 func RegisterTools(cat *catalog.Catalog, opt Options) []string {
 	return ToolNames(cat, opt.Pins, opt.DirectPins, opt.Grouped)
 }
 
-// ValidatePins returns an error if a pin is not in the catalog.
 func ValidatePins(cat *catalog.Catalog, pins []string) error {
 	for _, p := range pins {
 		op := cat.ByID(p)

@@ -85,16 +85,20 @@ type (
 		keepSensitive bool
 		from          string
 	}
-
-	checkCmd struct {
-		evalCmd
-		against string
-	}
 )
 
 func main() {
-	root := newRoot()
-	if jsonHelp(os.Stdout, root, os.Args[1:]) {
+	root, err := newRoot()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "veto: %v\n", err)
+		os.Exit(1)
+	}
+	handled, err := jsonHelp(os.Stdout, root, os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "help: %v\n", err)
+		os.Exit(1)
+	}
+	if handled {
 		return
 	}
 	if err := root.Execute(); err != nil {
@@ -102,7 +106,23 @@ func main() {
 	}
 }
 
-func newRoot() *cobra.Command {
+func newRoot() (*cobra.Command, error) {
+	evalCmd, err := newEvalCommand()
+	if err != nil {
+		return nil, err
+	}
+	generateCmd, err := newGenerateCommand()
+	if err != nil {
+		return nil, err
+	}
+	packCmd, err := newPackCommand()
+	if err != nil {
+		return nil, err
+	}
+	checkCmd, err := newCheckCommand()
+	if err != nil {
+		return nil, err
+	}
 	root := &cobra.Command{
 		Use:          "veto",
 		SilenceUsage: true,
@@ -110,14 +130,14 @@ func newRoot() *cobra.Command {
 	root.AddCommand(
 		newValidateCommand(),
 		newServeCommand(),
-		newEvalCommand(),
-		newGenerateCommand(),
+		evalCmd,
+		generateCmd,
 		newReplayCommand(),
-		newPackCommand(),
+		packCmd,
 		newDoctorCommand(),
-		newCheckCommand(),
+		checkCmd,
 	)
-	return root
+	return root, nil
 }
 
 func newValidateCommand() *cobra.Command {
@@ -157,7 +177,7 @@ func newServeCommand() *cobra.Command {
 	return c
 }
 
-func newGenerateCommand() *cobra.Command {
+func newGenerateCommand() (*cobra.Command, error) {
 	cmd := &generateCmd{}
 	c := &cobra.Command{
 		Use:   "generate",
@@ -172,12 +192,16 @@ func newGenerateCommand() *cobra.Command {
 	c.Flags().StringVar(&cmd.module, "module", "", "Go module path for the generated module.")
 	c.Flags().StringVar(&cmd.agent, "agent", "", "Path to agent.yaml.")
 	c.Flags().StringVar(&cmd.relations, "relations", "", "Relations file.")
-	_ = c.MarkFlagRequired("out")
-	_ = c.MarkFlagRequired("module")
-	return c
+	if err := c.MarkFlagRequired("out"); err != nil {
+		return nil, err
+	}
+	if err := c.MarkFlagRequired("module"); err != nil {
+		return nil, err
+	}
+	return c, nil
 }
 
-func newEvalCommand() *cobra.Command {
+func newEvalCommand() (*cobra.Command, error) {
 	cmd := &evalCmd{}
 	c := &cobra.Command{
 		Use:   "eval",
@@ -192,11 +216,13 @@ func newEvalCommand() *cobra.Command {
 	c.Flags().StringVar(&cmd.agent, "agent", "", "Path to agent.yaml. Overrides agent_file.")
 	c.Flags().StringVar(&cmd.relations, "relations", "", "Relations file. Overrides relations_file.")
 	c.Flags().StringVar(&cmd.baseURL, "base-url", "", "Override the server URL on every operation. Empty uses each contract server.")
-	_ = c.MarkFlagRequired("case")
-	return c
+	if err := c.MarkFlagRequired("case"); err != nil {
+		return nil, err
+	}
+	return c, nil
 }
 
-func newPackCommand() *cobra.Command {
+func newPackCommand() (*cobra.Command, error) {
 	cmd := &packCmd{}
 	c := &cobra.Command{
 		Use:   "pack",
@@ -211,8 +237,10 @@ func newPackCommand() *cobra.Command {
 	c.Flags().StringVar(&cmd.relations, "relations", "", "Relations file. Overrides relations_file.")
 	c.Flags().StringVar(&cmd.message, "message", "", "User message.")
 	c.Flags().BoolVar(&cmd.asJSON, "json", false, "Print the pack as JSON.")
-	_ = c.MarkFlagRequired("message")
-	return c
+	if err := c.MarkFlagRequired("message"); err != nil {
+		return nil, err
+	}
+	return c, nil
 }
 
 func newReplayCommand() *cobra.Command {
@@ -306,48 +334,6 @@ func runServe(cmd serveCmd) {
 	opt := mcpserver.Options{Pins: cmd.pin, DirectPins: cmd.directPins, Grouped: cmd.grouped}
 	if err := mcpserver.RunStdio(context.Background(), srv, opt); err != nil {
 		fmt.Fprintf(os.Stderr, "serve: %v\n", err)
-		os.Exit(1)
-	}
-}
-
-func newCheckCommand() *cobra.Command {
-	cmd := &checkCmd{}
-	c := &cobra.Command{
-		Use:   "check",
-		Short: "Load the catalog, print joins, and run eval cases.",
-		Run: func(*cobra.Command, []string) {
-			runCheck(*cmd)
-		},
-	}
-	c.Flags().StringArrayVar(&cmd.contract, "contract", nil, "OpenAPI file. Repeat to register another API. Overrides config.")
-	c.Flags().StringArrayVar(&cmd.cases, "case", nil, "Eval case file or directory. Repeat to add another.")
-	c.Flags().StringVar(&cmd.config, "config", "", "Path to veto.yaml provider keys.")
-	c.Flags().StringVar(&cmd.agent, "agent", "", "Path to agent.yaml. Overrides agent_file.")
-	c.Flags().StringVar(&cmd.relations, "relations", "", "Relations file. Overrides relations_file.")
-	c.Flags().StringVar(&cmd.baseURL, "base-url", "", "Override the server URL on every operation. Empty uses each contract server.")
-	c.Flags().StringVar(&cmd.against, "against", "", "Git ref or snapshot JSON. Fail if a joined operation disappeared, confirmation was dropped without an agent.yaml change, or an eval expectation changed.")
-	_ = c.MarkFlagRequired("case")
-	return c
-}
-
-func runCheck(cmd checkCmd) {
-	loop, _, err := buildLoop(cmd.contract, cmd.config, cmd.agent, cmd.relations, cmd.baseURL)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "check: %v\n", err)
-		os.Exit(1)
-	}
-	fmt.Printf("ok: %s (%d operations)\n", loop.Catalog.Title, len(loop.Catalog.Operations))
-	for _, line := range loop.Catalog.Joins() {
-		fmt.Println(line)
-	}
-	if cmd.against != "" {
-		if err := diffAgainst(cmd, loop.Catalog); err != nil {
-			fmt.Fprintf(os.Stderr, "check: %v\n", err)
-			os.Exit(1)
-		}
-	}
-	if err := runCases(loop, cmd.cases); err != nil {
-		fmt.Fprintf(os.Stderr, "check: %v\n", err)
 		os.Exit(1)
 	}
 }
@@ -542,7 +528,11 @@ func loadCatalog(contracts []string, relationsPath string) (*catalog.Catalog, er
 	if relationsPath == "" {
 		return cat, nil
 	}
-	rels, err := catalog.LoadRelations(relationsPath)
+	data, err := os.ReadFile(relationsPath)
+	if err != nil {
+		return nil, fmt.Errorf("read relations: %w", err)
+	}
+	rels, err := catalog.ParseRelations(data)
 	if err != nil {
 		return nil, err
 	}
@@ -591,9 +581,13 @@ func buildLoop(contracts []string, configPath, agentPath, relationsPath, baseURL
 	if err := cat.SelectServer(cfg.Server); err != nil {
 		return nil, config.File{}, err
 	}
-	var sem semantics.Provider = semantics.NewDerived(cat)
+	var sem agent.Notes = semantics.NewDerived(cat)
 	if cfg.SemanticsFile != "" {
-		over, err := semantics.LoadOverlay(cfg.SemanticsFile, sem)
+		data, err := os.ReadFile(cfg.SemanticsFile)
+		if err != nil {
+			return nil, config.File{}, fmt.Errorf("read semantics: %w", err)
+		}
+		over, err := semantics.ParseOverlay(data, sem)
 		if err != nil {
 			return nil, config.File{}, err
 		}
@@ -601,7 +595,11 @@ func buildLoop(contracts []string, configPath, agentPath, relationsPath, baseURL
 	}
 	flows := map[string]*flow.Definition{}
 	if cfg.FlowFile != "" {
-		def, err := flow.Load(cfg.FlowFile)
+		data, err := os.ReadFile(cfg.FlowFile)
+		if err != nil {
+			return nil, config.File{}, fmt.Errorf("read flow: %w", err)
+		}
+		def, err := flow.Parse(data)
 		if err != nil {
 			return nil, config.File{}, err
 		}
@@ -611,12 +609,15 @@ func buildLoop(contracts []string, configPath, agentPath, relationsPath, baseURL
 	if cfg.Page == "follow" {
 		pages = 5
 	}
-	loop := agent.New(cat, sem, execute.Client{
+	loop, err := agent.New(cat, sem, execute.Client{
 		BaseURL:     baseURL,
 		HTTP:        &http.Client{Timeout: cfg.Timeout},
 		Auth:        authSecrets(cfg.Auth),
 		FollowPages: pages,
 	})
+	if err != nil {
+		return nil, config.File{}, err
+	}
 	if secret := os.Getenv("VETO_APPROVAL_SECRET"); secret != "" {
 		loop.State.SetSigner([]byte(secret), 0)
 	}

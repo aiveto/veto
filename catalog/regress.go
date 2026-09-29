@@ -2,14 +2,12 @@ package catalog
 
 import "sort"
 
-// OpFact is one operation as veto check compares it across revisions.
 type OpFact struct {
 	Confirmation bool `json:"confirmation"`
 	Destructive  bool `json:"destructive"`
 	Referenced   bool `json:"referenced"`
 }
 
-// Facts records confirmation, destructive calls, and relation or link endpoints.
 func Facts(cat *Catalog) map[string]OpFact {
 	out := map[string]OpFact{}
 	if cat == nil {
@@ -33,9 +31,7 @@ func Facts(cat *Catalog) map[string]OpFact {
 	return out
 }
 
-// SurfaceRegressions reports joined operations that disappeared and destructive
-// calls that lost confirmation. confirmationChanged lists operations whose
-// agent.yaml confirmation field changed on purpose.
+// confirmationChanged lists operations whose agent.yaml confirmation field changed on purpose.
 func SurfaceRegressions(base, next map[string]OpFact, confirmationChanged map[string]bool) []string {
 	var out []string
 	for id, fact := range base {

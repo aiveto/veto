@@ -30,7 +30,7 @@ func followPages(ctx context.Context, cfg Config, op *catalog.Operation, params 
 		for k, v := range next {
 			current[k] = v
 		}
-		resp, err := Invoke(ctx, cfg, op, current)
+		resp, err := InvokeResponse(ctx, cfg, op, current)
 		if err != nil {
 			return "", err
 		}

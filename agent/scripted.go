@@ -9,7 +9,6 @@ import (
 )
 
 type (
-	// Scripted maps phrases to operations for evals and tests.
 	Scripted struct {
 		patterns []scriptPattern
 	}
@@ -21,7 +20,6 @@ type (
 	}
 )
 
-// NewScripted builds the default scripted completer for asset delete evals.
 func NewScripted() *Scripted {
 	return &Scripted{
 		patterns: []scriptPattern{
@@ -39,7 +37,6 @@ func NewScripted() *Scripted {
 	}
 }
 
-// WithOperation rewrites the default delete pattern to use operationID.
 func (s *Scripted) WithOperation(operationID string) *Scripted {
 	out := *s
 	for i := range out.patterns {

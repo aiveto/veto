@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"testing"
 
+	"os"
+
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/openapi"
 	"github.com/aiveto/veto/semantics"
@@ -83,7 +85,11 @@ func TestSearchRetireFindsDelete(t *testing.T) {
 		t.Fatal(err)
 	}
 	base := semantics.NewDerived(cat)
-	sem, err := semantics.LoadOverlay("../testdata/semantics.yaml", base)
+	overlay, err := os.ReadFile("../testdata/semantics.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sem, err := semantics.ParseOverlay(overlay, base)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +134,11 @@ func TestSearchFollowsDeclaredRelation(t *testing.T) {
 	if len(before) != 0 {
 		t.Fatalf("field name matched before a relation: %v", before)
 	}
-	rels, err := catalog.LoadRelations("../testdata/relations.yaml")
+	relData, err := os.ReadFile("../testdata/relations.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rels, err := catalog.ParseRelations(relData)
 	if err != nil {
 		t.Fatal(err)
 	}

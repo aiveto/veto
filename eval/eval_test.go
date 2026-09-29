@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"os"
+
 	"github.com/aiveto/veto/agent"
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/eval"
@@ -43,7 +45,11 @@ func TestNeighborCaseSelectsTheRelationAndDropsBilling(t *testing.T) {
 		t.Fatalf("cases: %#v", names(cases))
 	}
 	sem := semantics.NewDerived(cat)
-	r := &eval.Runner{Loop: agent.New(cat, sem, nil)}
+	loop, err := agent.New(cat, sem, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &eval.Runner{Loop: loop}
 	for _, c := range cases {
 		if err := r.Run(context.Background(), c); err != nil {
 			t.Fatal(err)
@@ -70,7 +76,11 @@ func threeAPIs(t *testing.T) *catalog.Catalog {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rels, err := catalog.LoadRelations("../testdata/relations.yaml")
+	relData, err := os.ReadFile("../testdata/relations.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rels, err := catalog.ParseRelations(relData)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,13 +2,11 @@ package catalog
 
 import (
 	"fmt"
-	"os"
 
 	"gopkg.in/yaml.v3"
 )
 
 type (
-	// Relation asserts that a schema field identifies another operation.
 	Relation struct {
 		Schema string `yaml:"schema"`
 		Field  string `yaml:"field"`
@@ -20,7 +18,6 @@ type (
 	}
 )
 
-// Merge copies operations from each catalog into one. Duplicate ids are an error.
 func Merge(parts ...*Catalog) (*Catalog, error) {
 	out := &Catalog{Title: "catalog"}
 	seen := map[string]bool{}
@@ -45,12 +42,7 @@ func Merge(parts ...*Catalog) (*Catalog, error) {
 	return out, nil
 }
 
-// LoadRelations reads a relations file.
-func LoadRelations(path string) ([]Relation, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read relations: %w", err)
-	}
+func ParseRelations(data []byte) ([]Relation, error) {
 	var f relationFile
 	if err := yaml.Unmarshal(data, &f); err != nil {
 		return nil, fmt.Errorf("parse relations: %w", err)
@@ -58,7 +50,6 @@ func LoadRelations(path string) ([]Relation, error) {
 	return f.Relations, nil
 }
 
-// ApplyRelations adds an edge from every operation that uses the schema to the target operation.
 // A field name in a spec does not create an edge. This declaration does.
 func ApplyRelations(cat *Catalog, rels []Relation) error {
 	if cat == nil {

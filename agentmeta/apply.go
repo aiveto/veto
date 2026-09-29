@@ -9,7 +9,7 @@ import (
 )
 
 type (
-	// Entry is one operation overlay. Nil pointers leave the derived value.
+	// Nil pointers leave the derived value.
 	Entry struct {
 		Operation    string   `yaml:"operation"`
 		SideEffect   *string  `yaml:"side_effect"`
@@ -20,13 +20,11 @@ type (
 		Exposure     *string  `yaml:"exposure"`
 	}
 
-	// File is the agent.yaml document.
 	File struct {
 		Operations []Entry `yaml:"operations"`
 	}
 )
 
-// Load reads an agent.yaml overlay.
 func Load(path string) (File, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -39,7 +37,6 @@ func Load(path string) (File, error) {
 	return f, nil
 }
 
-// Apply merges the overlay onto the catalog. A field set in the file replaces the derived value.
 func Apply(cat *catalog.Catalog, f File) error {
 	if cat == nil {
 		return fmt.Errorf("missing catalog")
@@ -85,7 +82,6 @@ func Apply(cat *catalog.Catalog, f File) error {
 	return nil
 }
 
-// Confirmations returns operations whose confirmation field is set.
 func Confirmations(f File) map[string]*bool {
 	out := map[string]*bool{}
 	for _, e := range f.Operations {
@@ -98,7 +94,6 @@ func Confirmations(f File) map[string]*bool {
 	return out
 }
 
-// ChangedConfirmations reports operations whose confirmation field was added, removed, or flipped.
 func ChangedConfirmations(base, next map[string]*bool) map[string]bool {
 	seen := map[string]struct{}{}
 	for id := range base {

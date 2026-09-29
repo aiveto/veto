@@ -2,7 +2,6 @@ package semantics
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/aiveto/veto/catalog"
@@ -18,44 +17,35 @@ var builtin = map[string][]string{
 }
 
 type (
-	// Note holds human text and search synonyms for one operation.
-	// Relation is a sentence veto derived from a declared edge, such as
-	// "Holding.teamsId identifies teams.get".
 	Note struct {
 		OperationID string
 		Sentence    string
 		Synonyms    []string
-		Relation    string
+		Relation    string // from a declared edge, such as "Holding.teamsId identifies teams.get"
 	}
 
-	// Provider supplies semantic notes for search and context.
-	Provider interface {
-		Note(operationID string) Note
-		Synonyms(operationID string) []string
-		AllSynonyms() map[string][]string
-	}
-
-	// Derived builds notes from operation summaries and a small builtin map.
 	Derived struct {
 		cat   *catalog.Catalog
 		notes map[string]Note
 	}
 
-	// OverlayEntry is one row in a semantics yaml file.
 	OverlayEntry struct {
 		OperationID string   `yaml:"operation"`
 		Sentence    string   `yaml:"sentence"`
 		Synonyms    []string `yaml:"synonyms"`
 	}
 
-	// FileOverlay merges yaml overrides onto a base provider.
+	notes interface {
+		Note(operationID string) Note
+		AllSynonyms() map[string][]string
+	}
+
 	FileOverlay struct {
-		base  Provider
+		base  notes
 		notes map[string]Note
 	}
 )
 
-// Text is the sentence plus the relation, when one is declared.
 func (n Note) Text() string {
 	if n.Relation == "" || strings.Contains(n.Sentence, n.Relation) {
 		if n.Sentence != "" {
@@ -69,7 +59,6 @@ func (n Note) Text() string {
 	return n.Sentence + " " + n.Relation
 }
 
-// NewDerived creates a semantics provider from the catalog.
 func NewDerived(cat *catalog.Catalog) *Derived {
 	d := &Derived{cat: cat, notes: map[string]Note{}}
 	for _, op := range cat.Operations {
@@ -153,12 +142,7 @@ func (d *Derived) AllSynonyms() map[string][]string {
 	return out
 }
 
-// LoadOverlay reads semantics yaml and wraps base.
-func LoadOverlay(path string, base Provider) (*FileOverlay, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read semantics: %w", err)
-	}
+func ParseOverlay(data []byte, base notes) (*FileOverlay, error) {
 	var entries []OverlayEntry
 	if err := yaml.Unmarshal(data, &entries); err != nil {
 		return nil, fmt.Errorf("parse semantics: %w", err)

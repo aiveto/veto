@@ -17,14 +17,12 @@ import (
 const tracerName = "github.com/aiveto/veto"
 
 type (
-	// Span is one finished span with string attributes.
 	Span struct {
 		Name  string
 		Start time.Time
 		Attrs map[string]string
 	}
 
-	// Recorder keeps finished spans in memory so replay can read them.
 	Recorder struct {
 		exp  *tracetest.InMemoryExporter
 		stop func(context.Context) error
@@ -32,18 +30,15 @@ type (
 	}
 )
 
-// StartSpan begins a child span on the global tracer.
 func StartSpan(ctx context.Context, name string) trace.Span {
 	_, span := otel.Tracer(tracerName).Start(ctx, name)
 	return span
 }
 
-// Attr builds one string attribute.
 func Attr(key, value string) attribute.KeyValue {
 	return attribute.String(key, value)
 }
 
-// Allowed is the attribute set replay prints and OTLP exports.
 func Allowed(key string) bool {
 	switch key {
 	case "operation.id", "decision", "http.method", "http.status", "approval.id", "flow.name", "tools":
@@ -53,9 +48,6 @@ func Allowed(key string) bool {
 	}
 }
 
-// Install sets the process tracer. An empty export keeps the default noop provider.
-// "stdout" writes spans to standard output. "otlp" sends the allowlisted attributes.
-// The returned function flushes and shuts the provider down.
 func Install(export string) (func(context.Context) error, error) {
 	if export == "" {
 		return func(context.Context) error { return nil }, nil
@@ -81,7 +73,6 @@ func Install(export string) (func(context.Context) error, error) {
 	return tp.Shutdown, nil
 }
 
-// Record installs an in-memory tracer. Stop restores the previous provider.
 // Read Spans before Stop. Shutdown clears the exporter.
 func Record() (*Recorder, error) {
 	exp := tracetest.NewInMemoryExporter()
@@ -91,7 +82,6 @@ func Record() (*Recorder, error) {
 	return &Recorder{exp: exp, prev: prev, stop: tp.Shutdown}, nil
 }
 
-// Spans returns finished spans. Call this before Stop.
 func (r *Recorder) Spans() []Span {
 	if r == nil || r.exp == nil {
 		return nil
@@ -110,7 +100,6 @@ func (r *Recorder) Spans() []Span {
 	return out
 }
 
-// Stop flushes the provider and restores the previous tracer.
 func (r *Recorder) Stop(ctx context.Context) error {
 	if r == nil || r.stop == nil {
 		return nil

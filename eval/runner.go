@@ -11,19 +11,16 @@ import (
 	"github.com/aiveto/veto/agent"
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/runctx"
-	"github.com/aiveto/veto/semantics"
 	"gopkg.in/yaml.v3"
 )
 
 type (
-	// Case is one eval fixture.
 	Case struct {
 		Name   string       `yaml:"name"`
 		Input  string       `yaml:"input"`
 		Expect Expectations `yaml:"expect"`
 	}
 
-	// Expectations are deterministic assertions.
 	Expectations struct {
 		ConfirmationRequired bool     `yaml:"confirmation_required"`
 		OperationID          string   `yaml:"operation"`
@@ -32,16 +29,14 @@ type (
 		Related              []string `yaml:"related"`
 	}
 
-	// Runner executes eval cases without a network LLM.
 	Runner struct {
 		Catalog   *catalog.Catalog
-		Semantics semantics.Provider
+		Semantics agent.Notes
 		Model     agent.Completer
 		Loop      *agent.Loop
 	}
 )
 
-// LoadCases reads case files. A directory contributes its yaml files, sorted by name.
 func LoadCases(paths []string) ([]*Case, error) {
 	files, err := caseFiles(paths)
 	if err != nil {
@@ -86,7 +81,6 @@ func caseFiles(paths []string) ([]string, error) {
 	return out, nil
 }
 
-// LoadCase reads a case yaml file.
 func LoadCase(path string) (*Case, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -99,14 +93,16 @@ func LoadCase(path string) (*Case, error) {
 	return &c, nil
 }
 
-// Run executes one case and returns an error on assertion failure.
 func (r *Runner) Run(ctx context.Context, c *Case) error {
 	if r.Loop == nil {
-		r.Loop = &agent.Loop{
-			Catalog:   r.Catalog,
-			Semantics: r.Semantics,
-			Model:     r.Model,
+		loop, err := agent.New(r.Catalog, r.Semantics, nil)
+		if err != nil {
+			return err
 		}
+		if r.Model != nil {
+			loop.Model = r.Model
+		}
+		r.Loop = loop
 	}
 	if err := r.checkPack(c); err != nil {
 		return err

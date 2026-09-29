@@ -9,7 +9,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// File is the one set of provider keys for a run.
 type File struct {
 	Model         string            `yaml:"model"`
 	ModelName     string            `yaml:"model_name"`
@@ -38,7 +37,6 @@ type File struct {
 	MemoryFile    string            `yaml:"memory_file"`
 }
 
-// Defaults returns the in-tree providers.
 func Defaults() File {
 	return File{
 		Model:       "scripted",
@@ -54,8 +52,7 @@ func Defaults() File {
 	}
 }
 
-// Load reads a config file and fills any empty key with the default.
-// SemanticsFile and FlowFile are resolved relative to the config file.
+// Relative paths are resolved from the config file.
 func Load(path string) (File, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -172,7 +169,6 @@ func (f File) validate() error {
 	return nil
 }
 
-// Redact reports whether replay should omit user messages and parameter values.
 // An unset key redacts.
 func (f File) Redact() bool {
 	return f.ReplayRedact != "false"
