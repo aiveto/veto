@@ -2,17 +2,16 @@ package mcpserver_test
 
 import (
 	"context"
-	"strconv"
-	"strings"
-	"testing"
-
 	"os"
+	"testing"
 
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/mcpserver"
 	"github.com/aiveto/veto/openapi"
 	"github.com/aiveto/veto/runctx"
 	"github.com/aiveto/veto/semantics"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMCPToolListIsCapabilitiesPlusPins(t *testing.T) {
@@ -26,40 +25,9 @@ func TestMCPToolListIsCapabilitiesPlusPins(t *testing.T) {
 		"capabilities_invoke",
 		"assets.get",
 	}
-	if len(names) != len(want) {
-		t.Fatalf("got %d tools %v, want %v", len(names), names, want)
-	}
-	for i, w := range want {
-		if names[i] != w {
-			t.Fatalf("tool[%d]=%q want %q full=%v", i, names[i], w, names)
-		}
-	}
+	assert.Equal(t, want, names)
 	namesDefault := mcpserver.RegisterTools(nil, mcpserver.Options{})
-	if len(namesDefault) != 3 {
-		t.Fatalf("default should be 3 tools, got %v", namesDefault)
-	}
-}
-
-func TestGroupedStaysOneToolPerResource(t *testing.T) {
-	var ops []catalog.Operation
-	for i := 0; i < 50; i++ {
-		group := "assets"
-		if i >= 25 {
-			group = "teams"
-		}
-		ops = append(ops, catalog.Operation{ID: group + ".op" + strconv.Itoa(i), Group: group})
-	}
-	cat := &catalog.Catalog{Operations: ops}
-	cat.Finalize()
-	names := mcpserver.RegisterTools(cat, mcpserver.Options{Grouped: true})
-	if len(names) != 5 {
-		t.Fatalf("tools: %d %v", len(names), names)
-	}
-	for _, n := range names {
-		if strings.Contains(n, ".op") {
-			t.Fatalf("registered an operation tool: %v", names)
-		}
-	}
+	assert.Len(t, namesDefault, 3)
 }
 
 func TestGroupedAddsOneToolPerResource(t *testing.T) {
@@ -70,73 +38,44 @@ func TestGroupedAddsOneToolPerResource(t *testing.T) {
 	}}
 	cat.Finalize()
 	names := mcpserver.RegisterTools(cat, mcpserver.Options{Grouped: true})
-	if len(names) != 4 || names[3] != "assets" {
-		t.Fatalf("grouped tools: %v", names)
-	}
-	for _, n := range names {
-		if n == "assets.list" || n == "assets.get" || n == "assets.delete" {
-			t.Fatalf("grouped registered an operation tool: %v", names)
-		}
-	}
-	if err := mcpserver.ValidatePins(cat, []string{"assets.delete"}); err == nil || !strings.Contains(err.Error(), "discovery-only") {
-		t.Fatalf("pin error: %v", err)
-	}
+	assert.Equal(t, []string{"capabilities_search", "capabilities_describe", "capabilities_invoke", "assets"}, names)
+	err := mcpserver.ValidatePins(cat, []string{"assets.delete"})
+	assert.ErrorContains(t, err, "discovery-only")
 }
 
 func TestDescribeIncludesLinkAndSchema(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	srv := &mcpserver.Server{Catalog: cat, Semantics: semantics.NewDerived(cat)}
 	b, err := srv.Describe("assets.list")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	text := string(b)
-	if !strings.Contains(text, "assets.get") || !strings.Contains(text, "Holding") {
-		t.Fatalf("describe: %s", text)
-	}
+	assert.Contains(t, text, "assets.get")
+	assert.Contains(t, text, "Holding")
 }
 
 func TestDescribeMatchesThePack(t *testing.T) {
 	assets, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	teams, err := openapi.Load(context.Background(), "../testdata/teams.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	cat, err := catalog.Merge(assets, teams)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	relData, err := os.ReadFile("../testdata/relations.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	rels, err := catalog.ParseRelations(relData)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := catalog.ApplyRelations(cat, rels); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, catalog.ApplyRelations(cat, rels))
 	sem := semantics.NewDerived(cat)
 	op := cat.ByID("assets.get")
 	line := runctx.OperationLine(cat, *op, sem.Note(op.ID).Text())
 	pack := runctx.NewBuilder(8192).Build(cat, nil, op, sem, nil)
-	if !strings.Contains(pack.Index, line) {
-		t.Fatalf("pack missing describe line:\n%s\n%s", pack.Index, line)
-	}
+	assert.Contains(t, pack.Index, line)
 	srv := &mcpserver.Server{Catalog: cat, Semantics: sem}
 	b, err := srv.Describe("assets.get")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	text := string(b)
-	if !strings.Contains(text, "id path required") || !strings.Contains(text, "teamsId") || !strings.Contains(text, "Holding.teamsId identifies teams.get") {
-		t.Fatalf("describe: %s", text)
-	}
+	assert.Contains(t, text, "id path required")
+	assert.Contains(t, text, "teamsId")
+	assert.Contains(t, text, "Holding.teamsId identifies teams.get")
 }

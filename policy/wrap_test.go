@@ -5,39 +5,44 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/aiveto/veto/catalog"
 )
 
 func TestWrapCallsBuiltinUnlessItStops(t *testing.T) {
 	del := &catalog.Operation{ID: "assets.delete", RequiresConfirmation: true}
-	pass := Wrap(func(ctx context.Context, op *catalog.Operation) (Decision, bool, error) {
-		return DecisionAllow, false, nil
-	})
-	got, err := pass.Check(context.Background(), del)
-	if err != nil || got != DecisionConfirmationNeeded {
-		t.Fatalf("builtin did not run: %s %v", got, err)
+	cases := []struct {
+		name   string
+		around Around
+		want   Decision
+		err    string
+	}{
+		{name: "around falls through", around: func(context.Context, *catalog.Operation) (Decision, bool, error) {
+			return DecisionAllow, false, nil
+		}, want: DecisionConfirmationNeeded},
+		{name: "around stops", around: func(context.Context, *catalog.Operation) (Decision, bool, error) {
+			return DecisionDeny, true, nil
+		}, want: DecisionDeny},
+		{name: "around error skips builtin", around: func(context.Context, *catalog.Operation) (Decision, bool, error) {
+			return "", false, fmt.Errorf("nope")
+		}, err: "nope"},
+		{name: "nil around is builtin", want: DecisionConfirmationNeeded},
 	}
-
-	stop := Wrap(func(ctx context.Context, op *catalog.Operation) (Decision, bool, error) {
-		return DecisionDeny, true, nil
-	})
-	got, err = stop.Check(context.Background(), del)
-	if err != nil || got != DecisionDeny {
-		t.Fatalf("stop: %s %v", got, err)
-	}
-
-	broken := Wrap(func(ctx context.Context, op *catalog.Operation) (Decision, bool, error) {
-		return "", false, fmt.Errorf("nope")
-	})
-	if _, err := broken.Check(context.Background(), del); err == nil {
-		t.Fatal("error did not skip builtin")
-	}
-
-	if got, err := Wrap(nil).Check(context.Background(), del); err != nil || got != DecisionConfirmationNeeded {
-		t.Fatalf("nil around: %s %v", got, err)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := Wrap(tc.around).Check(context.Background(), del)
+			if tc.err != "" {
+				require.ErrorContains(t, err, tc.err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
 	}
 	var zero Wrapped
-	if got, err := zero.Check(context.Background(), del); err != nil || got != DecisionConfirmationNeeded {
-		t.Fatalf("zero wrap: %s %v", got, err)
-	}
+	got, err := zero.Check(context.Background(), del)
+	require.NoError(t, err)
+	assert.Equal(t, DecisionConfirmationNeeded, got)
 }

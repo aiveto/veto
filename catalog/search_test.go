@@ -10,6 +10,8 @@ import (
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/openapi"
 	"github.com/aiveto/veto/semantics"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSearchCapsAndPrefersExactID(t *testing.T) {
@@ -24,9 +26,9 @@ func TestSearchCapsAndPrefersExactID(t *testing.T) {
 	cat := &catalog.Catalog{Operations: ops}
 	cat.Finalize()
 	matches := catalog.Search(cat, "item.get", nil)
-	if len(matches) == 0 || len(matches) > 8 || matches[0].Operation.ID != "item.get" {
-		t.Fatalf("hits: %d first=%v", len(matches), matches)
-	}
+	require.NotEmpty(t, matches)
+	assert.LessOrEqual(t, len(matches), 8)
+	assert.Equal(t, "item.get", matches[0].Operation.ID)
 }
 
 func TestTagsAndPathNounAreSearchable(t *testing.T) {
@@ -44,13 +46,11 @@ func TestTagsAndPathNounAreSearchable(t *testing.T) {
 			sawNoun = true
 		}
 	}
-	if !sawRetire || !sawNoun {
-		t.Fatalf("synonyms: %v", sem.AllSynonyms()["widgets.ping"])
-	}
+	assert.True(t, sawRetire)
+	assert.True(t, sawNoun)
 	matches := catalog.Search(cat, "retire", sem.AllSynonyms())
-	if len(matches) != 1 || matches[0].Operation.ID != "widgets.ping" {
-		t.Fatalf("tag search: %v", matches)
-	}
+	require.Len(t, matches, 1)
+	assert.Equal(t, "widgets.ping", matches[0].Operation.ID)
 }
 
 func TestSearchPageReturnsTheNextWindow(t *testing.T) {
@@ -66,9 +66,9 @@ func TestSearchPageReturnsTheNextWindow(t *testing.T) {
 	cat.Finalize()
 	first := catalog.SearchPage(cat, "item.get", nil, 0, 3)
 	next := catalog.SearchPage(cat, "item.get", nil, 3, 3)
-	if len(first) != 3 || len(next) != 3 || first[0].Operation.ID == next[0].Operation.ID {
-		t.Fatalf("first=%v next=%v", ids(first), ids(next))
-	}
+	require.Len(t, first, 3)
+	require.Len(t, next, 3)
+	assert.NotEqual(t, first[0].Operation.ID, next[0].Operation.ID)
 }
 
 func ids(matches []catalog.Match) []string {
@@ -81,70 +81,44 @@ func ids(matches []catalog.Match) []string {
 
 func TestSearchRetireFindsDelete(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	base := semantics.NewDerived(cat)
 	overlay, err := os.ReadFile("../testdata/semantics.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	sem, err := semantics.ParseOverlay(overlay, base)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	matches := catalog.Search(cat, "retire", sem.AllSynonyms())
-	if len(matches) == 0 {
-		t.Fatal("expected matches for retire")
-	}
-	if matches[0].Operation.ID != "assets.delete" {
-		t.Fatalf("expected assets.delete, got %s", matches[0].Operation.ID)
-	}
+	require.NotEmpty(t, matches)
+	assert.Equal(t, "assets.delete", matches[0].Operation.ID)
 }
 
 func TestSearchSchemaNameFindsOperations(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	matches := catalog.Search(cat, "Holding", nil)
 	got := map[string]bool{}
 	for _, m := range matches {
 		got[m.Operation.ID] = true
 	}
-	if !got["assets.list"] || !got["assets.get"] || got["assets.delete"] {
-		t.Fatalf("schema search: %v", got)
-	}
+	assert.True(t, got["assets.list"])
+	assert.True(t, got["assets.get"])
+	assert.False(t, got["assets.delete"])
 }
 
 func TestSearchFollowsDeclaredRelation(t *testing.T) {
 	assets, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	teams, err := openapi.Load(context.Background(), "../testdata/teams.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	cat, err := catalog.Merge(assets, teams)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	before := catalog.Search(cat, "teamsId", nil)
-	if len(before) != 0 {
-		t.Fatalf("field name matched before a relation: %v", before)
-	}
+	assert.Empty(t, before)
 	relData, err := os.ReadFile("../testdata/relations.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	rels, err := catalog.ParseRelations(relData)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := catalog.ApplyRelations(cat, rels); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, catalog.ApplyRelations(cat, rels))
 	matches := catalog.Search(cat, "teamsId", nil)
 	var found bool
 	for _, m := range matches {
@@ -158,11 +132,7 @@ func TestSearchFollowsDeclaredRelation(t *testing.T) {
 				ok = true
 			}
 		}
-		if !ok {
-			t.Fatalf("related: %v", m.Related)
-		}
+		assert.True(t, ok)
 	}
-	if !found {
-		t.Fatalf("assets.get missing: %v", matches)
-	}
+	assert.True(t, found)
 }

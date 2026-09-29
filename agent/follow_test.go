@@ -13,6 +13,8 @@ import (
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/openapi"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFollowWalksDeclaredRelation(t *testing.T) {
@@ -28,19 +30,13 @@ func TestFollowWalksDeclaredRelation(t *testing.T) {
 	}))
 	defer ts.Close()
 	loop, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	calls, err := loop.Follow(context.Background(), "assets.get", map[string]string{"id": "1"}, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(calls) != 2 || calls[0].OperationID != "assets.get" || calls[1].OperationID != "teams.get" {
-		t.Fatalf("calls: %+v", calls)
-	}
-	if len(paths) != 2 || paths[0] != "/assets/1" || paths[1] != "/teams/9" {
-		t.Fatalf("paths: %v", paths)
-	}
+	require.NoError(t, err)
+	require.Len(t, calls, 2)
+	assert.Equal(t, "assets.get", calls[0].OperationID)
+	assert.Equal(t, "teams.get", calls[1].OperationID)
+	assert.Equal(t, []string{"/assets/1", "/teams/9"}, paths)
 }
 
 func TestFollowErrorsWhenTheFieldIsMissing(t *testing.T) {
@@ -52,31 +48,19 @@ func TestFollowErrorsWhenTheFieldIsMissing(t *testing.T) {
 	}))
 	defer ts.Close()
 	loop, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	_, err = loop.Follow(context.Background(), "assets.get", map[string]string{"id": "1"}, "")
-	if err == nil || !strings.Contains(err.Error(), "teamsId") {
-		t.Fatalf("err: %v", err)
-	}
-	if hits != 1 {
-		t.Fatalf("hits: %d", hits)
-	}
+	assert.ErrorContains(t, err, "teamsId")
+	assert.Equal(t, 1, hits)
 }
 
 func TestFollowDoesNotInventAnEdge(t *testing.T) {
 	assets, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	teams, err := openapi.Load(context.Background(), "../testdata/teams.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	cat, err := catalog.Merge(assets, teams)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var hits int
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits++
@@ -84,27 +68,18 @@ func TestFollowDoesNotInventAnEdge(t *testing.T) {
 	}))
 	defer ts.Close()
 	loop, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	calls, err := loop.Follow(context.Background(), "assets.get", map[string]string{"id": "1"}, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(calls) != 1 || hits != 1 {
-		t.Fatalf("calls=%d hits=%d", len(calls), hits)
-	}
+	require.NoError(t, err)
+	assert.Len(t, calls, 1)
+	assert.Equal(t, 1, hits)
 }
 
 func TestFollowUsesLinkParameterMapping(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "spec.yaml")
-	if err := os.WriteFile(path, []byte(linkSpec), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte(linkSpec), 0o644))
 	cat, err := openapi.Load(context.Background(), path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var paths []string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, r.URL.Path)
@@ -116,16 +91,12 @@ func TestFollowUsesLinkParameterMapping(t *testing.T) {
 	}))
 	defer ts.Close()
 	loop, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	calls, err := loop.Follow(context.Background(), "assets.get", map[string]string{"id": "1"}, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(calls) != 2 || calls[1].OperationID != "teams.get" || len(paths) != 2 || paths[1] != "/teams/9" {
-		t.Fatalf("calls=%+v paths=%v", calls, paths)
-	}
+	require.NoError(t, err)
+	require.Len(t, calls, 2)
+	assert.Equal(t, "teams.get", calls[1].OperationID)
+	assert.Equal(t, []string{"/assets/1", "/teams/9"}, paths)
 
 	listed := 0
 	ts2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -134,23 +105,16 @@ func TestFollowUsesLinkParameterMapping(t *testing.T) {
 	}))
 	defer ts2.Close()
 	loop, err = agent.New(cat, nil, execute.Client{BaseURL: ts2.URL})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	calls, err = loop.Follow(context.Background(), "assets.list", nil, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(calls) != 1 || listed != 1 {
-		t.Fatalf("unmapped link was called: %+v hits=%d", calls, listed)
-	}
+	require.NoError(t, err)
+	assert.Len(t, calls, 1)
+	assert.Equal(t, 1, listed)
 }
 
 func TestFollowStopsOnConfirmation(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	cat.Links = append(cat.Links, catalog.OpLink{From: "assets.get", To: "assets.delete", Note: "Holding.id"})
 	cat.Finalize()
 	var paths []string
@@ -160,46 +124,27 @@ func TestFollowStopsOnConfirmation(t *testing.T) {
 	}))
 	defer ts.Close()
 	loop, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	calls, err := loop.Follow(context.Background(), "assets.get", map[string]string{"id": "7"}, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(calls) != 2 || calls[1].Status != "confirmation_required" {
-		t.Fatalf("calls: %+v", calls)
-	}
-	if len(paths) != 1 || paths[0] != "/assets/7" {
-		t.Fatalf("paths: %v", paths)
-	}
+	require.NoError(t, err)
+	require.Len(t, calls, 2)
+	assert.Equal(t, "confirmation_required", calls[1].Status)
+	assert.Equal(t, []string{"/assets/7"}, paths)
 }
 
 func joined(t *testing.T) *catalog.Catalog {
 	t.Helper()
 	assets, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	teams, err := openapi.Load(context.Background(), "../testdata/teams.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	cat, err := catalog.Merge(assets, teams)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	relData, err := os.ReadFile("../testdata/relations.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	rels, err := catalog.ParseRelations(relData)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := catalog.ApplyRelations(cat, rels); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, catalog.ApplyRelations(cat, rels))
 	return cat
 }
 

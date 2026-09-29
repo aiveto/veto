@@ -11,17 +11,15 @@ import (
 
 	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/openapi"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPageFollowCollectsAndDefaultStaysOne(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "spec.yaml")
-	if err := os.WriteFile(path, []byte(pageSpec), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte(pageSpec), 0o644))
 	cat, err := openapi.Load(context.Background(), path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	op := cat.ByID("assets.list")
 	var hits atomic.Int32
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -35,21 +33,15 @@ func TestPageFollowCollectsAndDefaultStaysOne(t *testing.T) {
 	defer ts.Close()
 
 	one, err := execute.Client{BaseURL: ts.URL}.InvokeHTTPResult(context.Background(), op, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if hits.Load() != 1 || one.Body != `{"items":[{"id":"1"}],"next":"b"}` {
-		t.Fatalf("one page hits=%d body=%s", hits.Load(), one.Body)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), hits.Load())
+	assert.Equal(t, `{"items":[{"id":"1"}],"next":"b"}`, one.Body)
 
 	hits.Store(0)
 	many, err := execute.Client{BaseURL: ts.URL, FollowPages: 5}.InvokeHTTPResult(context.Background(), op, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if hits.Load() != 2 || many.Body != `[{"id":"1"},{"id":"2"}]` {
-		t.Fatalf("follow hits=%d body=%s", hits.Load(), many.Body)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, int32(2), hits.Load())
+	assert.Equal(t, `[{"id":"1"},{"id":"2"}]`, many.Body)
 }
 
 const pageSpec = `openapi: 3.0.3

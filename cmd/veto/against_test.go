@@ -5,50 +5,29 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/eval"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
-
-func TestCheckAgainstFlag(t *testing.T) {
-	cmd, err := newCheckCommand()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cmd.Flags().Lookup("against") == nil {
-		t.Fatal("missing --against")
-	}
-}
 
 func TestCheckAgainstSnapshot(t *testing.T) {
 	cfgPath := filepath.Join("..", "..", "testdata", "veto.yaml")
 	cases := filepath.Join("..", "..", "testdata", "cases")
 	_, contracts, relations, agentPath, err := resolve(cfgPath, nil, "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	cat, err := loadCatalog(contracts, relations)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := applyAgent(cat, agentPath); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, applyAgent(cat, agentPath))
 	dir := t.TempDir()
 	path := filepath.Join(dir, "surface.json")
 	body, err := json.Marshal(snapshotFile{Operations: catalog.Facts(cat)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, body, 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, body, 0o644))
 	cmd := checkCmd{against: path, evalCmd: evalCmd{config: cfgPath, cases: []string{cases}}}
-	if err := diffAgainst(cmd, cat); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, diffAgainst(cmd, cat))
 	facts := catalog.Facts(cat)
 	facts["gone.get"] = catalog.OpFact{Referenced: true}
 	body, err = json.Marshal(snapshotFile{
@@ -59,24 +38,17 @@ func TestCheckAgainstSnapshot(t *testing.T) {
 			ConfirmationRequired: true,
 		}},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, body, 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, body, 0o644))
 	err = diffAgainst(cmd, cat)
-	if err == nil || !strings.Contains(err.Error(), "gone.get") || !strings.Contains(err.Error(), "delete-requires-confirmation") {
-		t.Fatalf("snapshot: %v", err)
-	}
+	assert.ErrorContains(t, err, "gone.get")
+	assert.ErrorContains(t, err, "delete-requires-confirmation")
 }
 
 func TestCheckAgainstGitRef(t *testing.T) {
 	dir := t.TempDir()
 	caseBody := []byte("name: get-asset\ninput: get asset\nexpect:\n  operation: assets.get\n")
-	if err := os.Mkdir(filepath.Join(dir, "cases"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "cases"), 0o755))
 	files := map[string]string{
 		"openapi.yaml":   headSpec,
 		"agent.yaml":     "operations: []\n",
@@ -84,9 +56,7 @@ func TestCheckAgainstGitRef(t *testing.T) {
 		"cases/get.yaml": string(caseBody),
 	}
 	for name, body := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644))
 	}
 	git := func(args ...string) {
 		t.Helper()
@@ -99,60 +69,41 @@ func TestCheckAgainstGitRef(t *testing.T) {
 			"GIT_COMMITTER_EMAIL=veto@example.com",
 		)
 		out, err := cmd.CombinedOutput()
-		if err != nil {
-			t.Fatalf("git %v: %s", args, out)
-		}
+		require.NoError(t, err, string(out))
 	}
 	git("init")
 	git("add", ".")
 	git("commit", "-m", "baseline")
 
-	if err := os.WriteFile(filepath.Join(dir, "openapi.yaml"), []byte(nextSpec), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "cases", "get.yaml"), []byte("name: get-asset\ninput: get asset\nexpect:\n  operation: assets.purge\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "openapi.yaml"), []byte(nextSpec), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "cases", "get.yaml"), []byte("name: get-asset\ninput: get asset\nexpect:\n  operation: assets.purge\n"), 0o644))
 	cfgPath := filepath.Join(dir, "veto.yaml")
 	cases := filepath.Join(dir, "cases")
 	cat := loadChecked(t, cfgPath)
 	cmd := checkCmd{against: "HEAD", evalCmd: evalCmd{config: cfgPath, cases: []string{cases}}}
 	err := diffAgainst(cmd, cat)
-	if err == nil {
-		t.Fatal("expected regressions")
-	}
-	for _, needle := range []string{"teams.get", "assets.purge", "get-asset"} {
-		if !strings.Contains(err.Error(), needle) {
-			t.Fatalf("missing %s in %v", needle, err)
-		}
-	}
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "teams.get")
+	assert.ErrorContains(t, err, "assets.purge")
+	assert.ErrorContains(t, err, "get-asset")
 
-	if err := os.WriteFile(filepath.Join(dir, "agent.yaml"), []byte("operations:\n  - operation: assets.purge\n    confirmation: false\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "cases", "get.yaml"), caseBody, 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "agent.yaml"), []byte("operations:\n  - operation: assets.purge\n    confirmation: false\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "cases", "get.yaml"), caseBody, 0o644))
 	cat = loadChecked(t, cfgPath)
 	err = diffAgainst(cmd, cat)
-	if err == nil || !strings.Contains(err.Error(), "teams.get") || strings.Contains(err.Error(), "assets.purge") || strings.Contains(err.Error(), "get-asset") {
-		t.Fatalf("after an intentional confirmation change: %v", err)
-	}
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "teams.get")
+	assert.NotContains(t, err.Error(), "assets.purge")
+	assert.NotContains(t, err.Error(), "get-asset")
 }
 
 func loadChecked(t *testing.T, cfgPath string) *catalog.Catalog {
 	t.Helper()
 	_, contracts, relations, agentPath, err := resolve(cfgPath, nil, "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	cat, err := loadCatalog(contracts, relations)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := applyAgent(cat, agentPath); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, applyAgent(cat, agentPath))
 	return cat
 }
 

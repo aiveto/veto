@@ -4,26 +4,34 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/policy"
 )
 
-func TestMissingPermissionDeniesAndDefaultAllows(t *testing.T) {
+func TestPermissionAndConfirmation(t *testing.T) {
 	op := &catalog.Operation{
 		ID:                   "assets.delete",
 		Permissions:          []string{"asset.delete"},
 		RequiresConfirmation: true,
 	}
-	got, err := policy.Check(context.Background(), policy.Builtin{Caller: "local"}, op)
-	if err != nil || got != policy.DecisionConfirmationNeeded {
-		t.Fatalf("default: %s %v", got, err)
+	cases := []struct {
+		name  string
+		allow map[string]bool
+		want  policy.Decision
+	}{
+		{name: "nil allow confirms", want: policy.DecisionConfirmationNeeded},
+		{name: "empty allow denies", allow: map[string]bool{}, want: policy.DecisionDeny},
+		{name: "granted permission confirms", allow: map[string]bool{"asset.delete": true}, want: policy.DecisionConfirmationNeeded},
 	}
-	got, err = policy.Check(context.Background(), policy.Builtin{Caller: "local", Allow: map[string]bool{}}, op)
-	if err != nil || got != policy.DecisionDeny {
-		t.Fatalf("missing: %s %v", got, err)
-	}
-	got, err = policy.Check(context.Background(), policy.Builtin{Allow: map[string]bool{"asset.delete": true}}, op)
-	if err != nil || got != policy.DecisionConfirmationNeeded {
-		t.Fatalf("granted: %s %v", got, err)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			hook := policy.Builtin{Caller: "local", Allow: tc.allow}
+			got, err := policy.Check(context.Background(), hook, op)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
 	}
 }

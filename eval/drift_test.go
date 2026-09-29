@@ -3,6 +3,8 @@ package eval_test
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/aiveto/veto/eval"
 )
 
@@ -15,11 +17,9 @@ func TestDriftLocksOperationAndConfirmation(t *testing.T) {
 		{Name: "delete", Operation: "assets.delete", ConfirmationRequired: false},
 		{Name: "added", Operation: "assets.list"},
 	}
-	got := eval.Drift(base, next)
-	if len(got) != 2 {
-		t.Fatalf("drift: %v", got)
-	}
-	if len(eval.Drift(base, base)) != 0 {
-		t.Fatal("unchanged cases drifted")
-	}
+	assert.Equal(t, []string{
+		"eval case delete changed operation or confirmation",
+		"eval case gone was removed",
+	}, eval.Drift(base, next))
+	assert.Empty(t, eval.Drift(base, base))
 }

@@ -4,27 +4,29 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/aiveto/veto/agent"
 )
 
-func TestScriptedIgnoresMessageWhenPackOmitsIt(t *testing.T) {
-	got, err := agent.NewScripted().Complete(context.Background(), agent.Request{
-		UserMessage: "delete asset 123",
-	})
-	if err != nil {
-		t.Fatal(err)
+func TestScriptedRequiresTheMessageInThePack(t *testing.T) {
+	cases := []struct {
+		name string
+		pack string
+		want string
+	}{
+		{name: "omitted", want: ""},
+		{name: "present", pack: "user: delete asset 123", want: "assets.delete"},
 	}
-	if got.OperationID != "" {
-		t.Fatalf("expected no operation without the pack, got %q", got.OperationID)
-	}
-	got, err = agent.NewScripted().Complete(context.Background(), agent.Request{
-		UserMessage: "delete asset 123",
-		Context:     "user: delete asset 123",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.OperationID != "assets.delete" {
-		t.Fatalf("expected assets.delete, got %q", got.OperationID)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := agent.NewScripted().Complete(context.Background(), agent.Request{
+				UserMessage: "delete asset 123",
+				Context:     tc.pack,
+			})
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got.OperationID)
+		})
 	}
 }

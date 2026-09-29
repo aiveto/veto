@@ -8,160 +8,87 @@ import (
 	"time"
 
 	"github.com/aiveto/veto/config"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLoadResolvesFilesAndDefaults(t *testing.T) {
 	cfg, err := config.Load("../testdata/veto.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Model != "scripted" || cfg.Subagents != "off" || cfg.TraceExport != "" {
-		t.Fatalf("defaults not applied: %+v", cfg)
-	}
-	if !strings.HasSuffix(cfg.SemanticsFile, "semantics.yaml") {
-		t.Fatalf("semantics file: %s", cfg.SemanticsFile)
-	}
-	if !strings.HasSuffix(cfg.FlowFile, "flow.yaml") {
-		t.Fatalf("flow file: %s", cfg.FlowFile)
-	}
-	if !strings.HasSuffix(cfg.AgentFile, "agent.yaml") {
-		t.Fatalf("agent file: %s", cfg.AgentFile)
-	}
-	if !strings.HasSuffix(cfg.RelationsFile, "relations.yaml") {
-		t.Fatalf("relations file: %s", cfg.RelationsFile)
-	}
-	if len(cfg.Contracts) != 2 {
-		t.Fatalf("contracts: %v", cfg.Contracts)
-	}
-	if !cfg.Redact() {
-		t.Fatal("replay redacts unless replay_redact is false")
-	}
-	if cfg.Timeout != 30*time.Second {
-		t.Fatalf("timeout: %s", cfg.Timeout)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "scripted", cfg.Model)
+	assert.Equal(t, "off", cfg.Subagents)
+	assert.Empty(t, cfg.TraceExport)
+	assert.True(t, strings.HasSuffix(cfg.SemanticsFile, "semantics.yaml"))
+	assert.True(t, strings.HasSuffix(cfg.FlowFile, "flow.yaml"))
+	assert.True(t, strings.HasSuffix(cfg.AgentFile, "agent.yaml"))
+	assert.True(t, strings.HasSuffix(cfg.RelationsFile, "relations.yaml"))
+	assert.Len(t, cfg.Contracts, 2)
+	assert.True(t, cfg.Redact())
+	assert.Equal(t, 30*time.Second, cfg.Timeout)
 }
 
-func TestOpenAIModelIsAllowed(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "veto.yaml")
-	if err := os.WriteFile(path, []byte("model: openai\nmodel_name: gpt-test\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := config.Load(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Model != "openai" || cfg.ModelName != "gpt-test" {
-		t.Fatalf("%+v", cfg)
-	}
-	if cfg.ModelBaseURL != "" {
-		t.Fatalf("empty host should stay empty: %q", cfg.ModelBaseURL)
-	}
-}
-
-func TestModelBaseURLIsLoaded(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "veto.yaml")
-	if err := os.WriteFile(path, []byte("model: openai\nmodel_base_url: http://127.0.0.1:9/v1\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := config.Load(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.ModelBaseURL != "http://127.0.0.1:9/v1" {
-		t.Fatalf("base: %q", cfg.ModelBaseURL)
-	}
-}
-
-func TestTraceExportOTLPAndTraceFile(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "veto.yaml")
-	if err := os.WriteFile(path, []byte("trace_export: otlp\ntrace_file: trace.json\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := config.Load(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.TraceExport != "otlp" || !strings.HasSuffix(cfg.TraceFile, "trace.json") {
-		t.Fatalf("%+v", cfg)
-	}
-}
-
-func TestOPAAndSpiceDBAreKeysOnly(t *testing.T) {
-	dir := t.TempDir()
-	for _, name := range []string{"opa", "spicedb"} {
-		path := filepath.Join(dir, name+".yaml")
-		if err := os.WriteFile(path, []byte("policy: "+name+"\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		cfg, err := config.Load(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if cfg.Policy != name {
-			t.Fatalf("policy: %s", cfg.Policy)
-		}
-	}
-}
-
-func TestMemoryFileRequiresAPath(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "veto.yaml")
-	if err := os.WriteFile(path, []byte("memory: file\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := config.Load(path); err == nil || !strings.Contains(err.Error(), "memory_file") {
-		t.Fatalf("missing path: %v", err)
-	}
-	okPath := filepath.Join(dir, "ok.yaml")
-	if err := os.WriteFile(okPath, []byte("memory: file\nmemory_file: turns.log\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := config.Load(okPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Memory != "file" || !strings.HasSuffix(cfg.MemoryFile, "turns.log") {
-		t.Fatalf("%+v", cfg)
-	}
-}
-
-func TestTemporalAndJevAreKeysOnly(t *testing.T) {
-	dir := t.TempDir()
+func TestKnownProviderKeysLoad(t *testing.T) {
 	cases := []struct {
 		name string
 		body string
-		exec string
-		dec  string
+		want config.File
 	}{
-		{name: "temporal.yaml", body: "execution: temporal\n", exec: "temporal", dec: "default"},
-		{name: "jev.yaml", body: "decision: jev\n", exec: "in-process", dec: "jev"},
+		{name: "openai name keeps an empty host", body: "model: openai\nmodel_name: gpt-test\n", want: config.File{Model: "openai", ModelName: "gpt-test"}},
+		{name: "openai host", body: "model: openai\nmodel_base_url: http://127.0.0.1:9/v1\n", want: config.File{ModelBaseURL: "http://127.0.0.1:9/v1"}},
+		{name: "otlp and trace file", body: "trace_export: otlp\ntrace_file: trace.json\n", want: config.File{TraceExport: "otlp", TraceFile: "trace.json"}},
+		{name: "opa", body: "policy: opa\n", want: config.File{Policy: "opa"}},
+		{name: "spicedb", body: "policy: spicedb\n", want: config.File{Policy: "spicedb"}},
+		{name: "temporal", body: "execution: temporal\n", want: config.File{Execution: "temporal", Decision: "default"}},
+		{name: "jev", body: "decision: jev\n", want: config.File{Execution: "in-process", Decision: "jev"}},
+		{name: "memory file", body: "memory: file\nmemory_file: turns.log\n", want: config.File{Memory: "file", MemoryFile: "turns.log"}},
 	}
 	for _, tc := range cases {
-		path := filepath.Join(dir, tc.name)
-		if err := os.WriteFile(path, []byte(tc.body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		cfg, err := config.Load(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if cfg.Execution != tc.exec || cfg.Decision != tc.dec {
-			t.Fatalf("%s: %+v", tc.name, cfg)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "veto.yaml")
+			require.NoError(t, os.WriteFile(path, []byte(tc.body), 0o644))
+			cfg, err := config.Load(path)
+			require.NoError(t, err)
+			if tc.want.Model != "" {
+				assert.Equal(t, tc.want.Model, cfg.Model)
+			}
+			assert.Equal(t, tc.want.ModelName, cfg.ModelName)
+			assert.Equal(t, tc.want.ModelBaseURL, cfg.ModelBaseURL)
+			assert.Equal(t, tc.want.TraceExport, cfg.TraceExport)
+			if tc.want.TraceFile != "" {
+				assert.True(t, strings.HasSuffix(cfg.TraceFile, tc.want.TraceFile))
+			}
+			if tc.want.Policy != "" {
+				assert.Equal(t, tc.want.Policy, cfg.Policy)
+			}
+			if tc.want.Execution != "" {
+				assert.Equal(t, tc.want.Execution, cfg.Execution)
+			}
+			if tc.want.Decision != "" {
+				assert.Equal(t, tc.want.Decision, cfg.Decision)
+			}
+			if tc.want.Memory != "" {
+				assert.Equal(t, tc.want.Memory, cfg.Memory)
+				assert.True(t, strings.HasSuffix(cfg.MemoryFile, tc.want.MemoryFile))
+			}
+		})
 	}
 }
 
-func TestSubagentsRejected(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "veto.yaml")
-	if err := os.WriteFile(path, []byte("subagents: on\n"), 0o644); err != nil {
-		t.Fatal(err)
+func TestUnusableProviderKeysFail(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{name: "memory file without a path", body: "memory: file\n", want: "memory_file"},
+		{name: "subagents", body: "subagents: on\n", want: "subagents"},
 	}
-	_, err := config.Load(path)
-	if err == nil || !strings.Contains(err.Error(), "subagents") {
-		t.Fatalf("expected subagent refusal, got %v", err)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "veto.yaml")
+			require.NoError(t, os.WriteFile(path, []byte(tc.body), 0o644))
+			_, err := config.Load(path)
+			assert.ErrorContains(t, err, tc.want)
+		})
 	}
 }

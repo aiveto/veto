@@ -7,24 +7,24 @@ import (
 	"testing"
 
 	"github.com/aiveto/veto/openapi"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBearerSchemeAndExplicitOptOut(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "spec.yaml")
-	if err := os.WriteFile(path, []byte(authSpec), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte(authSpec), 0o644))
 	cat, err := openapi.Load(context.Background(), path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	create := cat.ByID("assets.create")
-	if create == nil || len(create.Auth) != 1 || create.Auth[0].Name != "bearerAuth" || create.Auth[0].Kind != "bearer" || create.Auth[0].Header != "Authorization" {
-		t.Fatalf("create auth: %+v", create)
-	}
-	if got := cat.ByID("assets.health"); got == nil || len(got.Auth) != 0 {
-		t.Fatalf("health auth: %+v", got)
-	}
+	require.NotNil(t, create)
+	require.Len(t, create.Auth, 1)
+	assert.Equal(t, "bearerAuth", create.Auth[0].Name)
+	assert.Equal(t, "bearer", create.Auth[0].Kind)
+	assert.Equal(t, "Authorization", create.Auth[0].Header)
+	health := cat.ByID("assets.health")
+	require.NotNil(t, health)
+	assert.Empty(t, health.Auth)
 }
 
 const authSpec = `openapi: 3.0.3

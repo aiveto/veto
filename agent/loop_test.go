@@ -20,6 +20,8 @@ import (
 	"github.com/aiveto/veto/policy"
 	"github.com/aiveto/veto/runctx"
 	"github.com/aiveto/veto/semantics"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type flowPick struct{}
@@ -33,18 +35,12 @@ func (flowPick) Complete(ctx context.Context, req agent.Request) (agent.Response
 
 func TestDeleteLoopStopsBeforeHTTPAndPacksOverlay(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	base := semantics.NewDerived(cat)
 	overlay, err := os.ReadFile("../testdata/semantics.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	sem, err := semantics.ParseOverlay(overlay, base)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var hits atomic.Int32
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)
@@ -62,32 +58,17 @@ func TestDeleteLoopStopsBeforeHTTPAndPacksOverlay(t *testing.T) {
 		Packs:     runctx.NewBuilder(0),
 	}
 	out, err := loop.Run(context.Background(), "Delete asset 123")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if out.Status != "confirmation_required" || out.OperationID != "assets.delete" {
-		t.Fatalf("status %q operation %q", out.Status, out.OperationID)
-	}
-	if out.Text != "confirm assets.delete id=123" || !strings.Contains(out.Pack.Serialize(), out.Text) {
-		t.Fatalf("confirmation sentence: %q\n%s", out.Text, out.Pack.Serialize())
-	}
-	if hits.Load() != 0 {
-		t.Fatalf("HTTP ran before approval, hits=%d", hits.Load())
-	}
-	ser := out.Pack.Serialize()
-	if runctx.ContainsRawSpec(ser) {
-		t.Fatal("pack contains the raw spec")
-	}
-	if !strings.Contains(out.Pack.DescribedDetail, "Permanently remove") {
-		t.Fatalf("overlay sentence missing from pack: %s", out.Pack.DescribedDetail)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "confirmation_required", out.Status)
+	assert.Equal(t, "assets.delete", out.OperationID)
+	assert.Equal(t, "confirm assets.delete id=123", out.Text)
+	assert.Contains(t, out.Pack.Serialize(), out.Text)
+	assert.Equal(t, int32(0), hits.Load())
+	assert.False(t, runctx.ContainsRawSpec(out.Pack.Serialize()))
+	assert.Contains(t, out.Pack.DescribedDetail, "Permanently remove")
 	items, err := loop.Memory.Search(context.Background(), "Delete asset 123")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(items) != 1 {
-		t.Fatalf("expected one memory item, got %d", len(items))
-	}
+	require.NoError(t, err)
+	assert.Len(t, items, 1)
 }
 
 type getPick struct{}
@@ -105,102 +86,73 @@ func (c *capture) Complete(ctx context.Context, req agent.Request) (agent.Respon
 
 func TestRecentTurnsStayInThePack(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	loop, err := agent.New(cat, nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := loop.Memory.Store(context.Background(), memory.Item{ID: "old", Content: "earlier turn about widgets"}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, loop.Memory.Store(context.Background(), memory.Item{ID: "old", Content: "earlier turn about widgets"}))
 	cap := &capture{}
 	loop.Model = cap
 	_, err = loop.Run(context.Background(), "brand new question")
-	if err == nil {
-		t.Fatal("expected the completer to stop the turn")
-	}
-	if !strings.Contains(cap.saw, "earlier turn about widgets") {
-		t.Fatalf("recent turn missing:\n%s", cap.saw)
-	}
+	assert.Error(t, err)
+	assert.Contains(t, cap.saw, "earlier turn about widgets")
 }
 
 func TestLoopShowsStableHTTPCode(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "down", http.StatusBadGateway)
 	}))
 	defer ts.Close()
 	loop, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	loop.Model = getPick{}
 	out, err := loop.Run(context.Background(), "get asset 1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(out.Text, "code=upstream") || !strings.Contains(out.Text, "retryable=true") {
-		t.Fatalf("text: %s", out.Text)
-	}
-	if out.Text == "down" {
-		t.Fatal("model saw only the raw body")
-	}
+	require.NoError(t, err)
+	assert.Contains(t, out.Text, "code=upstream")
+	assert.Contains(t, out.Text, "retryable=true")
+	assert.NotEqual(t, "down", out.Text)
 }
 
 func TestWrapPolicyKeepsBuiltinUnlessItStops(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
-	if err != nil {
-		t.Fatal(err)
+	require.NoError(t, err)
+	cases := []struct {
+		name   string
+		stop   bool
+		status string
+		hits   int32
+	}{
+		{name: "falls through to confirmation", status: "confirmation_required"},
+		{name: "stop allows the call", stop: true, status: "ok", hits: 1},
 	}
-	var hits atomic.Int32
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hits.Add(1)
-	}))
-	defer ts.Close()
-	loop, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
-	if err != nil {
-		t.Fatal(err)
-	}
-	loop.WrapPolicy(func(ctx context.Context, op *catalog.Operation) (policy.Decision, bool, error) {
-		return policy.DecisionAllow, false, nil
-	})
-	out, err := loop.Invoke(context.Background(), "assets.delete", map[string]string{"id": "123"}, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if out.Status != "confirmation_required" || hits.Load() != 0 {
-		t.Fatalf("status %q hits %d", out.Status, hits.Load())
-	}
-	loop.WrapPolicy(func(ctx context.Context, op *catalog.Operation) (policy.Decision, bool, error) {
-		return policy.DecisionAllow, true, nil
-	})
-	out, err = loop.Invoke(context.Background(), "assets.delete", map[string]string{"id": "123"}, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if out.Status != "ok" || hits.Load() != 1 {
-		t.Fatalf("status %q hits %d", out.Status, hits.Load())
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var hits atomic.Int32
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				hits.Add(1)
+			}))
+			defer ts.Close()
+			loop, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
+			require.NoError(t, err)
+			loop.WrapPolicy(func(ctx context.Context, op *catalog.Operation) (policy.Decision, bool, error) {
+				return policy.DecisionAllow, tc.stop, nil
+			})
+			out, err := loop.Invoke(context.Background(), "assets.delete", map[string]string{"id": "123"}, "")
+			require.NoError(t, err)
+			assert.Equal(t, tc.status, out.Status)
+			assert.Equal(t, tc.hits, hits.Load())
+		})
 	}
 }
 
 func TestLoopRunsNamedFlow(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	flowData, err := os.ReadFile("../testdata/flow.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	def, err := flow.Parse(flowData)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var hits atomic.Int32
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)
@@ -217,22 +169,15 @@ func TestLoopRunsNamedFlow(t *testing.T) {
 		Packs:     runctx.NewBuilder(0),
 	}
 	out, err := loop.Run(context.Background(), "list assets")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if out.Status != "ok" || out.OperationID != "assets.get" {
-		t.Fatalf("status %q operation %q", out.Status, out.OperationID)
-	}
-	if hits.Load() != 2 {
-		t.Fatalf("expected two HTTP calls, hits=%d", hits.Load())
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "ok", out.Status)
+	assert.Equal(t, "assets.get", out.OperationID)
+	assert.Equal(t, int32(2), hits.Load())
 }
 
 func TestSignedApprovalResumesOnAnotherLoop(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var hits atomic.Int32
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)
@@ -241,33 +186,20 @@ func TestSignedApprovalResumesOnAnotherLoop(t *testing.T) {
 	defer ts.Close()
 	secret := []byte("approval-secret")
 	first, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	first.State.SetSigner(secret, time.Hour)
 	out, err := first.Run(context.Background(), "Delete asset 123")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if out.Status != "confirmation_required" || out.Text != "confirm assets.delete id=123" {
-		t.Fatalf("status %q text %q", out.Status, out.Text)
-	}
-	if !strings.HasPrefix(out.ApprovalID, "v1.") || first.State.Pending(out.ApprovalID) != nil {
-		t.Fatal("signed approval was stored")
-	}
-	if hits.Load() != 0 {
-		t.Fatalf("HTTP ran before approval, hits=%d", hits.Load())
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "confirmation_required", out.Status)
+	assert.Equal(t, "confirm assets.delete id=123", out.Text)
+	assert.True(t, strings.HasPrefix(out.ApprovalID, "v1."))
+	assert.Nil(t, first.State.Pending(out.ApprovalID))
+	assert.Equal(t, int32(0), hits.Load())
 	second, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	second.State.SetSigner(secret, time.Hour)
 	resumed, err := second.Invoke(context.Background(), "assets.delete", map[string]string{"id": "123"}, out.ApprovalID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resumed.Status != "ok" || hits.Load() != 1 {
-		t.Fatalf("status %q hits %d", resumed.Status, hits.Load())
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "ok", resumed.Status)
+	assert.Equal(t, int32(1), hits.Load())
 }

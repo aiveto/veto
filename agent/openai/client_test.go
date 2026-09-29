@@ -10,29 +10,23 @@ import (
 
 	"github.com/aiveto/veto/agent"
 	"github.com/aiveto/veto/agent/openai"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestOpenAIEmptyBaseURLUsesDefaultHost(t *testing.T) {
 	m, err := openai.New("", "test-key", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if m.BaseURL != "https://api.openai.com/v1" {
-		t.Fatalf("base: %s", m.BaseURL)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "https://api.openai.com/v1", m.BaseURL)
 }
 
 func TestOpenAIRequiresKeyAndPack(t *testing.T) {
-	if _, err := openai.New("", "", ""); err == nil || !strings.Contains(err.Error(), "API key") {
-		t.Fatalf("key: %v", err)
-	}
+	_, err := openai.New("", "", "")
+	assert.ErrorContains(t, err, "API key")
 	m, err := openai.New("http://127.0.0.1", "test-key", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := m.Complete(context.Background(), agent.Request{UserMessage: "delete asset 123"}); err == nil || !strings.Contains(err.Error(), "context pack") {
-		t.Fatalf("pack: %v", err)
-	}
+	require.NoError(t, err)
+	_, err = m.Complete(context.Background(), agent.Request{UserMessage: "delete asset 123"})
+	assert.ErrorContains(t, err, "context pack")
 }
 
 func TestOpenAIReadsThePack(t *testing.T) {
@@ -47,22 +41,16 @@ func TestOpenAIReadsThePack(t *testing.T) {
 	defer srv.Close()
 
 	m, err := openai.New(srv.URL, "test-key", "gpt-test")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	got, err := m.Complete(context.Background(), agent.Request{
 		UserMessage: "delete asset 123",
 		Context:     "index: assets.delete\nuser: delete asset 123",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !sawPack || !sawAuth {
-		t.Fatalf("request pack=%v auth=%v", sawPack, sawAuth)
-	}
-	if got.OperationID != "assets.delete" || got.Params["id"] != "123" {
-		t.Fatalf("response: %+v", got)
-	}
+	require.NoError(t, err)
+	assert.True(t, sawPack)
+	assert.True(t, sawAuth)
+	assert.Equal(t, "assets.delete", got.OperationID)
+	assert.Equal(t, "123", got.Params["id"])
 }
 
 func TestOpenAICoercesNumberAndObjectParams(t *testing.T) {
@@ -72,14 +60,9 @@ func TestOpenAICoercesNumberAndObjectParams(t *testing.T) {
 	}))
 	defer srv.Close()
 	m, err := openai.New(srv.URL, "test-key", "gpt-test")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	got, err := m.Complete(context.Background(), agent.Request{UserMessage: "create", Context: "index: assets.create"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Params["id"] != "123" || got.Params["body"] != `{"name":"kit"}` {
-		t.Fatalf("params: %#v", got.Params)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "123", got.Params["id"])
+	assert.Equal(t, `{"name":"kit"}`, got.Params["body"])
 }

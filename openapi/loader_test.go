@@ -4,77 +4,42 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/aiveto/veto/openapi"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestUnresolvedLinkFailsLoad(t *testing.T) {
-	dir := t.TempDir()
-	badID := filepath.Join(dir, "bad-id.yaml")
-	if err := os.WriteFile(badID, []byte(specWithLink("operationId: assets.missing")), 0o644); err != nil {
-		t.Fatal(err)
+func TestLoadRejectsIncompleteDocuments(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{name: "unknown operation id", body: specWithLink("operationId: assets.missing"), want: "assets.missing"},
+		{name: "external ref", body: specWithLink(`operationRef: "https://example.com/spec.yaml#/paths/~1assets~1{id}/get"`), want: "outside this document"},
+		{name: "ref is not an operation", body: specWithLink(`operationRef: "#/components/schemas/Holding"`), want: "not a path operation"},
+		{name: "webhooks", body: webhookSpec, want: "webhooks"},
+		{name: "callbacks", body: callbackSpec, want: "callbacks"},
 	}
-	_, err := openapi.Load(context.Background(), badID)
-	if err == nil || !strings.Contains(err.Error(), "assets.missing") {
-		t.Fatalf("operationId: %v", err)
-	}
-
-	external := filepath.Join(dir, "external.yaml")
-	ref := `operationRef: "https://example.com/spec.yaml#/paths/~1assets~1{id}/get"`
-	if err := os.WriteFile(external, []byte(specWithLink(ref)), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	_, err = openapi.Load(context.Background(), external)
-	if err == nil || !strings.Contains(err.Error(), "outside this document") {
-		t.Fatalf("external ref: %v", err)
-	}
-
-	shape := filepath.Join(dir, "shape.yaml")
-	if err := os.WriteFile(shape, []byte(specWithLink(`operationRef: "#/components/schemas/Holding"`)), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	_, err = openapi.Load(context.Background(), shape)
-	if err == nil || !strings.Contains(err.Error(), "not a path operation") {
-		t.Fatalf("shape: %v", err)
-	}
-}
-
-func TestWebhooksAndCallbacksFailLoad(t *testing.T) {
-	dir := t.TempDir()
-	webhook := filepath.Join(dir, "webhook.yaml")
-	if err := os.WriteFile(webhook, []byte(webhookSpec), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	_, err := openapi.Load(context.Background(), webhook)
-	if err == nil || !strings.Contains(err.Error(), "webhooks") {
-		t.Fatalf("webhooks: %v", err)
-	}
-
-	callback := filepath.Join(dir, "callback.yaml")
-	if err := os.WriteFile(callback, []byte(callbackSpec), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	_, err = openapi.Load(context.Background(), callback)
-	if err == nil || !strings.Contains(err.Error(), "callbacks") {
-		t.Fatalf("callbacks: %v", err)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "spec.yaml")
+			require.NoError(t, os.WriteFile(path, []byte(tc.body), 0o644))
+			_, err := openapi.Load(context.Background(), path)
+			assert.ErrorContains(t, err, tc.want)
+		})
 	}
 }
 
 func TestOpenAPI31DocumentLoads(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "ping.yaml")
-	if err := os.WriteFile(path, []byte(openAPI31), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte(openAPI31), 0o644))
 	cat, err := openapi.Load(context.Background(), path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cat.ByID("ping") == nil {
-		t.Fatalf("operations: %s", cat.IndexLine())
-	}
+	require.NoError(t, err)
+	require.NotNil(t, cat.ByID("ping"))
 }
 
 const webhookSpec = `openapi: 3.0.3

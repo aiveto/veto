@@ -10,6 +10,8 @@ import (
 
 	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/telemetry"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHTTPResultCarriesCodeAndReplayOmitsBody(t *testing.T) {
@@ -23,35 +25,26 @@ func TestHTTPResultCarriesCodeAndReplayOmitsBody(t *testing.T) {
 	defer ts.Close()
 
 	rec, err := telemetry.Record()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer rec.Stop(context.Background())
 
 	got, err := execute.Client{BaseURL: ts.URL}.InvokeHTTPResult(context.Background(), op, map[string]string{"id": "1"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Code != "rate_limited" || !got.Retryable || got.Status != http.StatusTooManyRequests || got.Body != secret {
-		t.Fatalf("result: %+v", got)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "rate_limited", got.Code)
+	assert.True(t, got.Retryable)
+	assert.Equal(t, http.StatusTooManyRequests, got.Status)
+	assert.Equal(t, secret, got.Body)
 	text := spanText(t, rec)
-	if !strings.Contains(text, "http.status=429") || strings.Contains(text, secret) || strings.Contains(text, "http.body=") {
-		t.Fatalf("span:\n%s", text)
-	}
+	assert.Contains(t, text, "http.status=429")
+	assert.NotContains(t, text, secret)
+	assert.NotContains(t, text, "http.body=")
 
 	rec2, err := telemetry.Record()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer rec2.Stop(context.Background())
-	if _, err := (execute.Client{BaseURL: ts.URL, RecordBody: true}).InvokeHTTPResult(context.Background(), op, map[string]string{"id": "1"}); err != nil {
-		t.Fatal(err)
-	}
-	kept := spanText(t, rec2)
-	if !strings.Contains(kept, "http.body="+secret) {
-		t.Fatalf("kept body missing:\n%s", kept)
-	}
+	_, err = (execute.Client{BaseURL: ts.URL, RecordBody: true}).InvokeHTTPResult(context.Background(), op, map[string]string{"id": "1"})
+	require.NoError(t, err)
+	assert.Contains(t, spanText(t, rec2), "http.body="+secret)
 }
 
 func TestClientTimeoutEndsAHungCall(t *testing.T) {
@@ -65,9 +58,7 @@ func TestClientTimeoutEndsAHungCall(t *testing.T) {
 		BaseURL: ts.URL,
 		Client:  &http.Client{Timeout: 30 * time.Millisecond},
 	}, op, map[string]string{"id": "1"})
-	if err == nil {
-		t.Fatal("expected the hung call to end")
-	}
+	assert.Error(t, err)
 }
 
 func spanText(t *testing.T, rec *telemetry.Recorder) string {

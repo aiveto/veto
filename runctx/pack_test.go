@@ -10,115 +10,63 @@ import (
 	"github.com/aiveto/veto/openapi"
 	"github.com/aiveto/veto/runctx"
 	"github.com/aiveto/veto/semantics"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPackOmitsRawSpecAndIncludesDescribed(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	spec, err := os.ReadFile("../testdata/openapi.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	sem := semantics.NewDerived(cat)
 	op := cat.ByID("assets.delete")
-	b := runctx.NewBuilder(4096)
-	pack := b.Build(cat, []runctx.Turn{{Role: "user", Content: "delete 123"}}, op, sem, nil)
-	ser := pack.Serialize()
-	if runctx.ContainsRawSpec(ser) {
-		t.Fatal("pack must not contain openapi markers")
-	}
-	if !runctx.ContainsRawSpec(string(spec)) {
-		t.Fatal("fixture should look like openapi")
-	}
-	if pack.DescribedOperationID != "assets.delete" {
-		t.Fatalf("expected described operation, got %q", pack.DescribedOperationID)
-	}
+	pack := runctx.NewBuilder(4096).Build(cat, []runctx.Turn{{Role: "user", Content: "delete 123"}}, op, sem, nil)
+	assert.False(t, runctx.ContainsRawSpec(pack.Serialize()))
+	assert.Equal(t, "assets.delete", pack.DescribedOperationID)
 }
 
 func joinedCatalog(t *testing.T) *catalog.Catalog {
 	t.Helper()
 	assets, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	teams, err := openapi.Load(context.Background(), "../testdata/teams.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	cat, err := catalog.Merge(assets, teams)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	relData, err := os.ReadFile("../testdata/relations.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	rels, err := catalog.ParseRelations(relData)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := catalog.ApplyRelations(cat, rels); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, catalog.ApplyRelations(cat, rels))
 	return cat
 }
 
 func TestPackWalksDeclaredRelation(t *testing.T) {
 	assets, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	teams, err := openapi.Load(context.Background(), "../testdata/teams.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	cat, err := catalog.Merge(assets, teams)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	relData, err := os.ReadFile("../testdata/relations.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	rels, err := catalog.ParseRelations(relData)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := catalog.ApplyRelations(cat, rels); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, catalog.ApplyRelations(cat, rels))
 	sem := semantics.NewDerived(cat)
 	pack := runctx.NewBuilder(8192).Build(cat, nil, cat.ByID("assets.get"), sem, nil)
 	ser := pack.Serialize()
-	if runctx.ContainsRawSpec(ser) {
-		t.Fatal("pack contains the spec")
-	}
-	if !strings.Contains(ser, "related: teams.get Holding.teamsId") {
-		t.Fatalf("pack did not walk the relation:\n%s", ser)
-	}
-	if !strings.Contains(ser, "Holding.teamsId identifies teams.get") {
-		t.Fatalf("pack missing relation sentence:\n%s", ser)
-	}
+	assert.Contains(t, ser, "related: teams.get Holding.teamsId")
+	assert.Contains(t, ser, "Holding.teamsId identifies teams.get")
 }
 
 func TestPackIncludesCallShapeAndRelationField(t *testing.T) {
 	cat := joinedCatalog(t)
 	sem := semantics.NewDerived(cat)
 	pack := runctx.NewBuilder(8192).Build(cat, []runctx.Turn{{Role: "user", Content: "get asset"}}, nil, sem, nil)
-	if runctx.ContainsRawSpec(pack.Serialize()) {
-		t.Fatal("pack contains the spec")
-	}
-	if !strings.Contains(pack.Index, "id path required") || !strings.Contains(pack.Index, "teamsId") {
-		t.Fatalf("call shape missing:\n%s", pack.Index)
-	}
-	if strings.Contains(pack.Index, "billing.list") {
-		t.Fatalf("unrelated operation in the pack: %s", pack.Index)
-	}
-	if strings.Index(pack.Index, "assets.get") > strings.Index(pack.Index, "teams.get") {
-		t.Fatalf("neighbor outranked the hit:\n%s", pack.Index)
-	}
+	assert.Contains(t, pack.Index, "id path required")
+	assert.Contains(t, pack.Index, "teamsId")
+	assert.NotContains(t, pack.Index, "billing.list")
+	assert.Less(t, strings.Index(pack.Index, "assets.get"), strings.Index(pack.Index, "teams.get"))
 }
 
 func TestTruncateDropsWholeOperations(t *testing.T) {
@@ -130,57 +78,34 @@ func TestTruncateDropsWholeOperations(t *testing.T) {
 	sem := semantics.NewDerived(cat)
 	full := runctx.NewBuilder(10000).Build(cat, []runctx.Turn{{Role: "user", Content: "read"}}, nil, sem, nil)
 	parts := strings.Split(full.Index, "; ")
-	if len(parts) < 2 {
-		t.Fatalf("index: %s", full.Index)
-	}
+	require.GreaterOrEqual(t, len(parts), 2)
 	overhead := full.Bytes - len(full.Index)
 	pack := runctx.NewBuilder(overhead+len(parts[0])).Build(cat, []runctx.Turn{{Role: "user", Content: "read"}}, nil, sem, nil)
-	if !pack.Truncated || pack.Index != parts[0] {
-		t.Fatalf("truncated=%v index=%q want %q", pack.Truncated, pack.Index, parts[0])
-	}
-	if !strings.HasPrefix(pack.Index, "alpha.read") && !strings.HasPrefix(pack.Index, "beta.read") {
-		t.Fatalf("cut an id: %q", pack.Index)
-	}
+	assert.True(t, pack.Truncated)
+	assert.Equal(t, parts[0], pack.Index)
+	assert.True(t, strings.HasPrefix(pack.Index, "alpha.read") || strings.HasPrefix(pack.Index, "beta.read"))
 }
 
 func TestPackKeepsSearchHitsAndDropsTheRest(t *testing.T) {
 	assets, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	teams, err := openapi.Load(context.Background(), "../testdata/teams.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	cat, err := catalog.Merge(assets, teams)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	cat.Operations = append(cat.Operations, catalog.Operation{
 		ID: "billing.list", Description: "List invoices", Group: "billing", Name: "List invoices",
 	})
 	cat.Finalize()
 	relData, err := os.ReadFile("../testdata/relations.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	rels, err := catalog.ParseRelations(relData)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := catalog.ApplyRelations(cat, rels); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, catalog.ApplyRelations(cat, rels))
 	sem := semantics.NewDerived(cat)
 	turns := []runctx.Turn{{Role: "user", Content: "delete asset 123"}}
 	pack := runctx.NewBuilder(8192).Build(cat, turns, nil, sem, nil)
-	if strings.Contains(pack.Index, "billing.list") {
-		t.Fatalf("unrelated operation in the pack: %s", pack.Index)
-	}
-	if !strings.Contains(pack.Index, "assets.delete") {
-		t.Fatalf("delete missing from the pack: %s", pack.Index)
-	}
-	if pack.Index == cat.IndexLine() {
-		t.Fatal("pack listed every operation")
-	}
+	assert.NotContains(t, pack.Index, "billing.list")
+	assert.Contains(t, pack.Index, "assets.delete")
+	assert.NotEqual(t, cat.IndexLine(), pack.Index)
 }

@@ -7,24 +7,25 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/openapi"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestJSONBodySetsContentHeaders(t *testing.T) {
 	cat := loadSpec(t, bodySpec)
 	op := cat.ByID("assets.create")
 	body, ok := op.BodyParam()
-	if !ok || body.In != "body" || body.Name != "body" || !body.Required {
-		t.Fatalf("body param: %+v ok=%v", body, ok)
-	}
-	if strings.Contains(body.Schema, "$ref") || !strings.Contains(body.Schema, `"name"`) {
-		t.Fatalf("schema: %s", body.Schema)
-	}
+	require.True(t, ok)
+	assert.Equal(t, "body", body.Name)
+	assert.Equal(t, "body", body.In)
+	assert.True(t, body.Required)
+	assert.NotContains(t, body.Schema, "$ref")
+	assert.Contains(t, body.Schema, `"name"`)
 
 	const raw = `{"name":"kit"}`
 	var gotBody, gotType, gotLen string
@@ -40,35 +41,46 @@ func TestJSONBodySetsContentHeaders(t *testing.T) {
 	defer ts.Close()
 
 	resp, err := execute.InvokeResponse(context.Background(), execute.Config{BaseURL: ts.URL}, op, map[string]string{"body": raw})
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
-	if gotBody != raw || gotType != "application/json" || gotCL != int64(len(raw)) || gotLen != "14" {
-		t.Fatalf("body=%q type=%q len=%q cl=%d", gotBody, gotType, gotLen, gotCL)
-	}
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	assert.Equal(t, raw, gotBody)
+	assert.Equal(t, "application/json", gotType)
+	assert.Equal(t, int64(len(raw)), gotCL)
+	assert.Equal(t, "14", gotLen)
 }
 
-func TestRequiredEmptyBodyDoesNotCallDo(t *testing.T) {
-	cat := loadSpec(t, bodySpec)
-	op := cat.ByID("assets.create")
-	trip := &failTrip{}
-	client := &http.Client{Transport: trip}
-	_, err := execute.InvokeResponse(context.Background(), execute.Config{BaseURL: "http://127.0.0.1:9", Client: client}, op, map[string]string{"_body": `{"name":"kit"}`})
-	if err == nil || !strings.Contains(err.Error(), "body required") {
-		t.Fatalf("err: %v", err)
+func TestMissingRequiredInputDoesNotCallDo(t *testing.T) {
+	cases := []struct {
+		name   string
+		spec   string
+		op     string
+		params map[string]string
+		want   string
+	}{
+		{name: "unset bearer", spec: bearerSpec, op: "assets.get", params: map[string]string{"id": "1"}, want: "bearerAuth is unset"},
+		{name: "empty body", spec: bodySpec, op: "assets.create", params: map[string]string{"_body": `{"name":"kit"}`}, want: "body required"},
+		{name: "empty path", spec: bodySpec, op: "assets.get", params: map[string]string{"id": "  "}, want: "id required"},
 	}
-	if trip.called {
-		t.Fatal("Do was called")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			op := loadSpec(t, tc.spec).ByID(tc.op)
+			require.NotNil(t, op)
+			trip := &failTrip{}
+			_, err := execute.InvokeResponse(context.Background(), execute.Config{
+				BaseURL: "http://127.0.0.1:9",
+				Client:  &http.Client{Transport: trip},
+			}, op, tc.params)
+			assert.ErrorContains(t, err, tc.want)
+			assert.False(t, trip.called)
+		})
 	}
 }
 
 func TestNoBodySchemaOmitsContentType(t *testing.T) {
 	cat := loadSpec(t, bodySpec)
 	op := cat.ByID("assets.get")
-	if _, ok := op.BodyParam(); ok {
-		t.Fatal("get should not have a body param")
-	}
+	_, ok := op.BodyParam()
+	assert.False(t, ok)
 	var gotType string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotType = r.Header.Get("Content-Type")
@@ -76,29 +88,9 @@ func TestNoBodySchemaOmitsContentType(t *testing.T) {
 	}))
 	defer ts.Close()
 	resp, err := execute.InvokeResponse(context.Background(), execute.Config{BaseURL: ts.URL}, op, map[string]string{"id": "1"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
-	if gotType != "" {
-		t.Fatalf("content-type %q", gotType)
-	}
-}
-
-func TestEmptyPathParamDoesNotCallDo(t *testing.T) {
-	cat := loadSpec(t, bodySpec)
-	op := cat.ByID("assets.get")
-	trip := &failTrip{}
-	_, err := execute.InvokeResponse(context.Background(), execute.Config{
-		BaseURL: "http://127.0.0.1:9",
-		Client:  &http.Client{Transport: trip},
-	}, op, map[string]string{"id": "  "})
-	if err == nil || !strings.Contains(err.Error(), "id required") {
-		t.Fatalf("err: %v", err)
-	}
-	if trip.called {
-		t.Fatal("Do was called")
-	}
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	assert.Empty(t, gotType)
 }
 
 type failTrip struct{ called bool }
@@ -111,13 +103,9 @@ func (f *failTrip) RoundTrip(*http.Request) (*http.Response, error) {
 func loadSpec(t *testing.T, spec string) *catalog.Catalog {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "spec.yaml")
-	if err := os.WriteFile(path, []byte(spec), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte(spec), 0o644))
 	cat, err := openapi.Load(context.Background(), path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return cat
 }
 

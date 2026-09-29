@@ -3,6 +3,8 @@ package catalog_test
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/aiveto/veto/catalog"
 )
 
@@ -12,25 +14,36 @@ func TestSurfaceRegressions(t *testing.T) {
 		"assets.delete": {Destructive: true, Confirmation: true},
 		"assets.get":    {Referenced: true, Confirmation: false},
 	}
-	next := map[string]catalog.OpFact{
+	changed := map[string]catalog.OpFact{
 		"assets.delete": {Destructive: true, Confirmation: false},
 		"assets.get":    {Referenced: true},
 	}
-	got := catalog.SurfaceRegressions(base, next, nil)
-	want := []string{
-		"operation assets.delete lost confirmation",
-		"operation teams.get referenced by a relation or link was removed",
+	cases := []struct {
+		name  string
+		next  map[string]catalog.OpFact
+		allow map[string]bool
+		want  []string
+	}{
+		{
+			name: "lost confirmation and removed join",
+			next: changed,
+			want: []string{
+				"operation assets.delete lost confirmation",
+				"operation teams.get referenced by a relation or link was removed",
+			},
+		},
+		{
+			name:  "intentional confirmation change",
+			next:  changed,
+			allow: map[string]bool{"assets.delete": true},
+			want:  []string{"operation teams.get referenced by a relation or link was removed"},
+		},
+		{name: "unchanged", next: base},
 	}
-	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
-		t.Fatalf("regressions: %v", got)
-	}
-	allowed := catalog.SurfaceRegressions(base, next, map[string]bool{"assets.delete": true})
-	if len(allowed) != 1 || allowed[0] != want[1] {
-		t.Fatalf("intentional confirmation change: %v", allowed)
-	}
-	same := catalog.SurfaceRegressions(base, base, nil)
-	if len(same) != 0 {
-		t.Fatalf("unchanged surface: %v", same)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, catalog.SurfaceRegressions(base, tc.next, tc.allow))
+		})
 	}
 }
 
@@ -45,10 +58,10 @@ func TestFactsMarkJoinedAndDestructiveOperations(t *testing.T) {
 	}
 	cat.Finalize()
 	facts := catalog.Facts(cat)
-	if !facts["teams.get"].Referenced || !facts["assets.get"].Referenced {
-		t.Fatalf("join endpoints: %+v", facts)
-	}
-	if !facts["assets.delete"].Destructive || !facts["assets.delete"].Confirmation || facts["assets.delete"].Referenced {
-		t.Fatalf("delete: %+v", facts["assets.delete"])
-	}
+	assert.True(t, facts["teams.get"].Referenced)
+	assert.True(t, facts["assets.get"].Referenced)
+	del := facts["assets.delete"]
+	assert.True(t, del.Destructive)
+	assert.True(t, del.Confirmation)
+	assert.False(t, del.Referenced)
 }

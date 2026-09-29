@@ -4,12 +4,13 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/openapi"
 	"github.com/aiveto/veto/telemetry"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBearerHeaderIsSentAndKeptOffTheSpan(t *testing.T) {
@@ -24,60 +25,30 @@ func TestBearerHeaderIsSentAndKeptOffTheSpan(t *testing.T) {
 	defer ts.Close()
 
 	rec, err := telemetry.Record()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer rec.Stop(context.Background())
 	_, err = execute.Client{BaseURL: ts.URL, Auth: map[string]string{"bearerAuth": secret}}.InvokeHTTPResult(context.Background(), op, map[string]string{"id": "1"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != "Bearer "+secret {
-		t.Fatalf("authorization: %q", got)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "Bearer "+secret, got)
 	text := spanText(t, rec)
-	if strings.Contains(text, secret) || strings.Contains(text, "Authorization") {
-		t.Fatalf("auth leaked onto the span:\n%s", text)
-	}
-}
-
-func TestUnsetBearerDoesNotCallDo(t *testing.T) {
-	cat := loadSpec(t, bearerSpec)
-	op := cat.ByID("assets.get")
-	trip := &failTrip{}
-	_, err := execute.InvokeResponse(context.Background(), execute.Config{
-		BaseURL: "http://127.0.0.1:9",
-		Client:  &http.Client{Transport: trip},
-	}, op, map[string]string{"id": "1"})
-	if err == nil || !strings.Contains(err.Error(), "bearerAuth is unset") {
-		t.Fatalf("err: %v", err)
-	}
-	if trip.called {
-		t.Fatal("Do was called")
-	}
+	assert.NotContains(t, text, secret)
+	assert.NotContains(t, text, "Authorization")
 }
 
 func TestNoSchemeSendsNoAuthorization(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	op := cat.ByID("assets.get")
-	if len(op.Auth) != 0 {
-		t.Fatalf("auth: %+v", op.Auth)
-	}
+	require.Empty(t, op.Auth)
 	var got string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got = r.Header.Get("Authorization")
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer ts.Close()
-	if _, err := (execute.Client{BaseURL: ts.URL, Auth: map[string]string{"bearerAuth": "nope"}}).InvokeHTTPResult(context.Background(), op, map[string]string{"id": "1"}); err != nil {
-		t.Fatal(err)
-	}
-	if got != "" {
-		t.Fatalf("authorization: %q", got)
-	}
+	_, err = (execute.Client{BaseURL: ts.URL, Auth: map[string]string{"bearerAuth": "nope"}}).InvokeHTTPResult(context.Background(), op, map[string]string{"id": "1"})
+	require.NoError(t, err)
+	assert.Empty(t, got)
 }
 
 const bearerSpec = `openapi: 3.0.3

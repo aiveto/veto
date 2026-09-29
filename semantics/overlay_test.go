@@ -1,11 +1,11 @@
 package semantics
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/aiveto/veto/catalog"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestOverlayMissingKeyKeepsDerivedSentence(t *testing.T) {
@@ -17,33 +17,15 @@ func TestOverlayMissingKeyKeepsDerivedSentence(t *testing.T) {
 		},
 		Uses: []catalog.SchemaUse{{OperationID: "assets.get", Name: "Holding"}},
 	}
-	if err := catalog.ApplyRelations(cat, []catalog.Relation{{
+	require.NoError(t, catalog.ApplyRelations(cat, []catalog.Relation{{
 		Schema: "Holding", Field: "teamsId", To: "teams.get",
-	}}); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(t.TempDir(), "semantics.yaml")
+	}}))
 	body := "- operation: assets.delete\n  synonyms:\n    - retire\n"
-	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	over, err := ParseOverlay(data, NewDerived(cat))
-	if err != nil {
-		t.Fatal(err)
-	}
+	over, err := ParseOverlay([]byte(body), NewDerived(cat))
+	require.NoError(t, err)
 	patched := over.Note("assets.delete")
-	if patched.Sentence != "Remove an asset" {
-		t.Fatalf("missing sentence key: %q", patched.Sentence)
-	}
+	assert.Equal(t, "Remove an asset", patched.Sentence)
 	missing := over.Note("assets.get")
-	if missing.Sentence != "Fetch one asset" {
-		t.Fatalf("operation absent from the file: %q", missing.Sentence)
-	}
-	if missing.Relation != "Holding.teamsId identifies teams.get" {
-		t.Fatalf("relation: %q", missing.Relation)
-	}
+	assert.Equal(t, "Fetch one asset", missing.Sentence)
+	assert.Equal(t, "Holding.teamsId identifies teams.get", missing.Relation)
 }

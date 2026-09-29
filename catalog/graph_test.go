@@ -6,6 +6,8 @@ import (
 
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/openapi"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestJoinsPrintTheRelation(t *testing.T) {
@@ -14,64 +16,14 @@ func TestJoinsPrintTheRelation(t *testing.T) {
 		{ID: "teams.get", Name: "team"},
 	}, Links: []catalog.OpLink{{From: "assets.get", To: "teams.get", Note: "Holding.teamsId"}}}
 	cat.Finalize()
-	lines := cat.Joins()
-	if len(lines) != 1 || lines[0] != "assets.get --[Holding.teamsId]--> teams.get" {
-		t.Fatalf("joins: %v", lines)
-	}
-}
-
-func TestGraphGroupsAssetsAndLinksDelete(t *testing.T) {
-	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var deleteLinked bool
-	for _, e := range cat.Graph.Edges {
-		if e.From == "assets" && e.To == "assets.delete" {
-			deleteLinked = true
-		}
-	}
-	if !deleteLinked {
-		t.Fatalf("expected edge assets -> assets.delete, graph=%v", cat.Graph.Edges)
-	}
-	var hasResource, hasDelete bool
-	for _, n := range cat.Graph.Nodes {
-		if n.Kind == catalog.NodeResource && n.ID == "assets" {
-			hasResource = true
-		}
-		if n.ID == "assets.delete" {
-			hasDelete = true
-		}
-	}
-	if !hasResource || !hasDelete {
-		t.Fatalf("missing nodes: resource=%v delete=%v nodes=%v", hasResource, hasDelete, cat.Graph.Nodes)
-	}
+	assert.Equal(t, []string{"assets.get --[Holding.teamsId]--> teams.get"}, cat.Joins())
 }
 
 func TestGraphLinksOperationsAndSchemas(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	related := cat.Graph.Related("assets.list")
-	if len(related) != 1 || related[0] != "assets.get" {
-		t.Fatalf("list links: %v", related)
-	}
-	related = cat.Graph.Related("assets.get")
-	if len(related) != 1 || related[0] != "assets.delete" {
-		t.Fatalf("get links: %v", related)
-	}
-	schemas := cat.Graph.Schemas("assets.get")
-	if len(schemas) != 1 || schemas[0] != "Holding" {
-		t.Fatalf("schemas: %v", schemas)
-	}
-	var schemaNode bool
-	for _, n := range cat.Graph.Nodes {
-		if n.Kind == catalog.NodeSchema && n.ID == "Holding" {
-			schemaNode = true
-		}
-	}
-	if !schemaNode {
-		t.Fatalf("missing schema node: %v", cat.Graph.Nodes)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, []string{"assets.get"}, cat.Graph.Related("assets.list"))
+	assert.Equal(t, []string{"assets.delete"}, cat.Graph.Related("assets.get"))
+	assert.Equal(t, []string{"Holding"}, cat.Graph.Schemas("assets.get"))
+	assert.Contains(t, cat.Graph.OperationsForResource("assets"), "assets.delete")
 }

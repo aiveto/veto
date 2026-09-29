@@ -4,39 +4,44 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/aiveto/veto/openapi"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFirstServerWinsUntilANameIsSelected(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "spec.yaml")
-	if err := os.WriteFile(path, []byte(twoServers), 0o644); err != nil {
-		t.Fatal(err)
+	empty := ""
+	staging := "staging"
+	missing := "missing"
+	cases := []struct {
+		name   string
+		choose *string
+		want   string
+		err    string
+	}{
+		{name: "first server", want: "http://prod.example"},
+		{name: "empty name", choose: &empty, want: "http://prod.example"},
+		{name: "named server", choose: &staging, want: "http://stage.example"},
+		{name: "unknown name", choose: &missing, err: "missing"},
 	}
-	cat, err := openapi.Load(context.Background(), path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	op := cat.ByID("assets.get")
-	if op.BaseURL != "http://prod.example" {
-		t.Fatalf("first server: %s", op.BaseURL)
-	}
-	if err := cat.SelectServer(""); err != nil {
-		t.Fatal(err)
-	}
-	if cat.ByID("assets.get").BaseURL != "http://prod.example" {
-		t.Fatalf("unset name changed the server: %s", cat.ByID("assets.get").BaseURL)
-	}
-	if err := cat.SelectServer("staging"); err != nil {
-		t.Fatal(err)
-	}
-	if cat.ByID("assets.get").BaseURL != "http://stage.example" {
-		t.Fatalf("named server: %s", cat.ByID("assets.get").BaseURL)
-	}
-	if err := cat.SelectServer("missing"); err == nil || !strings.Contains(err.Error(), "missing") {
-		t.Fatalf("err: %v", err)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "spec.yaml")
+			require.NoError(t, os.WriteFile(path, []byte(twoServers), 0o644))
+			cat, err := openapi.Load(context.Background(), path)
+			require.NoError(t, err)
+			if tc.choose != nil {
+				err = cat.SelectServer(*tc.choose)
+			}
+			if tc.err != "" {
+				assert.ErrorContains(t, err, tc.err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, cat.ByID("assets.get").BaseURL)
+		})
 	}
 }
 

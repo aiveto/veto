@@ -2,30 +2,44 @@ package mcpserver
 
 import (
 	"errors"
-	"strings"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMissingParamStaysStructuredOnTheToolResult(t *testing.T) {
-	res := InvokeResult{Status: "error", Code: "missing_param", Error: "operation assets.get: id required"}
-	tool, _, err := invokeToolResult(res, errors.New(res.Error))
-	if err != nil {
-		t.Fatal(err)
+	cases := []struct {
+		name    string
+		res     InvokeResult
+		err     error
+		isError bool
+		text    string
+	}{
+		{
+			name:    "missing param",
+			res:     InvokeResult{Status: "error", Code: "missing_param", Error: "operation assets.get: id required"},
+			err:     errors.New("operation assets.get: id required"),
+			isError: true,
+			text:    `"code":"missing_param"`,
+		},
+		{
+			name: "confirmation",
+			res:  InvokeResult{Status: "confirmation_required", ApprovalID: "id"},
+		},
 	}
-	if !tool.IsError {
-		t.Fatal("missing param was not a tool error")
-	}
-	text := tool.Content[0].(*mcp.TextContent).Text
-	if !strings.Contains(text, `"code":"missing_param"`) {
-		t.Fatalf("tool text: %s", text)
-	}
-	confirm, _, err := invokeToolResult(InvokeResult{Status: "confirmation_required", ApprovalID: "id"}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if confirm.IsError {
-		t.Fatal("confirmation was reported as a tool error")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tool, _, err := invokeToolResult(tc.res, tc.err)
+			require.NoError(t, err)
+			assert.Equal(t, tc.isError, tool.IsError)
+			if tc.text == "" {
+				return
+			}
+			require.NotEmpty(t, tool.Content)
+			text := tool.Content[0].(*mcp.TextContent).Text
+			assert.Contains(t, text, tc.text)
+		})
 	}
 }

@@ -6,12 +6,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/generate"
 	"github.com/aiveto/veto/openapi"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGeneratedMethodsKeepEachServerURL(t *testing.T) {
@@ -21,66 +22,48 @@ func TestGeneratedMethodsKeepEachServerURL(t *testing.T) {
 	}}
 	cat.Finalize()
 	files, err := generate.Render("example.com/both", cat)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	sdk := string(files.SDK)
 	cli := string(files.CLI)
-	if !strings.Contains(sdk, "http://assets.example") || !strings.Contains(sdk, "http://teams.example") {
-		t.Fatalf("sdk dropped a server:\n%s", sdk)
-	}
-	if strings.Contains(cli, "127.0.0.1:8080") || !strings.Contains(cli, "VETO_BASE_URL") {
-		t.Fatalf("cli override:\n%s", cli)
-	}
-	if !strings.Contains(sdk, "execute.Client{BaseURL: baseURL") {
-		t.Fatalf("override is not the client base URL:\n%s", sdk)
-	}
+	assert.Contains(t, sdk, "http://assets.example")
+	assert.Contains(t, sdk, "http://teams.example")
+	assert.NotContains(t, cli, "127.0.0.1:8080")
+	assert.Contains(t, cli, "VETO_BASE_URL")
+	assert.Contains(t, sdk, "execute.Client{BaseURL: baseURL")
 }
 
 func TestGeneratedCLIHelpAndConfirm(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	dir := t.TempDir()
 	const module = "example.com/assetgen"
-	if err := generate.Write(dir, module, cat); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, generate.Write(dir, module, cat))
 	sdk, err := os.ReadFile(filepath.Join(dir, "sdk", "client.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(sdk), "Loop.Invoke") || strings.Contains(string(sdk), "execute.Invoke") || strings.Contains(string(sdk), "http.NewRequest") || strings.Contains(string(sdk), "return agent.Call{}") {
-		t.Fatal("sdk must return the invoke result and must not build its own request")
-	}
+	require.NoError(t, err)
+	assert.Contains(t, string(sdk), "Loop.Invoke")
+	assert.NotContains(t, string(sdk), "execute.Invoke")
+	assert.NotContains(t, string(sdk), "http.NewRequest")
+	assert.NotContains(t, string(sdk), "return agent.Call{}")
 	root, err := filepath.Abs("..")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	replace := exec.Command("go", "mod", "edit", "-replace", "github.com/aiveto/veto="+root)
 	replace.Dir = dir
-	if out, err := replace.CombinedOutput(); err != nil {
-		t.Fatalf("replace: %v\n%s", err, out)
-	}
+	out, err := replace.CombinedOutput()
+	require.NoError(t, err, string(out))
 	tidy := exec.Command("go", "mod", "tidy")
 	tidy.Dir = dir
-	if out, err := tidy.CombinedOutput(); err != nil {
-		t.Fatalf("tidy: %v\n%s", err, out)
-	}
+	out, err = tidy.CombinedOutput()
+	require.NoError(t, err, string(out))
 
 	compile := exec.Command("go", "test", "./...")
 	compile.Dir = dir
-	if out, err := compile.CombinedOutput(); err != nil {
-		t.Fatalf("generated module: %v\n%s", err, out)
-	}
+	out, err = compile.CombinedOutput()
+	require.NoError(t, err, string(out))
 
 	help := exec.Command("go", "run", "./cli", "delete", "--help-json")
 	help.Dir = dir
-	out, err := help.CombinedOutput()
-	if err != nil {
-		t.Fatalf("help-json: %v\n%s", err, out)
-	}
+	out, err = help.CombinedOutput()
+	require.NoError(t, err, string(out))
 	var doc struct {
 		Command      string   `json:"command"`
 		OperationID  string   `json:"operation"`
@@ -89,20 +72,16 @@ func TestGeneratedCLIHelpAndConfirm(t *testing.T) {
 		Server       string   `json:"server"`
 		Permissions  []string `json:"permissions"`
 	}
-	if err := json.Unmarshal(out, &doc); err != nil {
-		t.Fatal(err)
-	}
-	if doc.Command != "delete" || doc.OperationID != "assets.delete" || !doc.Confirmation || doc.Method != "DELETE" || doc.Server != "http://127.0.0.1:8080" {
-		t.Fatalf("help doc: %+v", doc)
-	}
+	require.NoError(t, json.Unmarshal(out, &doc))
+	assert.Equal(t, "delete", doc.Command)
+	assert.Equal(t, "assets.delete", doc.OperationID)
+	assert.True(t, doc.Confirmation)
+	assert.Equal(t, "DELETE", doc.Method)
+	assert.Equal(t, "http://127.0.0.1:8080", doc.Server)
 
 	deny := exec.Command("go", "run", "./cli", "delete", "--id", "123")
 	deny.Dir = dir
 	out, err = deny.CombinedOutput()
-	if err == nil {
-		t.Fatal("delete without --confirm should fail")
-	}
-	if !strings.Contains(string(out), "confirmation required") {
-		t.Fatalf("stderr: %s", out)
-	}
+	assert.Error(t, err)
+	assert.Contains(t, string(out), "confirmation required")
 }

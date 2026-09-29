@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/aiveto/veto/flow"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestStepOutputFeedsTheNextParameter(t *testing.T) {
@@ -21,12 +23,10 @@ func TestStepOutputFeedsTheNextParameter(t *testing.T) {
 		return "ok", `{"id":"9"}`, nil
 	}}
 	results, err := runner.Run(context.Background(), def, map[string]string{"id": "1"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(results) != 2 || got[1]["id"] != "9" {
-		t.Fatalf("results=%v params=%v", results, got)
-	}
+	require.NoError(t, err)
+	assert.Len(t, results, 2)
+	require.Len(t, got, 2)
+	assert.Equal(t, "9", got[1]["id"])
 }
 
 func TestConfirmationStopsTheNextStep(t *testing.T) {
@@ -44,20 +44,9 @@ func TestConfirmationStopsTheNextStep(t *testing.T) {
 	}}
 	_, err := runner.Run(context.Background(), def, nil)
 	var stopped flow.Stopped
-	if err == nil || !asStopped(err, &stopped) || stopped.Operation != "assets.delete" {
-		t.Fatalf("err: %v", err)
-	}
-	if len(called) != 2 || called[1] != "assets.delete" {
-		t.Fatalf("called: %v", called)
-	}
-}
-
-func asStopped(err error, target *flow.Stopped) bool {
-	s, ok := err.(flow.Stopped)
-	if ok {
-		*target = s
-	}
-	return ok
+	require.ErrorAs(t, err, &stopped)
+	assert.Equal(t, "assets.delete", stopped.Operation)
+	assert.Equal(t, []string{"assets.get", "assets.delete"}, called)
 }
 
 func clone(in map[string]string) map[string]string {

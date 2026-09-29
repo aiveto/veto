@@ -6,72 +6,50 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/aiveto/veto/generate"
 	"github.com/aiveto/veto/openapi"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGeneratedBodyParamReachesInvoke(t *testing.T) {
 	dir := t.TempDir()
 	spec := filepath.Join(dir, "spec.yaml")
-	if err := os.WriteFile(spec, []byte(createSpec), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(spec, []byte(createSpec), 0o644))
 	cat, err := openapi.Load(context.Background(), spec)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	out := filepath.Join(dir, "gen")
 	const module = "example.com/assetgen"
-	if err := generate.Write(out, module, cat); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, generate.Write(out, module, cat))
 	sdk, err := os.ReadFile(filepath.Join(out, "sdk", "client.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	cli, err := os.ReadFile(filepath.Join(out, "cli", "main.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	dispatch, err := os.ReadFile(filepath.Join(out, "dispatch", "call.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, src := range []string{string(sdk), string(cli), string(dispatch)} {
-		if strings.Contains(src, "_body") {
-			t.Fatalf("magic body key:\n%s", src)
-		}
+		assert.NotContains(t, src, "_body")
 	}
-	if !strings.Contains(string(sdk), "Loop.Invoke") || !strings.Contains(string(sdk), `"body": body`) {
-		t.Fatalf("sdk:\n%s", sdk)
-	}
-	if !strings.Contains(string(dispatch), `params["body"]`) {
-		t.Fatalf("dispatch:\n%s", dispatch)
-	}
+	assert.Contains(t, string(sdk), "Loop.Invoke")
+	assert.Contains(t, string(sdk), `"body": body`)
+	assert.Contains(t, string(dispatch), `params["body"]`)
 
 	root, err := filepath.Abs("..")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	replace := exec.Command("go", "mod", "edit", "-replace", "github.com/aiveto/veto="+root)
 	replace.Dir = out
-	if msg, err := replace.CombinedOutput(); err != nil {
-		t.Fatalf("replace: %v\n%s", err, msg)
-	}
+	msg, err := replace.CombinedOutput()
+	require.NoError(t, err, string(msg))
 	tidy := exec.Command("go", "mod", "tidy")
 	tidy.Dir = out
-	if msg, err := tidy.CombinedOutput(); err != nil {
-		t.Fatalf("tidy: %v\n%s", err, msg)
-	}
+	msg, err = tidy.CombinedOutput()
+	require.NoError(t, err, string(msg))
 	help := exec.Command("go", "run", "./cli", "create", "--help-json")
 	help.Dir = out
-	msg, err := help.CombinedOutput()
-	if err != nil {
-		t.Fatalf("help-json: %v\n%s", err, msg)
-	}
+	msg, err = help.CombinedOutput()
+	require.NoError(t, err, string(msg))
 	var doc struct {
 		Params []struct {
 			Name     string `json:"name"`
@@ -79,12 +57,11 @@ func TestGeneratedBodyParamReachesInvoke(t *testing.T) {
 			Required bool   `json:"required"`
 		} `json:"params"`
 	}
-	if err := json.Unmarshal(msg, &doc); err != nil {
-		t.Fatal(err)
-	}
-	if len(doc.Params) != 1 || doc.Params[0].Name != "body" || doc.Params[0].In != "body" || !doc.Params[0].Required {
-		t.Fatalf("params: %+v", doc.Params)
-	}
+	require.NoError(t, json.Unmarshal(msg, &doc))
+	require.Len(t, doc.Params, 1)
+	assert.Equal(t, "body", doc.Params[0].Name)
+	assert.Equal(t, "body", doc.Params[0].In)
+	assert.True(t, doc.Params[0].Required)
 }
 
 const createSpec = `openapi: 3.0.3

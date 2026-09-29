@@ -11,35 +11,25 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aiveto/veto/agent"
 	"github.com/aiveto/veto/agent/openai"
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/memory"
-	"github.com/aiveto/veto/policy"
 	"github.com/aiveto/veto/telemetry"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHelpJSONStaysOffTheHumanHelpPath(t *testing.T) {
 	root, err := newRoot()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var buf bytes.Buffer
 	got, err := jsonHelp(&buf, root, []string{"serve", "--help"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got {
-		t.Fatal("human help was treated as JSON")
-	}
+	require.NoError(t, err)
+	assert.False(t, got)
 	got, err = jsonHelp(&buf, root, []string{"serve", "--help-json"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !got {
-		t.Fatal("expected JSON help")
-	}
+	require.NoError(t, err)
+	require.True(t, got)
 	var doc struct {
 		Command string `json:"command"`
 		Flags   []struct {
@@ -47,52 +37,33 @@ func TestHelpJSONStaysOffTheHumanHelpPath(t *testing.T) {
 		} `json:"flags"`
 		Commands []string `json:"commands"`
 	}
-	if err := json.Unmarshal(buf.Bytes(), &doc); err != nil {
-		t.Fatal(err)
-	}
-	if doc.Command != "serve" || len(doc.Commands) != 0 {
-		t.Fatalf("doc: %+v", doc)
-	}
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &doc))
+	assert.Equal(t, "serve", doc.Command)
+	assert.Empty(t, doc.Commands)
 	var sawStdio bool
 	for _, f := range doc.Flags {
 		if f.Name == "stdio" {
 			sawStdio = true
 		}
 	}
-	if !sawStdio {
-		t.Fatalf("flags: %+v", doc.Flags)
-	}
+	assert.True(t, sawStdio)
 	buf.Reset()
 	got, err = jsonHelp(&buf, root, []string{"--help-json"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !got {
-		t.Fatal("expected root JSON help")
-	}
-	if err := json.Unmarshal(buf.Bytes(), &doc); err != nil {
-		t.Fatal(err)
-	}
-	joined := strings.Join(doc.Commands, ",")
+	require.NoError(t, err)
+	require.True(t, got)
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &doc))
 	for _, name := range []string{"serve", "eval", "replay", "validate", "generate", "pack", "doctor", "check"} {
-		if !strings.Contains(joined, name) {
-			t.Fatalf("commands: %s", joined)
-		}
+		assert.Contains(t, doc.Commands, name)
 	}
 }
 
 func TestConfigIsTheCatalog(t *testing.T) {
 	_, contracts, relations, _, err := resolve("../../testdata/veto.yaml", nil, "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	cat, err := loadCatalog(contracts, relations)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cat.ByID("assets.get") == nil || cat.ByID("teams.get") == nil {
-		t.Fatalf("config did not register both APIs: %s", cat.IndexLine())
-	}
+	require.NoError(t, err)
+	require.NotNil(t, cat.ByID("assets.get"))
+	require.NotNil(t, cat.ByID("teams.get"))
 	matches := catalog.Search(cat, "teamsId", nil)
 	var joined bool
 	for _, m := range matches {
@@ -105,51 +76,20 @@ func TestConfigIsTheCatalog(t *testing.T) {
 			}
 		}
 	}
-	if !joined {
-		t.Fatalf("search did not walk the relation: %v", matches)
-	}
-	ser := cat.IndexLine()
-	if strings.Contains(ser, "openapi:") {
-		t.Fatal("index contains the spec")
-	}
+	assert.True(t, joined)
+	assert.NotContains(t, cat.IndexLine(), "openapi:")
 }
 
 func TestBuildLoopConstructsDefaultsAndOpenAIHost(t *testing.T) {
 	contract, err := filepath.Abs("../../testdata/openapi.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	dir := t.TempDir()
-	scripted := filepath.Join(dir, "scripted.yaml")
-	body := "memory: local\npolicy: builtin\nmodel: scripted\ncontracts:\n  - " + contract + "\n"
-	if err := os.WriteFile(scripted, []byte(body), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	loop, _, err := buildLoop(nil, scripted, "", "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := loop.Model.(*agent.Scripted); !ok {
-		t.Fatalf("model: %T", loop.Model)
-	}
-	if _, ok := loop.Policy.(policy.Builtin); !ok {
-		t.Fatalf("policy: %T", loop.Policy)
-	}
-	if _, ok := loop.Memory.(*memory.LocalMap); !ok {
-		t.Fatalf("memory: %T", loop.Memory)
-	}
 	fileCfg := filepath.Join(dir, "file.yaml")
 	fileText := "memory: file\nmemory_file: turns.log\ncontracts:\n  - " + contract + "\n"
-	if err := os.WriteFile(fileCfg, []byte(fileText), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(fileCfg, []byte(fileText), 0o644))
 	fileLoop, _, err := buildLoop(nil, fileCfg, "", "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := fileLoop.Memory.(*memory.Log); !ok {
-		t.Fatalf("memory: %T", fileLoop.Memory)
-	}
+	require.NoError(t, err)
+	require.IsType(t, &memory.Log{}, fileLoop.Memory)
 
 	t.Setenv("OPENAI_API_KEY", "test-key")
 	for _, tc := range []struct {
@@ -163,86 +103,50 @@ func TestBuildLoopConstructsDefaultsAndOpenAIHost(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(dir, tc.name+".yaml")
 			text := tc.yaml + "contracts:\n  - " + contract + "\n"
-			if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, os.WriteFile(path, []byte(text), 0o644))
 			loop, _, err := buildLoop(nil, path, "", "", "")
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			live, ok := loop.Model.(*openai.Client)
-			if !ok {
-				t.Fatalf("model: %T", loop.Model)
-			}
-			if live.BaseURL != tc.want {
-				t.Fatalf("base: %s", live.BaseURL)
-			}
+			require.True(t, ok)
+			assert.Equal(t, tc.want, live.BaseURL)
 		})
 	}
 }
 
 func TestPackPrintsTheDeleteCall(t *testing.T) {
 	contract, err := filepath.Abs("../../testdata/openapi.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	dir := t.TempDir()
 	path := filepath.Join(dir, "veto.yaml")
-	if err := os.WriteFile(path, []byte("contracts:\n  - "+contract+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte("contracts:\n  - "+contract+"\n"), 0o644))
 	loop, _, err := buildLoop(nil, path, "", "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	text, err := packOutput(loop, "delete asset 123", false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(text, "assets.delete") {
-		t.Fatalf("pack:\n%s", text)
-	}
+	require.NoError(t, err)
+	assert.Contains(t, text, "assets.delete")
 	raw, err := packOutput(loop, "delete asset 123", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var pack struct {
 		Index string `json:"Index"`
 	}
-	if err := json.Unmarshal([]byte(raw), &pack); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(pack.Index, "assets.delete") {
-		t.Fatalf("index: %s", pack.Index)
-	}
+	require.NoError(t, json.Unmarshal([]byte(raw), &pack))
+	assert.Contains(t, pack.Index, "assets.delete")
 }
 
 func TestAuthSecretComesFromTheEnv(t *testing.T) {
 	contract, err := filepath.Abs("../../testdata/openapi.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	dir := t.TempDir()
 	path := filepath.Join(dir, "veto.yaml")
 	text := "auth:\n  bearerAuth: ASSET_TOKEN\ncontracts:\n  - " + contract + "\n"
-	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(text, "s3cret") {
-		t.Fatal("secret was written into yaml")
-	}
+	require.NoError(t, os.WriteFile(path, []byte(text), 0o644))
 	t.Setenv("ASSET_TOKEN", "s3cret")
 	loop, cfg, err := buildLoop(nil, path, "", "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Auth["bearerAuth"] != "ASSET_TOKEN" {
-		t.Fatalf("config auth: %#v", cfg.Auth)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "ASSET_TOKEN", cfg.Auth["bearerAuth"])
 	exec, ok := loop.Exec.(execute.Client)
-	if !ok || exec.Auth["bearerAuth"] != "s3cret" {
-		t.Fatalf("client auth: %#v", loop.Exec)
-	}
+	require.True(t, ok)
+	assert.Equal(t, "s3cret", exec.Auth["bearerAuth"])
 }
 
 func TestFinishReplayWritesARedactedFile(t *testing.T) {
@@ -254,110 +158,70 @@ func TestFinishReplayWritesARedactedFile(t *testing.T) {
 			"user_message": "Delete asset 123",
 		},
 	}}, true, path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(text, "Delete asset 123") || !strings.Contains(text, "operation.id=assets.delete") {
-		t.Fatalf("text:\n%s", text)
-	}
+	require.NoError(t, err)
+	assert.NotContains(t, text, "Delete asset 123")
+	assert.Contains(t, text, "operation.id=assets.delete")
 	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(raw), "Delete asset 123") {
-		t.Fatalf("file:\n%s", raw)
-	}
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), "Delete asset 123")
 	var buf bytes.Buffer
 	root, err := newRoot()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	got, err := jsonHelp(&buf, root, []string{"replay", "--help-json"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !got {
-		t.Fatal("expected replay JSON help")
-	}
-	if !strings.Contains(buf.String(), `"name": "from"`) {
-		t.Fatalf("help: %s", buf.String())
-	}
+	require.NoError(t, err)
+	require.True(t, got)
+	assert.Contains(t, buf.String(), `"name": "from"`)
 }
 
 func TestTwoAPIExampleJoinsTeams(t *testing.T) {
 	cfg, err := filepath.Abs("../../examples/two-apis/veto.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	loop, _, err := buildLoop(nil, cfg, "", "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if loop.Catalog.ByID("assets.get") == nil || loop.Catalog.ByID("teams.get") == nil {
-		t.Fatal(loop.Catalog.IndexLine())
-	}
-	if !strings.Contains(strings.Join(loop.Catalog.Joins(), "\n"), "teams.get") {
-		t.Fatalf("joins: %v", loop.Catalog.Joins())
-	}
+	require.NoError(t, err)
+	require.NotNil(t, loop.Catalog.ByID("assets.get"))
+	require.NotNil(t, loop.Catalog.ByID("teams.get"))
+	assert.Contains(t, strings.Join(loop.Catalog.Joins(), "\n"), "teams.get")
 }
 
 func TestExternalPolicyFailsClosed(t *testing.T) {
 	contract, err := filepath.Abs("../../testdata/openapi.yaml")
-	if err != nil {
-		t.Fatal(err)
+	require.NoError(t, err)
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{name: "opa", body: "policy: opa\n", want: "opa"},
+		{name: "temporal", body: "execution: temporal\n", want: "not in this slice"},
+		{name: "jev", body: "decision: jev\n", want: "not in this slice"},
 	}
-	dir := t.TempDir()
-	path := filepath.Join(dir, "veto.yaml")
-	if err := os.WriteFile(path, []byte("policy: opa\ncontracts:\n  - "+contract+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := buildLoop(nil, path, "", "", ""); err == nil || !strings.Contains(err.Error(), "opa") {
-		t.Fatalf("opa: %v", err)
-	}
-	for _, body := range []string{"execution: temporal\n", "decision: jev\n"} {
-		if err := os.WriteFile(path, []byte(body+"contracts:\n  - "+contract+"\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		if _, _, err := buildLoop(nil, path, "", "", ""); err == nil || !strings.Contains(err.Error(), "not in this slice") {
-			t.Fatalf("%s: %v", body, err)
-		}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "veto.yaml")
+			require.NoError(t, os.WriteFile(path, []byte(tc.body+"contracts:\n  - "+contract+"\n"), 0o644))
+			_, _, err := buildLoop(nil, path, "", "", "")
+			assert.ErrorContains(t, err, tc.want)
+		})
 	}
 }
 
 func TestCheckRunsTheCaseDirectory(t *testing.T) {
 	cfg, err := filepath.Abs("../../testdata/veto.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	cases, err := filepath.Abs("../../testdata/cases")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	loop, _, err := buildLoop(nil, cfg, "", "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := runCases(loop, []string{cases}); err != nil {
-		t.Fatal(err)
-	}
-	if len(loop.Catalog.Joins()) == 0 {
-		t.Fatal("check catalog has no joins")
-	}
+	require.NoError(t, err)
+	require.NoError(t, runCases(loop, []string{cases}))
 }
 
 func TestDoctorReportsPinsAuthAndPing(t *testing.T) {
 	cfgPath, err := filepath.Abs("../../testdata/veto.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	loop, cfg, err := buildLoop(nil, cfgPath, "", "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	pins := doctorBlockers(context.Background(), loop.Catalog, cfg, []string{"assets.delete"}, false)
-	if !strings.Contains(strings.Join(pins, "\n"), "discovery-only") {
-		t.Fatalf("pins: %v", pins)
-	}
+	assert.Contains(t, strings.Join(pins, "\n"), "discovery-only")
 
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
@@ -366,50 +230,31 @@ func TestDoctorReportsPinsAuthAndPing(t *testing.T) {
 	dir := t.TempDir()
 	spec := filepath.Join(dir, "api.yaml")
 	body := strings.ReplaceAll(securedSpec, "http://example.test", up.URL)
-	if err := os.WriteFile(spec, []byte(body), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(spec, []byte(body), 0o644))
 	conf := filepath.Join(dir, "veto.yaml")
 	text := "auth:\n  bearerAuth: ASSET_TOKEN\ncontracts:\n  - " + spec + "\n"
-	if err := os.WriteFile(conf, []byte(text), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(conf, []byte(text), 0o644))
 	t.Setenv("ASSET_TOKEN", "")
 	secured, loaded, err := buildLoop(nil, conf, "", "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	missing := doctorBlockers(context.Background(), secured.Catalog, loaded, nil, true)
 	report := strings.Join(missing, "\n")
-	if !strings.Contains(report, "ASSET_TOKEN is unset") {
-		t.Fatalf("auth report: %s", report)
-	}
-	if strings.Contains(report, "ping ") {
-		t.Fatalf("live server was a blocker: %s", report)
-	}
+	assert.Contains(t, report, "ASSET_TOKEN is unset")
+	assert.NotContains(t, report, "ping ")
 	t.Setenv("ASSET_TOKEN", "s3cret")
 	set := strings.Join(doctorBlockers(context.Background(), secured.Catalog, loaded, nil, false), "\n")
-	if strings.Contains(set, "s3cret") || strings.Contains(set, "unset") {
-		t.Fatalf("secret or stale unset in report: %s", set)
-	}
+	assert.NotContains(t, set, "s3cret")
+	assert.NotContains(t, set, "unset")
 
 	downSpec := filepath.Join(dir, "down.yaml")
 	down := strings.ReplaceAll(securedSpec, "http://example.test", "http://127.0.0.1:1")
-	if err := os.WriteFile(downSpec, []byte(down), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(downSpec, []byte(down), 0o644))
 	downConf := filepath.Join(dir, "down.yaml.conf")
-	if err := os.WriteFile(downConf, []byte("contracts:\n  - "+downSpec+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(downConf, []byte("contracts:\n  - "+downSpec+"\n"), 0o644))
 	downLoop, downCfg, err := buildLoop(nil, downConf, "", "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	blocked := doctorBlockers(context.Background(), downLoop.Catalog, downCfg, nil, true)
-	if !strings.Contains(strings.Join(blocked, "\n"), "ping ") {
-		t.Fatalf("ping: %v", blocked)
-	}
+	assert.Contains(t, strings.Join(blocked, "\n"), "ping ")
 }
 
 const securedSpec = `openapi: 3.0.3

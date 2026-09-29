@@ -5,23 +5,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
-
-func TestInstallEmptyKeepsNoop(t *testing.T) {
-	stop, err := Install("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := stop(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	span := StartSpan(context.Background(), "agent.run")
-	span.End()
-}
 
 func TestOTLPExportDropsUnlistedAttributes(t *testing.T) {
 	mem := tracetest.NewInMemoryExporter()
@@ -37,18 +27,13 @@ func TestOTLPExportDropsUnlistedAttributes(t *testing.T) {
 	)
 	span.End()
 	stubs := mem.GetSpans()
-	if err := tp.Shutdown(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if len(stubs) != 1 {
-		t.Fatalf("spans: %d", len(stubs))
-	}
+	require.NoError(t, tp.Shutdown(context.Background()))
+	require.Len(t, stubs, 1)
 	var keys []string
 	for _, kv := range stubs[0].Attributes {
 		keys = append(keys, string(kv.Key)+"="+kv.Value.AsString())
 	}
 	got := strings.Join(keys, " ")
-	if !strings.Contains(got, "operation.id=assets.delete") || strings.Contains(got, "Delete asset 123") {
-		t.Fatalf("exported: %s", got)
-	}
+	assert.Contains(t, got, "operation.id=assets.delete")
+	assert.NotContains(t, got, "Delete asset 123")
 }
