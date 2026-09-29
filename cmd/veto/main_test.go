@@ -55,7 +55,7 @@ func TestHelpJSONStaysOffTheHumanHelpPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := strings.Join(doc.Commands, ",")
-	for _, name := range []string{"serve", "eval", "replay", "validate", "generate"} {
+	for _, name := range []string{"serve", "eval", "replay", "validate", "generate", "pack"} {
 		if !strings.Contains(joined, name) {
 			t.Fatalf("commands: %s", joined)
 		}
@@ -147,6 +147,42 @@ func TestBuildLoopConstructsDefaultsAndOpenAIHost(t *testing.T) {
 				t.Fatalf("base: %s", live.BaseURL)
 			}
 		})
+	}
+}
+
+func TestPackPrintsTheDeleteCall(t *testing.T) {
+	contract, err := filepath.Abs("../../testdata/openapi.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "veto.yaml")
+	if err := os.WriteFile(path, []byte("contracts:\n  - "+contract+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	loop, _, err := buildLoop(nil, path, "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text, err := packOutput(loop, "delete asset 123", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text, "assets.delete") {
+		t.Fatalf("pack:\n%s", text)
+	}
+	raw, err := packOutput(loop, "delete asset 123", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pack struct {
+		Index string `json:"Index"`
+	}
+	if err := json.Unmarshal([]byte(raw), &pack); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(pack.Index, "assets.delete") {
+		t.Fatalf("index: %s", pack.Index)
 	}
 }
 

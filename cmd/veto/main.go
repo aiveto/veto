@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -20,6 +22,7 @@ import (
 	"github.com/aiveto/veto/openapi"
 	"github.com/aiveto/veto/policy"
 	"github.com/aiveto/veto/replay"
+	"github.com/aiveto/veto/runctx"
 	"github.com/aiveto/veto/semantics"
 	"github.com/aiveto/veto/telemetry"
 	"github.com/spf13/cobra"
@@ -56,11 +59,20 @@ type (
 
 	evalCmd struct {
 		contract  []string
-		casePath  string
+		cases     []string
 		config    string
 		agent     string
 		relations string
 		baseURL   string
+	}
+
+	packCmd struct {
+		contract  []string
+		config    string
+		agent     string
+		relations string
+		message   string
+		asJSON    bool
 	}
 
 	replayCmd struct {
@@ -95,6 +107,7 @@ func newRoot() *cobra.Command {
 		newEvalCommand(),
 		newGenerateCommand(),
 		newReplayCommand(),
+		newPackCommand(),
 	)
 	return root
 }
@@ -166,12 +179,31 @@ func newEvalCommand() *cobra.Command {
 		},
 	}
 	c.Flags().StringArrayVar(&cmd.contract, "contract", nil, "OpenAPI file. Repeat to register another API. Overrides config.")
-	c.Flags().StringVar(&cmd.casePath, "case", "", "Path to eval case yaml.")
+	c.Flags().StringArrayVar(&cmd.cases, "case", nil, "Eval case file or directory. Repeat to add another.")
 	c.Flags().StringVar(&cmd.config, "config", "", "Path to veto.yaml provider keys.")
 	c.Flags().StringVar(&cmd.agent, "agent", "", "Path to agent.yaml. Overrides agent_file.")
 	c.Flags().StringVar(&cmd.relations, "relations", "", "Relations file. Overrides relations_file.")
 	c.Flags().StringVar(&cmd.baseURL, "base-url", "", "Override the server URL on every operation. Empty uses each contract server.")
 	_ = c.MarkFlagRequired("case")
+	return c
+}
+
+func newPackCommand() *cobra.Command {
+	cmd := &packCmd{}
+	c := &cobra.Command{
+		Use:   "pack",
+		Short: "Print the context pack for a message.",
+		Run: func(*cobra.Command, []string) {
+			runPack(*cmd)
+		},
+	}
+	c.Flags().StringArrayVar(&cmd.contract, "contract", nil, "OpenAPI file. Repeat to register another API. Overrides config.")
+	c.Flags().StringVar(&cmd.config, "config", "", "Path to veto.yaml provider keys.")
+	c.Flags().StringVar(&cmd.agent, "agent", "", "Path to agent.yaml. Overrides agent_file.")
+	c.Flags().StringVar(&cmd.relations, "relations", "", "Relations file. Overrides relations_file.")
+	c.Flags().StringVar(&cmd.message, "message", "", "User message.")
+	c.Flags().BoolVar(&cmd.asJSON, "json", false, "Print the pack as JSON.")
+	_ = c.MarkFlagRequired("message")
 	return c
 }
 
@@ -282,17 +314,50 @@ func runEval(cmd evalCmd) {
 		os.Exit(1)
 	}
 	defer stop(context.Background())
-	c, err := eval.LoadCase(cmd.casePath)
+	cases, err := eval.LoadCases(cmd.cases)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "eval: %v\n", err)
 		os.Exit(1)
 	}
 	r := &eval.Runner{Catalog: loop.Catalog, Semantics: loop.Semantics, Model: loop.Model, Loop: loop}
-	if err := r.Run(context.Background(), c); err != nil {
-		fmt.Fprintf(os.Stderr, "eval failed: %v\n", err)
+	for _, c := range cases {
+		if err := r.Run(context.Background(), c); err != nil {
+			fmt.Fprintf(os.Stderr, "eval failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("ok: %s\n", c.Name)
+	}
+}
+
+func runPack(cmd packCmd) {
+	loop, _, err := buildLoop(cmd.contract, cmd.config, cmd.agent, cmd.relations, "")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "pack: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("ok: %s\n", c.Name)
+	out, err := packOutput(loop, cmd.message, cmd.asJSON)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "pack: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Print(out)
+}
+
+func packOutput(loop *agent.Loop, message string, asJSON bool) (string, error) {
+	if loop.Packs == nil {
+		loop.Packs = runctx.NewBuilder(0)
+	}
+	pack := loop.Packs.Build(loop.Catalog, []runctx.Turn{{Role: "user", Content: message}}, nil, loop.Semantics, nil)
+	if !asJSON {
+		return pack.Serialize() + "\n", nil
+	}
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(pack); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
 }
 
 func runReplay(cmd replayCmd) {

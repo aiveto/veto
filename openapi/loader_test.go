@@ -41,6 +41,95 @@ func TestUnresolvedLinkFailsLoad(t *testing.T) {
 	}
 }
 
+func TestWebhooksAndCallbacksFailLoad(t *testing.T) {
+	dir := t.TempDir()
+	webhook := filepath.Join(dir, "webhook.yaml")
+	if err := os.WriteFile(webhook, []byte(webhookSpec), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := openapi.Load(context.Background(), webhook)
+	if err == nil || !strings.Contains(err.Error(), "webhooks") {
+		t.Fatalf("webhooks: %v", err)
+	}
+
+	callback := filepath.Join(dir, "callback.yaml")
+	if err := os.WriteFile(callback, []byte(callbackSpec), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err = openapi.Load(context.Background(), callback)
+	if err == nil || !strings.Contains(err.Error(), "callbacks") {
+		t.Fatalf("callbacks: %v", err)
+	}
+}
+
+func TestOpenAPI31DocumentLoads(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "ping.yaml")
+	if err := os.WriteFile(path, []byte(openAPI31), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cat, err := openapi.Load(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cat.ByID("ping") == nil {
+		t.Fatalf("operations: %s", cat.IndexLine())
+	}
+}
+
+const webhookSpec = `openapi: 3.0.3
+info:
+  title: t
+  version: "1"
+paths:
+  /ping:
+    get:
+      operationId: ping
+      responses:
+        "200":
+          description: ok
+webhooks:
+  onEvent:
+    post:
+      operationId: onEvent
+      responses:
+        "200":
+          description: ok
+`
+
+const callbackSpec = `openapi: 3.0.3
+info:
+  title: t
+  version: "1"
+paths:
+  /assets:
+    post:
+      operationId: assets.create
+      callbacks:
+        onEvent:
+          "https://example.com/hook":
+            post:
+              responses:
+                "200":
+                  description: ok
+      responses:
+        "200":
+          description: ok
+`
+
+const openAPI31 = `openapi: 3.1.0
+info:
+  title: t
+  version: "1"
+paths:
+  /ping:
+    get:
+      operationId: ping
+      responses:
+        "200":
+          description: ok
+`
+
 func specWithLink(link string) string {
 	return `openapi: 3.0.3
 info:

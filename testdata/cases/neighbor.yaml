@@ -1,0 +1,11 @@
+name: holding-selects-neighbor
+input: Holding
+expect:
+  pack_contains:
+    - assets.get
+    - teams.get
+    - Holding.teamsId identifies teams.get
+  pack_excludes:
+    - billing.invoice
+  related:
+    - teams.get

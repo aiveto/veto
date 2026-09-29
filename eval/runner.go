@@ -4,9 +4,13 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/aiveto/veto/agent"
 	"github.com/aiveto/veto/catalog"
+	"github.com/aiveto/veto/runctx"
 	"github.com/aiveto/veto/semantics"
 	"gopkg.in/yaml.v3"
 )
@@ -21,8 +25,11 @@ type (
 
 	// Expectations are deterministic assertions.
 	Expectations struct {
-		ConfirmationRequired bool   `yaml:"confirmation_required"`
-		OperationID          string `yaml:"operation"`
+		ConfirmationRequired bool     `yaml:"confirmation_required"`
+		OperationID          string   `yaml:"operation"`
+		PackContains         []string `yaml:"pack_contains"`
+		PackExcludes         []string `yaml:"pack_excludes"`
+		Related              []string `yaml:"related"`
 	}
 
 	// Runner executes eval cases without a network LLM.
@@ -33,6 +40,51 @@ type (
 		Loop      *agent.Loop
 	}
 )
+
+// LoadCases reads case files. A directory contributes its yaml files, sorted by name.
+func LoadCases(paths []string) ([]*Case, error) {
+	files, err := caseFiles(paths)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*Case, 0, len(files))
+	for _, path := range files {
+		c, err := LoadCase(path)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, nil
+}
+
+func caseFiles(paths []string) ([]string, error) {
+	var out []string
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if err != nil {
+			return nil, fmt.Errorf("read case: %w", err)
+		}
+		if !info.IsDir() {
+			out = append(out, path)
+			continue
+		}
+		entries, err := os.ReadDir(path)
+		if err != nil {
+			return nil, fmt.Errorf("read case dir: %w", err)
+		}
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			if strings.HasSuffix(e.Name(), ".yaml") || strings.HasSuffix(e.Name(), ".yml") {
+				out = append(out, filepath.Join(path, e.Name()))
+			}
+		}
+	}
+	sort.Strings(out)
+	return out, nil
+}
 
 // LoadCase reads a case yaml file.
 func LoadCase(path string) (*Case, error) {
@@ -56,6 +108,12 @@ func (r *Runner) Run(ctx context.Context, c *Case) error {
 			Model:     r.Model,
 		}
 	}
+	if err := r.checkPack(c); err != nil {
+		return err
+	}
+	if c.Expect.OperationID == "" && !c.Expect.ConfirmationRequired {
+		return nil
+	}
 	out, err := r.Loop.Run(ctx, c.Input)
 	if err != nil {
 		return err
@@ -65,6 +123,33 @@ func (r *Runner) Run(ctx context.Context, c *Case) error {
 	}
 	if c.Expect.ConfirmationRequired && out.Status != "confirmation_required" {
 		return fmt.Errorf("expected confirmation_required, got %q", out.Status)
+	}
+	return nil
+}
+
+func (r *Runner) checkPack(c *Case) error {
+	if len(c.Expect.PackContains) == 0 && len(c.Expect.PackExcludes) == 0 && len(c.Expect.Related) == 0 {
+		return nil
+	}
+	if r.Loop == nil || r.Loop.Packs == nil {
+		return fmt.Errorf("pack builder required")
+	}
+	pack := r.Loop.Packs.Build(r.Loop.Catalog, []runctx.Turn{{Role: "user", Content: c.Input}}, nil, r.Loop.Semantics, nil)
+	text := pack.Index + "\n" + pack.Serialize()
+	for _, s := range c.Expect.PackContains {
+		if !strings.Contains(text, s) {
+			return fmt.Errorf("pack missing %q", s)
+		}
+	}
+	for _, s := range c.Expect.PackExcludes {
+		if strings.Contains(text, s) {
+			return fmt.Errorf("pack contains %q", s)
+		}
+	}
+	for _, id := range c.Expect.Related {
+		if !strings.Contains(pack.Index, id) {
+			return fmt.Errorf("pack missing related %q", id)
+		}
 	}
 	return nil
 }

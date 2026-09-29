@@ -10,6 +10,7 @@ import (
 	"github.com/aiveto/veto/catalog"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/go-openapi/jsonpointer"
+	"gopkg.in/yaml.v3"
 )
 
 var pathNoun = regexp.MustCompile(`^/([a-zA-Z0-9_-]+)`)
@@ -21,11 +22,15 @@ type rawLink struct {
 	params       map[string]string
 }
 
-// Load reads an OpenAPI 3 document from path into a catalog.
+// Load reads an OpenAPI 3.0 or 3.1 document. Callbacks and webhooks are rejected.
+// A document with either is not a complete catalog, so load fails instead of dropping them.
 func Load(ctx context.Context, path string) (*catalog.Catalog, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read contract: %w", err)
+	}
+	if err := rejectDocument(data); err != nil {
+		return nil, err
 	}
 	loader := openapi3.NewLoader()
 	doc, err := loader.LoadFromData(data)
@@ -77,6 +82,40 @@ func Load(ctx context.Context, path string) (*catalog.Catalog, error) {
 	}
 	cat.Finalize()
 	return cat, nil
+}
+
+func rejectDocument(data []byte) error {
+	var root map[string]any
+	if err := yaml.Unmarshal(data, &root); err != nil {
+		return fmt.Errorf("parse openapi: %w", err)
+	}
+	if nonEmpty(root["webhooks"]) {
+		return fmt.Errorf("webhooks are not loaded")
+	}
+	paths, _ := root["paths"].(map[string]any)
+	for path, item := range paths {
+		ops, _ := item.(map[string]any)
+		for method, op := range ops {
+			body, _ := op.(map[string]any)
+			if nonEmpty(body["callbacks"]) {
+				return fmt.Errorf("callbacks on %s %s are not loaded", strings.ToUpper(method), path)
+			}
+		}
+	}
+	return nil
+}
+
+func nonEmpty(v any) bool {
+	switch t := v.(type) {
+	case nil:
+		return false
+	case map[string]any:
+		return len(t) > 0
+	case []any:
+		return len(t) > 0
+	default:
+		return true
+	}
 }
 
 func pathGroup(path string) string {
