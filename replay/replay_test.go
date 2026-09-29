@@ -38,7 +38,8 @@ func TestReplayShowsConfirmationAndOmitsTheMessage(t *testing.T) {
 	assert.Contains(t, text, "orders.delete")
 
 	open := replay.FromSpans(rec.Spans(), false)
-	assert.Contains(t, open.String(), "user_message=Delete order 123")
+	assert.NotContains(t, open.String(), "user_message=")
+	assert.NotContains(t, open.String(), "Delete order 123")
 }
 
 func TestRedactDropsAttributesOutsideTheAllowlist(t *testing.T) {

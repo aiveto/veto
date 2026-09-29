@@ -33,7 +33,11 @@ func TestSignedApprovalIsNotStored(t *testing.T) {
 	other.now = issued.now
 	assert.False(t, other.ConsumeConfirmation(token, "orders.delete", params))
 	assert.True(t, other.ConsumeConfirmation(token, "orders.delete", map[string]string{"id": "1"}))
-	assert.True(t, other.ConsumeConfirmation(token, "orders.delete", map[string]string{"id": "1"}))
+	assert.False(t, other.ConsumeConfirmation(token, "orders.delete", map[string]string{"id": "1"}))
+	restarted := NewState()
+	restarted.SetSigner([]byte("secret"), time.Minute)
+	restarted.now = func() time.Time { return time.Unix(1_000, 0) }
+	assert.True(t, restarted.ConsumeConfirmation(token, "orders.delete", map[string]string{"id": "1"}))
 	other.now = func() time.Time { return time.Unix(1_000, 0).Add(time.Minute) }
 	fresh := issued.RequestConfirmation("orders.delete", map[string]string{"id": "1"})
 	assert.False(t, other.ConsumeConfirmation(fresh, "orders.delete", map[string]string{"id": "1"}))

@@ -127,7 +127,6 @@ func (l *Loop) WrapPolicy(around policy.Around) {
 func (l *Loop) Run(ctx context.Context, userText string) (Outcome, error) {
 	span := telemetry.StartSpan(ctx, "agent.run")
 	defer span.End()
-	span.SetAttributes(telemetry.Attr("user_message", userText))
 
 	turns, err := l.memoryTurns(ctx, userText)
 	if err != nil {
@@ -210,6 +209,11 @@ func (l *Loop) Invoke(ctx context.Context, operationID string, params map[string
 	if op == nil {
 		return Call{Status: "error"}, fmt.Errorf("unknown operation %q", operationID)
 	}
+	if op.Exposure == catalog.ExposureDiscovery {
+		err := fmt.Errorf("operation %q is discovery-only", operationID)
+		return Call{Status: "error", OperationID: operationID, Code: "not_callable", Error: err.Error()}, err
+	}
+	ctx = policy.WithInput(ctx, policy.Input{Params: params})
 	decision, err := policy.Check(ctx, l.Policy, op)
 	if err != nil {
 		return Call{Status: "error"}, err
@@ -247,8 +251,12 @@ func (l *Loop) Invoke(ctx context.Context, operationID string, params map[string
 		}
 		return call, err
 	}
+	status := result.Code
+	if status == "" {
+		status = "ok"
+	}
 	return Call{
-		Status:      "ok",
+		Status:      status,
 		OperationID: operationID,
 		HTTPStatus:  result.Status,
 		Body:        result.Body,

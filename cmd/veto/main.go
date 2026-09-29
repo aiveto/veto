@@ -19,6 +19,7 @@ import (
 	"github.com/aiveto/veto/generate"
 	"github.com/aiveto/veto/mcpserver"
 	"github.com/aiveto/veto/memory"
+	"github.com/aiveto/veto/opa"
 	"github.com/aiveto/veto/openapi"
 	"github.com/aiveto/veto/policy"
 	"github.com/aiveto/veto/replay"
@@ -642,10 +643,21 @@ func applyProviders(loop *agent.Loop, cfg config.File) error {
 	default:
 		return fmt.Errorf("memory provider %q is not in this slice", cfg.Memory)
 	}
+	base := policy.Builtin{Caller: callerName(cfg.Caller), Allow: allowSet(cfg.Permissions)}
 	switch cfg.Policy {
 	case "builtin":
-		loop.Policy = policy.Builtin{Caller: callerName(cfg.Caller), Allow: allowSet(cfg.Permissions)}
-	case "opa", "spicedb":
+		loop.Policy = base
+	case "opa":
+		eng, err := opa.New(context.Background(), cfg.PolicyFile, cfg.PolicyBundle, base)
+		if err != nil {
+			return err
+		}
+		eng.Environment = cfg.Environment
+		if cfg.Caller != "" {
+			eng.Principal = cfg.Caller
+		}
+		loop.Policy = eng
+	case "spicedb":
 		return fmt.Errorf("policy provider %q is not in this slice", cfg.Policy)
 	default:
 		return fmt.Errorf("policy provider %q is not in this slice", cfg.Policy)

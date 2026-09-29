@@ -9,14 +9,21 @@ import (
 )
 
 func TestSurfaceRegressions(t *testing.T) {
+	yes := true
+	no := false
 	base := map[string]catalog.OpFact{
-		"customers.get": {Referenced: true},
-		"orders.delete": {Destructive: true, Confirmation: true},
+		"customers.get": {Referenced: true, Callable: &no},
+		"orders.delete": {Destructive: true, Confirmation: true, Permissions: []string{"order.delete"}},
 		"orders.get":    {Referenced: true, Confirmation: false},
 	}
 	changed := map[string]catalog.OpFact{
-		"orders.delete": {Destructive: true, Confirmation: false},
+		"orders.delete": {Destructive: true, Confirmation: false, Permissions: []string{"order.delete"}},
 		"orders.get":    {Referenced: true},
+	}
+	opened := map[string]catalog.OpFact{
+		"customers.get": {Referenced: true, Callable: &yes},
+		"orders.delete": {Destructive: true, Confirmation: true, Callable: &yes},
+		"orders.get":    {Referenced: true, Callable: &yes},
 	}
 	cases := []struct {
 		name  string
@@ -39,6 +46,14 @@ func TestSurfaceRegressions(t *testing.T) {
 			want:  []string{"operation customers.get referenced by a relation or link was removed"},
 		},
 		{name: "unchanged", next: base},
+		{
+			name: "discovery-only became callable and a permission was removed",
+			next: opened,
+			want: []string{
+				"operation customers.get became callable",
+				"operation orders.delete lost permission order.delete",
+			},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -64,4 +79,19 @@ func TestFactsMarkJoinedAndDestructiveOperations(t *testing.T) {
 	assert.True(t, del.Destructive)
 	assert.True(t, del.Confirmation)
 	assert.False(t, del.Referenced)
+	requireCallable := func(id string, want bool) {
+		t.Helper()
+		if assert.NotNil(t, facts[id].Callable) {
+			assert.Equal(t, want, *facts[id].Callable)
+		}
+	}
+	requireCallable("orders.get", true)
+	cat.Operations[1].Exposure = catalog.ExposureDiscovery
+	cat.Operations[1].Permissions = []string{"order.delete"}
+	cat.Finalize()
+	hidden := catalog.Facts(cat)
+	if assert.NotNil(t, hidden["orders.delete"].Callable) {
+		assert.False(t, *hidden["orders.delete"].Callable)
+	}
+	assert.Equal(t, []string{"order.delete"}, hidden["orders.delete"].Permissions)
 }

@@ -220,7 +220,7 @@ func TestDoctorReportsPinsAuthAndPing(t *testing.T) {
 	require.NoError(t, err)
 	loop, cfg, err := buildLoop(nil, cfgPath, "", "", "")
 	require.NoError(t, err)
-	pins := doctorBlockers(context.Background(), loop.Catalog, cfg, []string{"orders.delete"}, false)
+	pins := doctorBlockers(context.Background(), loop.Catalog, cfg, []string{"orders.list"}, false)
 	assert.Contains(t, strings.Join(pins, "\n"), "discovery-only")
 
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

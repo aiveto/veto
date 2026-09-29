@@ -14,7 +14,13 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-const tracerName = "github.com/aiveto/veto"
+const (
+	tracerName = "github.com/aiveto/veto"
+
+	// GenAI attribute names. The genai module is not a dependency.
+	ToolNameAttr    = "gen_ai.tool.name"
+	OperationIDAttr = "gen_ai.operation.name"
+)
 
 type (
 	Span struct {
@@ -41,7 +47,7 @@ func Attr(key, value string) attribute.KeyValue {
 
 func Allowed(key string) bool {
 	switch key {
-	case "operation.id", "decision", "http.method", "http.status", "approval.id", "flow.name", "tools":
+	case "operation.id", "decision", "http.method", "http.status", "approval.id", "flow.name", "tools", ToolNameAttr, OperationIDAttr:
 		return true
 	default:
 		return false

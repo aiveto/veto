@@ -4,8 +4,7 @@ operations:
       - order.delete
     idempotency: none
     retry: never
-    exposure: discovery-only
   - operation: orders.list
-    exposure: grouped
+    exposure: discovery-only
   - operation: orders.get
     exposure: grouped

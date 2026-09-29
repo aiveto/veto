@@ -112,6 +112,36 @@ func TestFollowUsesLinkParameterMapping(t *testing.T) {
 	assert.Equal(t, 1, listed)
 }
 
+func TestFollowStopsAfterTheCallCap(t *testing.T) {
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
+	require.NoError(t, err)
+	for i := 0; i < 20; i++ {
+		cat.Links = append(cat.Links, catalog.OpLink{
+			From:   "orders.get",
+			To:     "orders.get",
+			Params: map[string]string{"id": "$response.body#/id"},
+		})
+	}
+	cat.Finalize()
+	var hits int
+	loop, err := agent.New(cat, nil, countExec{hits: &hits, body: `{"id":"1"}`})
+	require.NoError(t, err)
+	calls, err := loop.Follow(context.Background(), "orders.get", map[string]string{"id": "1"}, "")
+	assert.ErrorContains(t, err, "follow stopped after 8")
+	assert.Len(t, calls, 8)
+	assert.Equal(t, 8, hits)
+}
+
+type countExec struct {
+	hits *int
+	body string
+}
+
+func (c countExec) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, params map[string]string) (agent.HTTPResult, error) {
+	*c.hits++
+	return agent.HTTPResult{Status: http.StatusOK, Body: c.body, Code: "ok"}, nil
+}
+
 func TestFollowStopsOnConfirmation(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)

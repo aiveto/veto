@@ -34,7 +34,7 @@ func followPages(ctx context.Context, cfg Config, op *catalog.Operation, params 
 		if err != nil {
 			return "", err
 		}
-		body, err = ReadBody(resp)
+		body, err = readBody(resp, cfg.MaxBody)
 		if err != nil {
 			return "", err
 		}

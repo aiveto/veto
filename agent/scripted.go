@@ -51,9 +51,6 @@ func (s *Scripted) Complete(ctx context.Context, req Request) (Response, error) 
 	span := telemetry.StartSpan(ctx, "model.request")
 	defer span.End()
 	msg := strings.TrimSpace(req.UserMessage)
-	if msg != "" {
-		span.SetAttributes(telemetry.Attr("user_message", msg))
-	}
 	if msg != "" && !strings.Contains(req.Context, msg) {
 		return Response{}, nil
 	}
