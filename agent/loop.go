@@ -29,6 +29,12 @@ type (
 		Invoke(ctx context.Context, op *catalog.Operation, params map[string]string) (HTTPResult, error)
 	}
 
+	// ParamError is a required parameter that was empty.
+	ParamError struct {
+		Operation string
+		Name      string
+	}
+
 	// Call is one policy-gated execution of an operation.
 	Call struct {
 		Status      string
@@ -178,6 +184,13 @@ func (l *Loop) Run(ctx context.Context, userText string) (Outcome, error) {
 	}, nil
 }
 
+func (e ParamError) Error() string {
+	if e.Name == "" {
+		return fmt.Sprintf("operation %s: empty path parameter", e.Operation)
+	}
+	return fmt.Sprintf("operation %s: %s required", e.Operation, e.Name)
+}
+
 // Invoke checks policy and calls HTTP only when the call is allowed.
 func (l *Loop) Invoke(ctx context.Context, operationID string, params map[string]string, approvalID string) (Call, error) {
 	l.ready()
@@ -216,7 +229,12 @@ func (l *Loop) Invoke(ctx context.Context, operationID string, params map[string
 	}
 	result, err := l.Exec.Invoke(ctx, op, params)
 	if err != nil {
-		return Call{Status: "error", Error: err.Error(), OperationID: operationID}, err
+		call := Call{Status: "error", Error: err.Error(), OperationID: operationID}
+		var missing ParamError
+		if errors.As(err, &missing) {
+			call.Code = "missing_param"
+		}
+		return call, err
 	}
 	return Call{
 		Status:      "ok",

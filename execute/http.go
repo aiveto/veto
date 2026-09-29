@@ -248,7 +248,7 @@ func requireParams(op *catalog.Operation, params map[string]string) error {
 			continue
 		}
 		if strings.TrimSpace(params[p.Name]) == "" {
-			return fmt.Errorf("operation %s: %s required", op.ID, p.Name)
+			return agent.ParamError{Operation: op.ID, Name: p.Name}
 		}
 	}
 	return nil

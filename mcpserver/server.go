@@ -19,6 +19,8 @@ type (
 		OperationID string `json:"operation_id,omitempty"`
 		HTTPStatus  int    `json:"http_status,omitempty"`
 		Body        string `json:"body,omitempty"`
+		Code        string `json:"code,omitempty"`
+		Retryable   bool   `json:"retryable"`
 		Error       string `json:"error,omitempty"`
 	}
 
@@ -69,6 +71,8 @@ func (s *Server) Invoke(ctx context.Context, operationID string, params map[stri
 		OperationID: call.OperationID,
 		HTTPStatus:  call.HTTPStatus,
 		Body:        call.Body,
+		Code:        call.Code,
+		Retryable:   call.Retryable,
 		Error:       call.Error,
 	}, err
 }

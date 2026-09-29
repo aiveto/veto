@@ -2,6 +2,7 @@ package mcpserver_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -52,5 +53,55 @@ func TestInvokeDeleteRequiresApprovalBeforeHTTP(t *testing.T) {
 	}
 	if hits.Load() != 1 {
 		t.Fatalf("expected one HTTP call, hits=%d", hits.Load())
+	}
+	raw, err := json.Marshal(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if doc["status"] != "confirmation_required" || doc["approval_id"] == "" {
+		t.Fatalf("invoke json: %s", raw)
+	}
+}
+
+func TestInvokeJSONCarriesCodeAndRetryable(t *testing.T) {
+	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+	sem := semantics.NewDerived(cat)
+	srv := &mcpserver.Server{
+		Catalog:   cat,
+		Semantics: sem,
+		Agent:     agent.New(cat, sem, execute.Client{BaseURL: ts.URL}),
+	}
+	missing, err := srv.Invoke(context.Background(), "assets.get", nil, "")
+	if err == nil || missing.Code != "missing_param" {
+		t.Fatalf("missing: code=%q err=%v", missing.Code, err)
+	}
+	got, err := srv.Invoke(context.Background(), "assets.get", map[string]string{"id": "9"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Code      string `json:"code"`
+		Retryable bool   `json:"retryable"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if doc.Code != "not_found" || doc.Retryable {
+		t.Fatalf("json: %s", raw)
 	}
 }
