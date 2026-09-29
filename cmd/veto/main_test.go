@@ -261,6 +261,23 @@ func TestFinishReplayWritesARedactedFile(t *testing.T) {
 	}
 }
 
+func TestTwoAPIExampleJoinsTeams(t *testing.T) {
+	cfg, err := filepath.Abs("../../examples/two-apis/veto.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	loop, _, err := buildLoop(nil, cfg, "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loop.Catalog.ByID("assets.get") == nil || loop.Catalog.ByID("teams.get") == nil {
+		t.Fatal(loop.Catalog.IndexLine())
+	}
+	if !strings.Contains(strings.Join(loop.Catalog.Joins(), "\n"), "teams.get") {
+		t.Fatalf("joins: %v", loop.Catalog.Joins())
+	}
+}
+
 func TestExternalPolicyFailsClosed(t *testing.T) {
 	contract, err := filepath.Abs("../../testdata/openapi.yaml")
 	if err != nil {

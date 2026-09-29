@@ -1,4 +1,5 @@
 /veto
+*.swp
 *.exe
 *.test
 *.out
