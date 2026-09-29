@@ -19,7 +19,7 @@ func TestOverlaySetsPermissionsAndCanRequireConfirmation(t *testing.T) {
 	require.NoError(t, agentmeta.Apply(cat, f))
 	del := cat.ByID("orders.delete")
 	require.NotNil(t, del)
-	assert.Equal(t, "discovery-only", del.Exposure)
+	assert.Equal(t, "discovery-only", cat.ByID("orders.list").Exposure)
 	assert.Equal(t, []string{"order.delete"}, del.Permissions)
 	assert.True(t, del.RequiresConfirmation)
 

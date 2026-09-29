@@ -17,12 +17,15 @@ import (
 	"github.com/google/uuid"
 )
 
+const DefaultMaxResponseBytes int64 = 1 << 20
+
 type (
 	Config struct {
 		BaseURL    string
 		Client     *http.Client
 		RecordBody bool
 		Auth       map[string]string // secret by scheme name; never read from yaml
+		MaxBody    int64
 	}
 
 	Client struct {
@@ -31,15 +34,17 @@ type (
 		RecordBody  bool
 		Auth        map[string]string
 		FollowPages int
+		MaxBody     int64
 	}
 )
 
 func (c Client) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, params map[string]string) (agent.HTTPResult, error) {
-	resp, err := InvokeResponse(ctx, Config{BaseURL: c.BaseURL, Client: c.HTTP, RecordBody: c.RecordBody, Auth: c.Auth}, op, params)
+	cfg := Config{BaseURL: c.BaseURL, Client: c.HTTP, RecordBody: c.RecordBody, Auth: c.Auth, MaxBody: c.MaxBody}
+	resp, err := InvokeResponse(ctx, cfg, op, params)
 	if err != nil {
 		return agent.HTTPResult{}, err
 	}
-	body, err := ReadBody(resp)
+	body, err := readBody(resp, cfg.MaxBody)
 	if err != nil {
 		return agent.HTTPResult{}, err
 	}
@@ -48,7 +53,7 @@ func (c Client) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, par
 	if c.FollowPages <= 1 || len(op.Page) == 0 {
 		return result, nil
 	}
-	merged, err := followPages(ctx, Config{BaseURL: c.BaseURL, Client: c.HTTP, RecordBody: c.RecordBody, Auth: c.Auth}, op, params, body, c.FollowPages)
+	merged, err := followPages(ctx, cfg, op, params, body, c.FollowPages)
 	if err != nil {
 		return agent.HTTPResult{}, err
 	}
@@ -62,7 +67,12 @@ func InvokeResponse(ctx context.Context, cfg Config, op *catalog.Operation, para
 	}
 	span := telemetry.StartSpan(ctx, "execute.invoke")
 	defer span.End()
-	span.SetAttributes(telemetry.Attr("operation.id", op.ID), telemetry.Attr("http.method", op.Method))
+	span.SetAttributes(
+		telemetry.Attr("operation.id", op.ID),
+		telemetry.Attr("http.method", op.Method),
+		telemetry.Attr(telemetry.ToolNameAttr, op.ID),
+		telemetry.Attr(telemetry.OperationIDAttr, op.ID),
+	)
 
 	base := cfg.BaseURL
 	if base == "" {
@@ -138,15 +148,15 @@ func InvokeResponse(ctx context.Context, cfg Config, op *catalog.Operation, para
 	if op.Idempotency == "key" {
 		req.Header.Set("Idempotency-Key", uuid.NewString())
 	}
-	if formatted := formatParams(spanParams(op, params)); formatted != "" {
-		span.SetAttributes(telemetry.Attr("params", formatted))
+	if names := paramNames(params); names != "" {
+		span.SetAttributes(telemetry.Attr("params", names))
 	}
 
 	resp, err := doRetry(cfg.Client, req, op)
 	if err != nil {
 		return nil, err
 	}
-	raw, err := io.ReadAll(resp.Body)
+	raw, err := readLimited(resp.Body, cfg.MaxBody)
 	if closeErr := resp.Body.Close(); closeErr != nil && err == nil {
 		err = closeErr
 	}
@@ -269,22 +279,7 @@ func requireParams(op *catalog.Operation, params map[string]string) error {
 	return nil
 }
 
-func spanParams(op *catalog.Operation, params map[string]string) map[string]string {
-	if len(params) == 0 {
-		return nil
-	}
-	out := make(map[string]string, len(params))
-	for k, v := range params {
-		out[k] = v
-	}
-	if p, ok := op.BodyParam(); ok {
-		delete(out, p.Name)
-	}
-	delete(out, "_body")
-	return out
-}
-
-func formatParams(params map[string]string) string {
+func paramNames(params map[string]string) string {
 	if len(params) == 0 {
 		return ""
 	}
@@ -293,18 +288,18 @@ func formatParams(params map[string]string) string {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	parts := make([]string, 0, len(keys))
-	for _, k := range keys {
-		parts = append(parts, k+"="+params[k])
-	}
-	return strings.Join(parts, ",")
+	return strings.Join(keys, ",")
 }
 
 func ReadBody(resp *http.Response) (string, error) {
+	return readBody(resp, 0)
+}
+
+func readBody(resp *http.Response, max int64) (string, error) {
 	if resp == nil || resp.Body == nil {
 		return "", nil
 	}
-	b, err := io.ReadAll(resp.Body)
+	b, err := readLimited(resp.Body, max)
 	if closeErr := resp.Body.Close(); closeErr != nil && err == nil {
 		err = closeErr
 	}
@@ -312,4 +307,21 @@ func ReadBody(resp *http.Response) (string, error) {
 		return "", fmt.Errorf("read body: %w", err)
 	}
 	return string(b), nil
+}
+
+func readLimited(r io.Reader, max int64) ([]byte, error) {
+	if r == nil {
+		return nil, nil
+	}
+	if max <= 0 {
+		max = DefaultMaxResponseBytes
+	}
+	b, err := io.ReadAll(io.LimitReader(r, max+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(b)) > max {
+		return nil, fmt.Errorf("response exceeds %d bytes", max)
+	}
+	return b, nil
 }

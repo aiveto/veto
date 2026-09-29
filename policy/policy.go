@@ -18,6 +18,8 @@ import (
 	"github.com/google/uuid"
 )
 
+type inputKey struct{}
+
 const (
 	DecisionAllow              Decision = "allow"
 	DecisionDeny               Decision = "deny"
@@ -33,13 +35,18 @@ type (
 		Params      map[string]string
 	}
 
-	// A signer secret makes approval ids HMAC tokens. Those are not stored.
+	// Consumed nonces live in this process. A restart forgets them until the token expires.
 	State struct {
 		mu      sync.Mutex
 		pending map[string]PendingConfirmation
+		used    map[string]int64
 		secret  []byte
 		ttl     time.Duration
 		now     func() time.Time
+	}
+
+	Input struct {
+		Params map[string]string
 	}
 
 	Hook interface {
@@ -109,11 +116,23 @@ func (s *State) RequestConfirmation(opID string, params map[string]string) strin
 	return id
 }
 
+func WithInput(ctx context.Context, in Input) context.Context {
+	return context.WithValue(ctx, inputKey{}, in)
+}
+
+func InputFrom(ctx context.Context) Input {
+	in, _ := ctx.Value(inputKey{}).(Input)
+	if in.Params == nil {
+		in.Params = map[string]string{}
+	}
+	return in
+}
+
 func (s *State) ConsumeConfirmation(approvalID, opID string, params map[string]string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(s.secret) > 0 {
-		return validApproval(s.secret, approvalID, opID, params, s.clock())
+		return s.consumeSigned(approvalID, opID, params, s.clock())
 	}
 	p, ok := s.pending[approvalID]
 	if !ok || p.OperationID != opID || !sameParams(p.Params, params) {
@@ -198,34 +217,47 @@ func Check(ctx context.Context, hook Hook, op *catalog.Operation) (Decision, err
 
 func signApproval(secret []byte, opID string, params map[string]string, exp time.Time) string {
 	unix := exp.Unix()
+	nonce := uuid.NewString()
 	mac := hmac.New(sha256.New, secret)
-	_, _ = mac.Write([]byte(approvalPayload(opID, params, unix)))
+	_, _ = mac.Write([]byte(approvalPayload(opID, params, unix, nonce)))
 	sum := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
-	return fmt.Sprintf("v1.%d.%s", unix, sum)
+	return fmt.Sprintf("v1.%d.%s.%s", unix, nonce, sum)
 }
 
-func validApproval(secret []byte, token, opID string, params map[string]string, now time.Time) bool {
+func (s *State) consumeSigned(token, opID string, params map[string]string, now time.Time) bool {
 	parts := strings.Split(token, ".")
-	if len(parts) != 3 || parts[0] != "v1" {
+	if len(parts) != 4 || parts[0] != "v1" || parts[2] == "" {
 		return false
 	}
 	unix, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil || !now.Before(time.Unix(unix, 0)) {
+		return false
+	}
+	got, err := base64.RawURLEncoding.DecodeString(parts[3])
 	if err != nil {
 		return false
 	}
-	if !now.Before(time.Unix(unix, 0)) {
+	mac := hmac.New(sha256.New, s.secret)
+	_, _ = mac.Write([]byte(approvalPayload(opID, params, unix, parts[2])))
+	if !hmac.Equal(got, mac.Sum(nil)) {
 		return false
 	}
-	got, err := base64.RawURLEncoding.DecodeString(parts[2])
-	if err != nil {
+	if s.used == nil {
+		s.used = map[string]int64{}
+	}
+	for id, until := range s.used {
+		if !now.Before(time.Unix(until, 0)) {
+			delete(s.used, id)
+		}
+	}
+	if _, ok := s.used[parts[2]]; ok {
 		return false
 	}
-	mac := hmac.New(sha256.New, secret)
-	_, _ = mac.Write([]byte(approvalPayload(opID, params, unix)))
-	return hmac.Equal(got, mac.Sum(nil))
+	s.used[parts[2]] = unix
+	return true
 }
 
-func approvalPayload(opID string, params map[string]string, exp int64) string {
+func approvalPayload(opID string, params map[string]string, exp int64, nonce string) string {
 	keys := make([]string, 0, len(params))
 	for k := range params {
 		keys = append(keys, k)
@@ -235,6 +267,8 @@ func approvalPayload(opID string, params map[string]string, exp int64) string {
 	b.WriteString(opID)
 	b.WriteByte('\n')
 	b.WriteString(strconv.FormatInt(exp, 10))
+	b.WriteByte('\n')
+	b.WriteString(nonce)
 	for _, k := range keys {
 		b.WriteByte('\n')
 		b.WriteString(k)

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/aiveto/veto/agent"
+	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/mcpserver"
 	"github.com/aiveto/veto/openapi"
@@ -80,5 +81,35 @@ func TestInvokeJSONCarriesCodeAndRetryable(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(raw, &doc))
 	assert.Equal(t, "not_found", doc.Code)
+	assert.Equal(t, "not_found", got.Status)
 	assert.False(t, doc.Retryable)
+}
+
+func TestInvokeDiscoveryOnlyDoesNotCallHTTP(t *testing.T) {
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
+	require.NoError(t, err)
+	op := cat.ByID("orders.get")
+	require.NotNil(t, op)
+	op.Exposure = catalog.ExposureDiscovery
+	var hits atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+	}))
+	defer ts.Close()
+	sem := semantics.NewDerived(cat)
+	loop, err := agent.New(cat, sem, execute.Client{BaseURL: ts.URL})
+	require.NoError(t, err)
+	srv := &mcpserver.Server{Catalog: cat, Semantics: sem, Agent: loop}
+	got, err := srv.Invoke(context.Background(), "orders.get", map[string]string{"id": "1"}, "")
+	assert.ErrorContains(t, err, "discovery-only")
+	assert.Equal(t, "not_callable", got.Code)
+	assert.Equal(t, int32(0), hits.Load())
+	direct, err := loop.Invoke(context.Background(), "orders.delete", map[string]string{"id": "1"}, "")
+	require.NoError(t, err)
+	assert.Equal(t, "confirmation_required", direct.Status)
+	op = cat.ByID("orders.delete")
+	op.Exposure = catalog.ExposureDiscovery
+	_, err = loop.Invoke(context.Background(), "orders.delete", map[string]string{"id": "1"}, "")
+	assert.ErrorContains(t, err, "discovery-only")
+	assert.Equal(t, int32(0), hits.Load())
 }

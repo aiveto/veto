@@ -68,7 +68,7 @@ func RunStdio(ctx context.Context, srv *Server, opt Options) error {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "capabilities_invoke",
-		Description: "Invoke an operation through policy and HTTP. confirmation_required includes approval_id. Send that id on the next invoke to resume. Without an approval secret the pending call stays in this process. With one, the id is a signed token and nothing is stored.",
+		Description: "Invoke an operation through policy and HTTP. confirmation_required includes approval_id. Send that id on the next invoke to resume. Without an approval secret the pending call stays in this process. With one, the id is a signed token. This process remembers the nonce until it expires.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args invokeArgs) (*mcp.CallToolResult, any, error) {
 		res, err := srv.Invoke(ctx, args.OperationID, args.Params, args.ApprovalID)
 		return invokeToolResult(res, err)
@@ -82,7 +82,7 @@ func RunStdio(ctx context.Context, srv *Server, opt Options) error {
 				Description: "Invoke an operation in " + group,
 			}, func(ctx context.Context, req *mcp.CallToolRequest, args invokeArgs) (*mcp.CallToolResult, any, error) {
 				op := srv.Catalog.ByID(args.OperationID)
-				if op == nil || op.Group != group || op.Exposure == catalog.ExposureDiscovery {
+				if op == nil || op.Group != group {
 					return toolError(fmt.Errorf("operation %q is not in group %s", args.OperationID, group))
 				}
 				res, err := srv.Invoke(ctx, args.OperationID, args.Params, args.ApprovalID)
@@ -122,7 +122,7 @@ func invokeToolResult(res InvokeResult, callErr error) (*mcp.CallToolResult, any
 	}
 	result, _, err := textResult(string(b))
 	if result != nil {
-		result.IsError = res.Status == "error"
+		result.IsError = res.Status != "" && res.Status != "ok" && res.Status != "confirmation_required"
 	}
 	return result, nil, err
 }

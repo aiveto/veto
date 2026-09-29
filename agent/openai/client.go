@@ -56,9 +56,6 @@ func New(baseURL, apiKey, name string) (*Client, error) {
 func (c *Client) Complete(ctx context.Context, req agent.Request) (agent.Response, error) {
 	span := telemetry.StartSpan(ctx, "model.request")
 	defer span.End()
-	if strings.TrimSpace(req.UserMessage) != "" {
-		span.SetAttributes(telemetry.Attr("user_message", req.UserMessage))
-	}
 	if strings.TrimSpace(req.Context) == "" {
 		return agent.Response{}, fmt.Errorf("openai model requires a context pack")
 	}

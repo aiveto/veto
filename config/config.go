@@ -18,6 +18,9 @@ type File struct {
 	SemanticsFile string            `yaml:"semantics_file"`
 	Decision      string            `yaml:"decision"`
 	Policy        string            `yaml:"policy"`
+	PolicyFile    string            `yaml:"policy_file"`
+	PolicyBundle  string            `yaml:"policy_bundle"`
+	Environment   string            `yaml:"environment"`
 	Telemetry     string            `yaml:"telemetry"`
 	TraceExport   string            `yaml:"trace_export"`
 	Execution     string            `yaml:"execution"`
@@ -78,6 +81,12 @@ func Load(path string) (File, error) {
 	}
 	if cfg.MemoryFile != "" && !filepath.IsAbs(cfg.MemoryFile) {
 		cfg.MemoryFile = filepath.Join(dir, cfg.MemoryFile)
+	}
+	if cfg.PolicyFile != "" && !filepath.IsAbs(cfg.PolicyFile) {
+		cfg.PolicyFile = filepath.Join(dir, cfg.PolicyFile)
+	}
+	if cfg.PolicyBundle != "" && !filepath.IsAbs(cfg.PolicyBundle) {
+		cfg.PolicyBundle = filepath.Join(dir, cfg.PolicyBundle)
 	}
 	if cfg.TraceFile != "" && !filepath.IsAbs(cfg.TraceFile) {
 		cfg.TraceFile = filepath.Join(dir, cfg.TraceFile)
@@ -147,6 +156,9 @@ func (f File) validate() error {
 	case "builtin", "opa", "spicedb":
 	default:
 		return fmt.Errorf("policy provider %q is not in this slice", f.Policy)
+	}
+	if f.Policy == "opa" && f.PolicyFile != "" && f.PolicyBundle != "" {
+		return fmt.Errorf("policy opa takes policy_file or policy_bundle")
 	}
 	if f.Telemetry != "otel" {
 		return fmt.Errorf("telemetry provider %q is not in this slice", f.Telemetry)
