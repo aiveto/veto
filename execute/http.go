@@ -1,6 +1,7 @@
 package execute
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -49,9 +50,6 @@ func Invoke(ctx context.Context, cfg Config, op *catalog.Operation, params map[s
 	span := telemetry.StartSpan(ctx, "execute.invoke")
 	defer span.End()
 	span.SetAttributes(telemetry.Attr("operation.id", op.ID), telemetry.Attr("http.method", op.Method))
-	if formatted := formatParams(params); formatted != "" {
-		span.SetAttributes(telemetry.Attr("params", formatted))
-	}
 
 	base := cfg.BaseURL
 	if base == "" {
@@ -61,19 +59,35 @@ func Invoke(ctx context.Context, cfg Config, op *catalog.Operation, params map[s
 		return nil, fmt.Errorf("operation %s has no server URL", op.ID)
 	}
 
+	if err := requireParams(op, params); err != nil {
+		return nil, err
+	}
+
 	path := op.PathTemplate
 	for _, p := range op.Params {
 		if p.In != "path" {
 			continue
 		}
-		val := params[p.Name]
-		path = strings.Replace(path, "{"+p.Name+"}", url.PathEscape(val), 1)
+		path = strings.Replace(path, "{"+p.Name+"}", url.PathEscape(params[p.Name]), 1)
+	}
+	if strings.Contains(path, "{") {
+		return nil, fmt.Errorf("operation %s: empty path parameter", op.ID)
 	}
 	endpoint := strings.TrimRight(base, "/") + path
 
-	req, err := http.NewRequestWithContext(ctx, op.Method, endpoint, nil)
+	var body io.Reader
+	if p, ok := op.BodyParam(); ok {
+		raw := params[p.Name]
+		if raw != "" {
+			body = bytes.NewReader([]byte(raw))
+		}
+	}
+	req, err := http.NewRequestWithContext(ctx, op.Method, endpoint, body)
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
 	q := req.URL.Query()
 	for _, p := range op.Params {
@@ -93,8 +107,39 @@ func Invoke(ctx context.Context, cfg Config, op *catalog.Operation, params map[s
 			req.Header.Set(p.Name, v)
 		}
 	}
+	if formatted := formatParams(spanParams(op, params)); formatted != "" {
+		span.SetAttributes(telemetry.Attr("params", formatted))
+	}
 
 	return cfg.Client.Do(req)
+}
+
+func requireParams(op *catalog.Operation, params map[string]string) error {
+	for _, p := range op.Params {
+		required := p.Required || p.In == "path"
+		if !required {
+			continue
+		}
+		if strings.TrimSpace(params[p.Name]) == "" {
+			return fmt.Errorf("operation %s: %s required", op.ID, p.Name)
+		}
+	}
+	return nil
+}
+
+func spanParams(op *catalog.Operation, params map[string]string) map[string]string {
+	if len(params) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(params))
+	for k, v := range params {
+		out[k] = v
+	}
+	if p, ok := op.BodyParam(); ok {
+		delete(out, p.Name)
+	}
+	delete(out, "_body")
+	return out
 }
 
 func formatParams(params map[string]string) string {

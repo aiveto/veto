@@ -48,7 +48,7 @@ func New(baseURL string, httpClient *http.Client) *Client {
 				Permissions: {{list .Permissions}},
 				Params: []catalog.Param{
 {{- range .Params}}
-					{Name: {{quote .Name}}, In: {{quote .In}}, Required: {{.Required}}, Description: {{quote .Description}}},
+					{Name: {{quote .Name}}, In: {{quote .In}}, Required: {{.Required}}, Description: {{quote .Description}}, Schema: {{quote .Schema}}},
 {{- end}}
 				},
 			},
@@ -260,6 +260,7 @@ type (
 		In          string
 		Required    bool
 		Description string
+		Schema      string
 		RequiredErr string
 	}
 )
@@ -303,6 +304,7 @@ func views(cat *catalog.Catalog) []opView {
 				In:          p.In,
 				Required:    p.Required || p.In == "path",
 				Description: p.Description,
+				Schema:      p.Schema,
 				RequiredErr: op.ID + ": " + p.Name + " required",
 			})
 		}

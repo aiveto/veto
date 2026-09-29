@@ -112,7 +112,11 @@ func mapOperation(method, path, group, base string, op *openapi3.Operation) cata
 			In:          pv.In,
 			Required:    pv.Required,
 			Description: pv.Description,
+			Schema:      schemaJSON(pv.Schema),
 		})
+	}
+	if body, ok := bodyParam(op); ok {
+		params = append(params, body)
 	}
 
 	respSummary := ""

@@ -30,7 +30,7 @@ type (
 	// Param is one request parameter from the contract.
 	Param struct {
 		Name        string
-		In          string // path, query, header
+		In          string // path, query, header, body
 		Required    bool
 		Description string
 		Schema      string
@@ -80,6 +80,16 @@ type (
 		byID       map[string]*Operation
 	}
 )
+
+// BodyParam returns the JSON body parameter, when the contract declares one.
+func (op Operation) BodyParam() (Param, bool) {
+	for _, p := range op.Params {
+		if p.In == "body" {
+			return p, true
+		}
+	}
+	return Param{}, false
+}
 
 // ByID returns the operation for id, or nil.
 func (c *Catalog) ByID(id string) *Operation {
