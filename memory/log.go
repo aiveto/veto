@@ -50,6 +50,9 @@ func NewLog(path string) (*Log, error) {
 }
 
 func (l *Log) Store(ctx context.Context, item Item) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if err := l.inner.Store(ctx, item); err != nil {
@@ -59,18 +62,27 @@ func (l *Log) Store(ctx context.Context, item Item) error {
 }
 
 func (l *Log) Search(ctx context.Context, query string) ([]Item, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.inner.Search(ctx, query)
 }
 
 func (l *Log) Recent(ctx context.Context, n int) ([]Item, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.inner.Recent(ctx, n)
 }
 
 func (l *Log) Delete(ctx context.Context, id string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if err := l.inner.Delete(ctx, id); err != nil {

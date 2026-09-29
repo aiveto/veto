@@ -27,6 +27,9 @@ func NewLocalMap() *LocalMap {
 }
 
 func (m *LocalMap) Store(ctx context.Context, item Item) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if item.ID == "" {
 		return fmt.Errorf("memory item id required")
 	}
@@ -40,6 +43,9 @@ func (m *LocalMap) Store(ctx context.Context, item Item) error {
 }
 
 func (m *LocalMap) Search(ctx context.Context, query string) ([]Item, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	q := strings.ToLower(query)
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -53,6 +59,9 @@ func (m *LocalMap) Search(ctx context.Context, query string) ([]Item, error) {
 }
 
 func (m *LocalMap) Recent(ctx context.Context, n int) ([]Item, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if n <= 0 {
 		return nil, nil
 	}
@@ -75,6 +84,9 @@ func (m *LocalMap) Recent(ctx context.Context, n int) ([]Item, error) {
 }
 
 func (m *LocalMap) Delete(ctx context.Context, id string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	m.mu.Lock()
 	delete(m.items, id)
 	m.order = slices.DeleteFunc(m.order, func(got string) bool { return got == id })

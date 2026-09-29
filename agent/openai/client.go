@@ -85,8 +85,10 @@ func (c *Client) Complete(ctx context.Context, req agent.Request) (agent.Respons
 	if err != nil {
 		return agent.Response{}, fmt.Errorf("model request: %w", err)
 	}
-	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
+	if closeErr := resp.Body.Close(); closeErr != nil && err == nil {
+		err = closeErr
+	}
 	if err != nil {
 		return agent.Response{}, fmt.Errorf("read model response: %w", err)
 	}

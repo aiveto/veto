@@ -2,6 +2,8 @@ package memory_test
 
 import (
 	"context"
+	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -52,5 +54,21 @@ func TestLogKeepsTurnsAcrossProcesses(t *testing.T) {
 	}
 	if len(found) != 0 {
 		t.Fatalf("deleted turn still in the log: %#v", found)
+	}
+}
+
+func TestLogCanceledContextWritesNothing(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "turns.log")
+	log, err := memory.NewLog(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := log.Store(ctx, memory.Item{ID: "1", Content: "x"}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("store: %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("file: %v", err)
 	}
 }
