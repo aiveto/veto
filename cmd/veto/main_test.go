@@ -119,6 +119,18 @@ func TestBuildLoopConstructsDefaultsAndOpenAIHost(t *testing.T) {
 	if _, ok := loop.Memory.(*memory.LocalMap); !ok {
 		t.Fatalf("memory: %T", loop.Memory)
 	}
+	fileCfg := filepath.Join(dir, "file.yaml")
+	fileText := "memory: file\nmemory_file: turns.log\ncontracts:\n  - " + contract + "\n"
+	if err := os.WriteFile(fileCfg, []byte(fileText), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fileLoop, _, err := buildLoop(nil, fileCfg, "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := fileLoop.Memory.(*memory.Log); !ok {
+		t.Fatalf("memory: %T", fileLoop.Memory)
+	}
 
 	t.Setenv("OPENAI_API_KEY", "test-key")
 	for _, tc := range []struct {

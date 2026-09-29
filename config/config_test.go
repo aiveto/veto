@@ -74,6 +74,28 @@ func TestModelBaseURLIsLoaded(t *testing.T) {
 	}
 }
 
+func TestMemoryFileRequiresAPath(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "veto.yaml")
+	if err := os.WriteFile(path, []byte("memory: file\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := config.Load(path); err == nil || !strings.Contains(err.Error(), "memory_file") {
+		t.Fatalf("missing path: %v", err)
+	}
+	okPath := filepath.Join(dir, "ok.yaml")
+	if err := os.WriteFile(okPath, []byte("memory: file\nmemory_file: turns.log\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(okPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Memory != "file" || !strings.HasSuffix(cfg.MemoryFile, "turns.log") {
+		t.Fatalf("%+v", cfg)
+	}
+}
+
 func TestSubagentsRejected(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "veto.yaml")

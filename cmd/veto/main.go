@@ -545,6 +545,12 @@ func applyProviders(loop *agent.Loop, cfg config.File) error {
 	switch cfg.Memory {
 	case "local":
 		loop.Memory = memory.NewLocalMap()
+	case "file":
+		log, err := memory.NewLog(cfg.MemoryFile)
+		if err != nil {
+			return err
+		}
+		loop.Memory = log
 	default:
 		return fmt.Errorf("memory provider %q is not in this slice", cfg.Memory)
 	}

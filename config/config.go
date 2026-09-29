@@ -34,6 +34,7 @@ type File struct {
 	Page          string            `yaml:"page"`
 	Caller        string            `yaml:"caller"`
 	Permissions   []string          `yaml:"permissions"`
+	MemoryFile    string            `yaml:"memory_file"`
 }
 
 // Defaults returns the in-tree providers.
@@ -76,6 +77,9 @@ func Load(path string) (File, error) {
 	}
 	if cfg.RelationsFile != "" && !filepath.IsAbs(cfg.RelationsFile) {
 		cfg.RelationsFile = filepath.Join(dir, cfg.RelationsFile)
+	}
+	if cfg.MemoryFile != "" && !filepath.IsAbs(cfg.MemoryFile) {
+		cfg.MemoryFile = filepath.Join(dir, cfg.MemoryFile)
 	}
 	for i, name := range cfg.Contracts {
 		if name != "" && !filepath.IsAbs(name) {
@@ -123,8 +127,11 @@ func (f File) validate() error {
 	if f.Model != "scripted" && f.Model != "openai" {
 		return fmt.Errorf("model provider %q is not in this slice", f.Model)
 	}
-	if f.Memory != "local" {
+	if f.Memory != "local" && f.Memory != "file" {
 		return fmt.Errorf("memory provider %q is not in this slice", f.Memory)
+	}
+	if f.Memory == "file" && f.MemoryFile == "" {
+		return fmt.Errorf("memory file provider needs memory_file")
 	}
 	if f.Semantics != "derived" && f.Semantics != "file" {
 		return fmt.Errorf("semantics provider %q is not in this slice", f.Semantics)
