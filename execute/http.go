@@ -14,6 +14,7 @@ import (
 	"github.com/aiveto/veto/agent"
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/telemetry"
+	"github.com/google/uuid"
 )
 
 type (
@@ -124,11 +125,14 @@ func Invoke(ctx context.Context, cfg Config, op *catalog.Operation, params map[s
 		}
 		req.Header.Set(a.Header, "Bearer "+val)
 	}
+	if op.Idempotency == "key" {
+		req.Header.Set("Idempotency-Key", uuid.NewString())
+	}
 	if formatted := formatParams(spanParams(op, params)); formatted != "" {
 		span.SetAttributes(telemetry.Attr("params", formatted))
 	}
 
-	resp, err := cfg.Client.Do(req)
+	resp, err := doRetry(cfg.Client, req, op)
 	if err != nil {
 		return nil, err
 	}
@@ -143,6 +147,65 @@ func Invoke(ctx context.Context, cfg Config, op *catalog.Operation, params map[s
 		span.SetAttributes(telemetry.Attr("http.body", string(raw)))
 	}
 	return resp, nil
+}
+
+func doRetry(client *http.Client, req *http.Request, op *catalog.Operation) (*http.Response, error) {
+	attempts := 1
+	if callIsIdempotent(op, req) {
+		attempts += retryCount(op)
+	}
+	var resp *http.Response
+	var err error
+	for try := 0; try < attempts; try++ {
+		if try > 0 && req.GetBody != nil {
+			body, bodyErr := req.GetBody()
+			if bodyErr != nil {
+				return nil, fmt.Errorf("retry body: %w", bodyErr)
+			}
+			req.Body = body
+		}
+		resp, err = client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		if try+1 == attempts || !retryStatus(resp.StatusCode) {
+			return resp, nil
+		}
+		resp.Body.Close()
+	}
+	return resp, err
+}
+
+func callIsIdempotent(op *catalog.Operation, req *http.Request) bool {
+	if op.Idempotency == "key" && req.Header.Get("Idempotency-Key") != "" {
+		return true
+	}
+	switch op.Method {
+	case http.MethodGet, http.MethodHead, http.MethodPut:
+		return true
+	default:
+		return false
+	}
+}
+
+func retryCount(op *catalog.Operation) int {
+	switch strings.TrimSpace(op.Retry) {
+	case "", "never":
+		return 0
+	default:
+		n, err := strconv.Atoi(op.Retry)
+		if err != nil || n <= 0 {
+			return 0
+		}
+		if n > 3 {
+			return 3
+		}
+		return n
+	}
+}
+
+func retryStatus(code int) bool {
+	return code == http.StatusTooManyRequests || code >= 500
 }
 
 func classify(status int) (string, bool) {
