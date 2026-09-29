@@ -67,7 +67,7 @@ func RunStdio(ctx context.Context, srv *Server, opt Options) error {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "capabilities_invoke",
-		Description: "Invoke an operation through policy and HTTP. confirmation_required includes approval_id. Send that id on the next invoke to resume. Pending calls stay in this process.",
+		Description: "Invoke an operation through policy and HTTP. confirmation_required includes approval_id. Send that id on the next invoke to resume. Without an approval secret the pending call stays in this process. With one, the id is a signed token and nothing is stored.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args invokeArgs) (*mcp.CallToolResult, any, error) {
 		res, err := srv.Invoke(ctx, args.OperationID, args.Params, args.ApprovalID)
 		if err != nil && res.Status == "error" {

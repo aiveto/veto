@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/aiveto/veto/agent"
 	"github.com/aiveto/veto/catalog"
@@ -202,5 +203,43 @@ func TestLoopRunsNamedFlow(t *testing.T) {
 	}
 	if hits.Load() != 2 {
 		t.Fatalf("expected two HTTP calls, hits=%d", hits.Load())
+	}
+}
+
+func TestSignedApprovalResumesOnAnotherLoop(t *testing.T) {
+	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hits atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer ts.Close()
+	secret := []byte("approval-secret")
+	first := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
+	first.State.SetSigner(secret, time.Hour)
+	out, err := first.Run(context.Background(), "Delete asset 123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Status != "confirmation_required" || out.Text != "confirm assets.delete id=123" {
+		t.Fatalf("status %q text %q", out.Status, out.Text)
+	}
+	if !strings.HasPrefix(out.ApprovalID, "v1.") || first.State.Pending(out.ApprovalID) != nil {
+		t.Fatal("signed approval was stored")
+	}
+	if hits.Load() != 0 {
+		t.Fatalf("HTTP ran before approval, hits=%d", hits.Load())
+	}
+	second := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
+	second.State.SetSigner(secret, time.Hour)
+	resumed, err := second.Invoke(context.Background(), "assets.delete", map[string]string{"id": "123"}, out.ApprovalID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resumed.Status != "ok" || hits.Load() != 1 {
+		t.Fatalf("status %q hits %d", resumed.Status, hits.Load())
 	}
 }

@@ -605,6 +605,9 @@ func buildLoop(contracts []string, configPath, agentPath, relationsPath, baseURL
 		Auth:        authSecrets(cfg.Auth),
 		FollowPages: pages,
 	})
+	if secret := os.Getenv("VETO_APPROVAL_SECRET"); secret != "" {
+		loop.State.SetSigner([]byte(secret), 0)
+	}
 	loop.Flows = flows
 	if err := applyProviders(loop, cfg); err != nil {
 		return nil, cfg, err

@@ -154,7 +154,18 @@ func (l *Loop) Run(ctx context.Context, userText string) (Outcome, error) {
 	}
 	summary := call.Status
 	if call.Status == "confirmation_required" {
-		summary = policy.ConfirmSentence(call.OperationID, callParams(l, call.ApprovalID))
+		if pending == nil && call.ApprovalID != "" {
+			pending = &policy.PendingConfirmation{
+				ID:          call.ApprovalID,
+				OperationID: call.OperationID,
+				Params:      copyParams(resp.Params),
+			}
+		}
+		var sentence map[string]string
+		if pending != nil {
+			sentence = pending.Params
+		}
+		summary = policy.ConfirmSentence(call.OperationID, sentence)
 	} else if call.Code != "" {
 		summary = fmt.Sprintf("%s code=%s retryable=%t", call.Status, call.Code, call.Retryable)
 	}
@@ -206,7 +217,7 @@ func (l *Loop) Invoke(ctx context.Context, operationID string, params map[string
 		span := telemetry.StartSpan(ctx, "policy.confirmation")
 		defer span.End()
 		span.SetAttributes(telemetry.Attr("operation.id", operationID))
-		if approvalID != "" && l.State.ConsumeConfirmation(approvalID, operationID) {
+		if approvalID != "" && l.State.ConsumeConfirmation(approvalID, operationID, params) {
 			span.SetAttributes(telemetry.Attr("approval.id", approvalID))
 			decision = policy.DecisionAllow
 		} else if approvalID == "" {
@@ -280,15 +291,15 @@ func (l *Loop) runFlow(ctx context.Context, resp Response) (Call, error) {
 	return Call{Status: status, OperationID: last}, nil
 }
 
-func callParams(l *Loop, approvalID string) map[string]string {
-	if l == nil || l.State == nil || approvalID == "" {
+func copyParams(in map[string]string) map[string]string {
+	if len(in) == 0 {
 		return nil
 	}
-	pending := l.State.Pending(approvalID)
-	if pending == nil {
-		return nil
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
 	}
-	return pending.Params
+	return out
 }
 
 func (l *Loop) ready() {

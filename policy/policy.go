@@ -2,10 +2,15 @@ package policy
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/telemetry"
@@ -30,9 +35,13 @@ type (
 	}
 
 	// State holds per-run policy and confirmation state.
+	// A signer secret makes approval ids HMAC tokens. Those are not stored.
 	State struct {
 		mu      sync.Mutex
 		pending map[string]PendingConfirmation
+		secret  []byte
+		ttl     time.Duration
+		now     func() time.Time
 	}
 
 	// Hook evaluates whether an operation may run.
@@ -79,7 +88,25 @@ func (w Wrapped) Check(ctx context.Context, op *catalog.Operation) (Decision, er
 
 // NewState creates empty run policy state.
 func NewState() *State {
-	return &State{pending: map[string]PendingConfirmation{}}
+	return &State{pending: map[string]PendingConfirmation{}, now: time.Now}
+}
+
+// SetSigner issues approval ids as HMAC tokens. The caller holds the token.
+// An empty secret leaves process maps in place. A non-positive ttl uses 15 minutes.
+func (s *State) SetSigner(secret []byte, ttl time.Duration) {
+	if s == nil || len(secret) == 0 {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.secret = append([]byte(nil), secret...)
+	s.ttl = ttl
+	if s.ttl <= 0 {
+		s.ttl = 15 * time.Minute
+	}
+	if s.now == nil {
+		s.now = time.Now
+	}
 }
 
 func (b Builtin) Check(ctx context.Context, op *catalog.Operation) (Decision, error) {
@@ -131,21 +158,29 @@ func Check(ctx context.Context, hook Hook, op *catalog.Operation) (Decision, err
 	return hook.Check(ctx, op)
 }
 
-// RequestConfirmation stores pending approval and returns its id.
+// RequestConfirmation returns an approval id.
+// With a signer, the id is an HMAC of the operation, params, and expiry, and nothing is stored.
 func (s *State) RequestConfirmation(opID string, params map[string]string) string {
-	id := uuid.NewString()
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.secret) > 0 {
+		return signApproval(s.secret, opID, params, s.deadline())
+	}
+	id := uuid.NewString()
 	s.pending[id] = PendingConfirmation{ID: id, OperationID: opID, Params: cloneParams(params)}
-	s.mu.Unlock()
 	return id
 }
 
-// ConsumeConfirmation marks approval id as used if it matches op.
-func (s *State) ConsumeConfirmation(approvalID, opID string) bool {
+// ConsumeConfirmation accepts approvalID for opID and params.
+// A signed token is checked and not remembered. A process id is used once.
+func (s *State) ConsumeConfirmation(approvalID, opID string, params map[string]string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if len(s.secret) > 0 {
+		return validApproval(s.secret, approvalID, opID, params, s.clock())
+	}
 	p, ok := s.pending[approvalID]
-	if !ok || p.OperationID != opID {
+	if !ok || p.OperationID != opID || !sameParams(p.Params, params) {
 		return false
 	}
 	delete(s.pending, approvalID)
@@ -162,6 +197,81 @@ func (s *State) Pending(id string) *PendingConfirmation {
 	}
 	p.Params = cloneParams(p.Params)
 	return &p
+}
+
+func (s *State) clock() time.Time {
+	if s.now == nil {
+		return time.Now()
+	}
+	return s.now()
+}
+
+func (s *State) deadline() time.Time {
+	ttl := s.ttl
+	if ttl <= 0 {
+		ttl = 15 * time.Minute
+	}
+	return s.clock().Add(ttl)
+}
+
+func signApproval(secret []byte, opID string, params map[string]string, exp time.Time) string {
+	unix := exp.Unix()
+	mac := hmac.New(sha256.New, secret)
+	_, _ = mac.Write([]byte(approvalPayload(opID, params, unix)))
+	sum := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	return fmt.Sprintf("v1.%d.%s", unix, sum)
+}
+
+func validApproval(secret []byte, token, opID string, params map[string]string, now time.Time) bool {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 || parts[0] != "v1" {
+		return false
+	}
+	unix, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return false
+	}
+	if !now.Before(time.Unix(unix, 0)) {
+		return false
+	}
+	got, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil {
+		return false
+	}
+	mac := hmac.New(sha256.New, secret)
+	_, _ = mac.Write([]byte(approvalPayload(opID, params, unix)))
+	return hmac.Equal(got, mac.Sum(nil))
+}
+
+func approvalPayload(opID string, params map[string]string, exp int64) string {
+	keys := make([]string, 0, len(params))
+	for k := range params {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	b.WriteString(opID)
+	b.WriteByte('\n')
+	b.WriteString(strconv.FormatInt(exp, 10))
+	for _, k := range keys {
+		b.WriteByte('\n')
+		b.WriteString(k)
+		b.WriteByte('=')
+		b.WriteString(params[k])
+	}
+	return b.String()
+}
+
+func sameParams(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
 }
 
 func cloneParams(in map[string]string) map[string]string {
