@@ -128,6 +128,32 @@ func TestMemoryFileRequiresAPath(t *testing.T) {
 	}
 }
 
+func TestTemporalAndJevAreKeysOnly(t *testing.T) {
+	dir := t.TempDir()
+	cases := []struct {
+		name string
+		body string
+		exec string
+		dec  string
+	}{
+		{name: "temporal.yaml", body: "execution: temporal\n", exec: "temporal", dec: "default"},
+		{name: "jev.yaml", body: "decision: jev\n", exec: "in-process", dec: "jev"},
+	}
+	for _, tc := range cases {
+		path := filepath.Join(dir, tc.name)
+		if err := os.WriteFile(path, []byte(tc.body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := config.Load(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.Execution != tc.exec || cfg.Decision != tc.dec {
+			t.Fatalf("%s: %+v", tc.name, cfg)
+		}
+	}
+}
+
 func TestSubagentsRejected(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "veto.yaml")

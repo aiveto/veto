@@ -70,14 +70,7 @@ func RunStdio(ctx context.Context, srv *Server, opt Options) error {
 		Description: "Invoke an operation through policy and HTTP. confirmation_required includes approval_id. Send that id on the next invoke to resume. Without an approval secret the pending call stays in this process. With one, the id is a signed token and nothing is stored.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args invokeArgs) (*mcp.CallToolResult, any, error) {
 		res, err := srv.Invoke(ctx, args.OperationID, args.Params, args.ApprovalID)
-		if err != nil && res.Status == "error" {
-			return toolError(err)
-		}
-		b, err := json.Marshal(res)
-		if err != nil {
-			return toolError(err)
-		}
-		return textResult(string(b))
+		return invokeToolResult(res, err)
 	})
 
 	if opt.Grouped {
@@ -92,14 +85,7 @@ func RunStdio(ctx context.Context, srv *Server, opt Options) error {
 					return toolError(fmt.Errorf("operation %q is not in group %s", args.OperationID, group))
 				}
 				res, err := srv.Invoke(ctx, args.OperationID, args.Params, args.ApprovalID)
-				if err != nil && res.Status == "error" {
-					return toolError(err)
-				}
-				b, err := json.Marshal(res)
-				if err != nil {
-					return toolError(err)
-				}
-				return textResult(string(b))
+				return invokeToolResult(res, err)
 			})
 		}
 	}
@@ -117,19 +103,27 @@ func RunStdio(ctx context.Context, srv *Server, opt Options) error {
 			}, func(ctx context.Context, req *mcp.CallToolRequest, args invokeArgs) (*mcp.CallToolResult, any, error) {
 				args.OperationID = pinnedID
 				res, err := srv.Invoke(ctx, args.OperationID, args.Params, args.ApprovalID)
-				if err != nil && res.Status == "error" {
-					return toolError(err)
-				}
-				b, err := json.Marshal(res)
-				if err != nil {
-					return toolError(err)
-				}
-				return textResult(string(b))
+				return invokeToolResult(res, err)
 			})
 		}
 	}
 
 	return server.Run(ctx, &mcp.StdioTransport{})
+}
+
+func invokeToolResult(res InvokeResult, callErr error) (*mcp.CallToolResult, any, error) {
+	if callErr != nil && res.Status == "" {
+		return toolError(callErr)
+	}
+	b, err := json.Marshal(res)
+	if err != nil {
+		return toolError(err)
+	}
+	result, _, err := textResult(string(b))
+	if result != nil {
+		result.IsError = res.Status == "error"
+	}
+	return result, nil, err
 }
 
 func textResult(s string) (*mcp.CallToolResult, any, error) {

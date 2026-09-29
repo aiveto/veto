@@ -11,3 +11,5 @@
 - `policy: opa` and `policy: spicedb` are config keys and fail closed.
 - `VETO_APPROVAL_SECRET` makes an approval id a signed token. The process does not store it. Unset, confirmation stays in the process.
 - `veto check --against` fails when a joined operation disappears, confirmation is dropped without an agent.yaml change, or an eval expectation changes.
+- `execution: temporal` and `decision: jev` are config keys and fail closed. The clients are not imported.
+- MCP invoke returns `missing_param` in the same JSON shape as other invoke results.
