@@ -1,28 +1,16 @@
 # veto
 
-Veto is one guarded way for an agent to call the APIs you already have. You bring the API files.
+Veto is one guarded way for an agent to call the APIs you already have.
 
-One catalog. Three tools, however many URLs are in the files: find a call, read it, and make it. The agent, the command line, and the generated Go client use that same door.
+Stripe's API file is 8316935 bytes and 612 calls. The agent still gets three tools: find a call, read it, make it. The note for "delete a customer" is 1302 bytes. The file stays out of the note. Delete customer stopped with zero HTTP. A get of that customer sent one request. The trace of the attempt leaves the secret out. When the file changes and a call or a stop disappears, a test fails.
 
-The short note for the turn is the context. It has the matching calls, the link sentence, and the rules. The API files stay out. That note is why the next call can happen.
+That is the product. A small example is only how one piece looks.
 
-Semantics is that sentence in the note. It is derived from the link file you write. Veto does not guess the connection. Most calls need no line.
+## One link, when the file does not say it
 
-A delete does not go out until someone says yes. Then the same call goes out. A company rule can sit in front of that stop. The extra check runs, and the stop still runs.
+An orders API and a customers API sit on different hosts. Someone asks who placed order 123. Find matches `orders.get`. The call returns `customerId` 7.
 
-Replay reads the attempt later: what was asked, whether it was allowed, and what was sent. The secret is left out.
-
-Eval fails when an API file or a link changes, including a delete that must not send before someone says yes.
-
-Real API files are large. They have many calls, more than one host, auth, and bodies. Veto does not make them simple. Orders and customers are the small picture.
-
-Module: `github.com/aiveto/veto`
-
-## Orders and customers
-
-An orders API and a customers API sit on different hosts. Someone asks who placed order 123. The matching call is `orders.get`. It returns `customerId` 7.
-
-When a field on one service is the id for a call on another, you write it:
+When a field on one service is the id for a call on another, and the API file does not already say so, you write one line:
 
 ```yaml
 relations:
@@ -31,22 +19,18 @@ relations:
     to: customers.get
 ```
 
-That line is `Order.customerId identifies customers.get`. The context note carries it, and the next call is `customers.get` for 7.
+That sentence goes in the note: `Order.customerId identifies customers.get`. Veto does not infer it. Most calls need no line. The agent then calls `customers.get` for 7.
 
-If the ask is to delete the order, no request goes out until someone says yes.
+If the agent asks to delete the order, no HTTP goes out until someone approves. Then the same call goes out.
 
-## Run
+## What you stop writing
 
-From this repository:
+You do not write one tool per URL. You do not paste the API files into the prompt. You do not copy the stop into the agent, the command line, and the generated Go client. Those three use the same door.
+
+You still write the API files, a link line only when the file left the join out, a company rule if the built-in stop is not enough, and the cases you care about.
+
+Module: `github.com/aiveto/veto`
 
 ```bash
-go build -o veto ./cmd/veto
 go run ./examples/two-apis
 ```
-
-```bash
-go test ./...
-go vet ./...
-```
-
-The example is `examples/two-apis`: `orders.yaml`, `customers.yaml`, and `relations.yaml`.
