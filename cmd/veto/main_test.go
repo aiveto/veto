@@ -171,6 +171,14 @@ func TestFinishReplayWritesARedactedFile(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, got)
 	assert.Contains(t, buf.String(), `"name": "from"`)
+	assert.Contains(t, buf.String(), "Record response bodies")
+	assert.NotContains(t, buf.String(), "parameter values")
+	buf.Reset()
+	got, err = jsonHelp(&buf, root, []string{"generate", "--help-json"})
+	require.NoError(t, err)
+	require.True(t, got)
+	assert.Contains(t, buf.String(), "Go client")
+	assert.NotContains(t, buf.String(), "typed SDK")
 }
 
 func TestTwoAPIExampleJoinsCustomers(t *testing.T) {

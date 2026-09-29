@@ -1,14 +1,87 @@
 # veto
 
-You have hundreds of API calls. The agent does not get one tool per call, and it does not get the file. It gets three tools: find, read, make. It asks to delete a customer. Nothing is sent. A person says yes. Then it is sent. You can read that attempt, and the secret is not in it.
+The control plane between AI agents and your APIs.
 
-Stripe's file is 612 calls, and veto still exposes three tools. Delete sent nothing.
+Your APIs already know how to create, read, update, delete, refund, publish, deploy, and approve things.
 
-The Stripe file is not in this repository. The orders example is the small picture of a second call.
+The problem is giving an AI agent access to all of that.
 
-Someone asks who placed order 123. `orders.get` returns customerId 7. The note says `Order.customerId identifies customers.get`. `customers.get` is called for 7. `orders.delete` sends nothing until it is approved. The trace leaves the secret out.
+Expose every OpenAPI operation as an MCP tool and you get a huge tool surface. Give the model the whole API description and you waste context. Let the model decide what reaches your APIs and a bad decision becomes a real side effect.
 
-Veto does not infer that line. Most calls need no line. If the spec already has a link, that link is used. This file is only for a join the spec left out.
+Veto puts a controlled boundary between agent intent and API execution.
+
+```text
+API contracts
+     ↓
+Capability catalog
+     ↓
+Discover only what is relevant
+     ↓
+Build bounded context
+     ↓
+Apply policy
+     ↓
+Require approval when needed
+     ↓
+Execute the API call
+     ↓
+Trace and test what happened
+```
+
+The model proposes. Veto decides. Your API executes.
+
+## Why Veto
+
+```text
+Orders API       80 operations
+Customers API   120 operations
+Payments API     95 operations
+```
+
+Turn each operation into an MCP tool and the agent receives hundreds of tools.
+
+Veto does not. By default the agent gets three capabilities:
+
+```text
+capabilities_search
+capabilities_describe
+capabilities_invoke
+```
+
+The agent searches, reads one description, and invokes through the policy boundary. Pin or group a few capabilities when you need them. That is opt-in.
+
+## The call waits
+
+```text
+User: Delete order 123
+```
+
+The model can name `orders.delete`. Veto does not send `DELETE /orders/123`.
+
+```text
+orders.delete
+     ↓
+destructive operation
+     ↓
+confirmation required
+     ↓
+NO HTTP REQUEST
+```
+
+After approval, the same operation and parameters are checked again. Then the request is sent. An outer allow still reaches builtin confirmation on a destructive call.
+
+## Your contracts, one catalog
+
+```yaml
+contracts:
+  - orders.yaml
+  - customers.yaml
+  - payments.yaml
+```
+
+You do not rewrite the APIs. Veto merges the contracts into one catalog. Each API keeps its own server. Duplicate operation IDs are rejected. A spec link is used when it has a parameter mapping. A link with no mapping is not a call.
+
+## Connect two APIs on purpose
 
 ```yaml
 relations:
@@ -17,24 +90,100 @@ relations:
     to: customers.get
 ```
 
-The command line and the generated Go client use that same door.
+```text
+orders.get
+    ↓
+Order.customerId
+    ↓
+customers.get
+```
+
+That line is the next call. Veto does not guess the join from the field name.
+
+## The model does not get the file
+
+The pack has the capabilities for this request, their neighbors, the declared relations, and the current conversation. The raw OpenAPI document stays out.
+
+```bash
+veto pack \
+  --config veto.yaml \
+  --message "Who placed order 123?"
+```
+
+The default memory forgets the conversation when the process stops. `memory: file` keeps turns.
+
+## Test the agent surface
+
+An API change can be valid for a normal client and still change what an agent is allowed to do. Confirmation removed, a joined call deleted, or a new destructive operation is a failed check.
+
+```bash
+veto check \
+  --config veto.yaml \
+  --case testdata/cases \
+  --against HEAD
+```
+
+## See what happened
+
+```bash
+veto replay --from trace.json
+```
+
+Replay shows the operation, the policy decision, and the HTTP result. The user message and parameter values stay off the trace. `--keep-sensitive` records response bodies. Veto uses OpenTelemetry.
+
+```bash
+veto doctor
+```
+
+Doctor checks contracts, relations, auth env names, and pins. It does not print secrets.
+
+## Try it
 
 ```bash
 go run ./examples/two-apis
-go run ./cmd/veto validate --config examples/two-apis/veto.yaml
-go run ./cmd/veto pack --config examples/two-apis/veto.yaml --message "who placed order 123"
-go run ./cmd/veto serve --config examples/two-apis/veto.yaml --stdio
+
+go run ./cmd/veto validate \
+  --config examples/two-apis/veto.yaml
+
+go run ./cmd/veto pack \
+  --config examples/two-apis/veto.yaml \
+  --message "who placed order 123"
+
+go run ./cmd/veto serve \
+  --config examples/two-apis/veto.yaml \
+  --stdio
+
+go test ./...
 ```
 
-The first command is the walk above. `validate` prints the joins, including a link the spec already declared. `pack` prints the note for that question. The API file is not in the note. `serve` listens on stdio. The three tools are `capabilities_search`, `capabilities_describe`, and `capabilities_invoke`.
+`veto generate` writes a Go client and a CLI. The parameters are strings.
 
-You still write the API files. Content-Type `application/json;v=3` is sent as written. `customer-v3.yaml` is another file. Duplicate operation ids fail the load. You write a link line only when the file left the join out. A company rule runs in front of the stop and does not remove it. `WrapPolicy` installs that rule. If the rule does not end the check, the stop still runs. `veto serve` does not load the rule. You write the cases you care about. `veto check --against` fails when a joined call disappears, confirmation is dropped without an agent.yaml change, or a case expectation changes.
+## What Veto owns
 
-Veto does not guess connections. It does not make a large file simple. It does not remember the conversation after a restart.
+Veto owns capability discovery, the MCP surface, bounded context, declared relations, invocation policy, confirmation, parameter checks, replay, and agent-surface checks.
 
-Module: `github.com/aiveto/veto`
+Your API platform still owns backend authentication, backend authorization, row-level access, network controls, rate limits, service-level validation, and secrets.
+
+## What Veto is not
+
+Veto is not a general-purpose agent framework. It does not add a graph engine, vector search, a database, subagents, an API gateway, or a second tracing format.
+
+Give an agent access to API capabilities without giving the model the API surface or the final execution decision.
+
+## Status
+
+Veto is pre-1.0. The catalog, the three tools, relations, confirmation, auth, retries, pagination, replay, evals, the Go client, and agent-surface checks are implemented. The public API and the config format can change before 1.0.
+
+## Contributing
+
+Small packages, explicit control flow, narrow interfaces, and tests that lock behavior.
 
 ```bash
 go test ./...
-go run ./cmd/veto check --config testdata/veto.yaml --case testdata/cases --against HEAD
 ```
+
+Then read `docs/adr/`, `docs/before-open-source.md`, `CONTRIBUTING.md`, and `SECURITY.md`.
+
+## License
+
+Apache-2.0

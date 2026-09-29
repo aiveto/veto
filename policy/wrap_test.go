@@ -22,6 +22,9 @@ func TestWrapCallsBuiltinUnlessItStops(t *testing.T) {
 		{name: "around falls through", around: func(context.Context, *catalog.Operation) (Decision, bool, error) {
 			return DecisionAllow, false, nil
 		}, want: DecisionConfirmationNeeded},
+		{name: "allow stop still confirms a delete", around: func(context.Context, *catalog.Operation) (Decision, bool, error) {
+			return DecisionAllow, true, nil
+		}, want: DecisionConfirmationNeeded},
 		{name: "around stops", around: func(context.Context, *catalog.Operation) (Decision, bool, error) {
 			return DecisionDeny, true, nil
 		}, want: DecisionDeny},

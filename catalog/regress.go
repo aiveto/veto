@@ -67,6 +67,16 @@ func SurfaceRegressions(base, next map[string]OpFact, confirmationChanged map[st
 			out = append(out, fmt.Sprintf("operation %s lost permission %s", id, strings.Join(lost, ", ")))
 		}
 	}
+	for id, fact := range next {
+		if !fact.Destructive {
+			continue
+		}
+		prev, ok := base[id]
+		if ok && prev.Destructive {
+			continue
+		}
+		out = append(out, "operation "+id+" is a new destructive operation")
+	}
 	sort.Strings(out)
 	return out
 }

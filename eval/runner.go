@@ -10,6 +10,7 @@ import (
 
 	"github.com/aiveto/veto/agent"
 	"github.com/aiveto/veto/catalog"
+	"github.com/aiveto/veto/result"
 	"github.com/aiveto/veto/runctx"
 	"gopkg.in/yaml.v3"
 )
@@ -165,10 +166,10 @@ func (r *Runner) checkPack(c *Case) error {
 	return nil
 }
 
-func (g *httpGate) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, params map[string]string) (agent.HTTPResult, error) {
+func (g *httpGate) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, params map[string]string) (result.HTTPResult, error) {
 	g.hits++
 	if g.next == nil {
-		return agent.HTTPResult{}, fmt.Errorf("http call")
+		return result.HTTPResult{}, fmt.Errorf("http call")
 	}
 	return g.next.InvokeHTTPResult(ctx, op, params)
 }
