@@ -104,7 +104,7 @@ func pingServers(ctx context.Context, client *http.Client, cat *catalog.Catalog)
 		return nil
 	}
 	if client == nil {
-		client = http.DefaultClient
+		return []string{"ping client is missing"}
 	}
 	seen := map[string]bool{}
 	var urls []string
