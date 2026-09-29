@@ -313,6 +313,25 @@ func runReplay(cmd replayCmd) {
 	fmt.Print(replay.FromSpans(rec.Spans(), redact).String())
 }
 
+func authSecrets(names map[string]string) map[string]string {
+	if len(names) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(names))
+	for scheme, envName := range names {
+		if envName == "" {
+			continue
+		}
+		if val := os.Getenv(envName); val != "" {
+			out[scheme] = val
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 func applyAgent(cat *catalog.Catalog, path string) error {
 	if path == "" {
 		return nil
@@ -408,6 +427,7 @@ func buildLoop(contracts []string, configPath, agentPath, relationsPath, baseURL
 	loop := agent.New(cat, sem, execute.Client{
 		BaseURL: baseURL,
 		HTTP:    &http.Client{Timeout: cfg.Timeout},
+		Auth:    authSecrets(cfg.Auth),
 	})
 	loop.Flows = flows
 	if err := applyProviders(loop, cfg); err != nil {

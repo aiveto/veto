@@ -11,24 +11,25 @@ import (
 
 // File is the one set of provider keys for a run.
 type File struct {
-	Model         string        `yaml:"model"`
-	ModelName     string        `yaml:"model_name"`
-	ModelBaseURL  string        `yaml:"model_base_url"`
-	Memory        string        `yaml:"memory"`
-	Semantics     string        `yaml:"semantics"`
-	SemanticsFile string        `yaml:"semantics_file"`
-	Decision      string        `yaml:"decision"`
-	Policy        string        `yaml:"policy"`
-	Telemetry     string        `yaml:"telemetry"`
-	TraceExport   string        `yaml:"trace_export"`
-	Execution     string        `yaml:"execution"`
-	Subagents     string        `yaml:"subagents"`
-	FlowFile      string        `yaml:"flow_file"`
-	AgentFile     string        `yaml:"agent_file"`
-	RelationsFile string        `yaml:"relations_file"`
-	Contracts     []string      `yaml:"contracts"`
-	ReplayRedact  string        `yaml:"replay_redact"`
-	Timeout       time.Duration `yaml:"timeout"`
+	Model         string            `yaml:"model"`
+	ModelName     string            `yaml:"model_name"`
+	ModelBaseURL  string            `yaml:"model_base_url"`
+	Memory        string            `yaml:"memory"`
+	Semantics     string            `yaml:"semantics"`
+	SemanticsFile string            `yaml:"semantics_file"`
+	Decision      string            `yaml:"decision"`
+	Policy        string            `yaml:"policy"`
+	Telemetry     string            `yaml:"telemetry"`
+	TraceExport   string            `yaml:"trace_export"`
+	Execution     string            `yaml:"execution"`
+	Subagents     string            `yaml:"subagents"`
+	FlowFile      string            `yaml:"flow_file"`
+	AgentFile     string            `yaml:"agent_file"`
+	RelationsFile string            `yaml:"relations_file"`
+	Contracts     []string          `yaml:"contracts"`
+	ReplayRedact  string            `yaml:"replay_redact"`
+	Timeout       time.Duration     `yaml:"timeout"`
+	Auth          map[string]string `yaml:"auth"`
 }
 
 // Defaults returns the in-tree providers.

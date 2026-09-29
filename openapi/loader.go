@@ -55,6 +55,7 @@ func Load(ctx context.Context, path string) (*catalog.Catalog, error) {
 				continue
 			}
 			operation := mapOperation(method, path, group, serverURL(doc), op)
+			operation.Auth = operationAuth(doc, op)
 			cat.Operations = append(cat.Operations, operation)
 			collectUses(operation.ID, op, &cat.Uses, seenUse)
 			raw = append(raw, collectLinks(operation.ID, op)...)

@@ -9,6 +9,7 @@ import (
 	"github.com/aiveto/veto/agent"
 	"github.com/aiveto/veto/agent/openai"
 	"github.com/aiveto/veto/catalog"
+	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/memory"
 	"github.com/aiveto/veto/policy"
 )
@@ -98,5 +99,33 @@ func TestBuildLoopConstructsDefaultsAndOpenAIHost(t *testing.T) {
 				t.Fatalf("base: %s", live.BaseURL)
 			}
 		})
+	}
+}
+
+func TestAuthSecretComesFromTheEnv(t *testing.T) {
+	contract, err := filepath.Abs("../../testdata/openapi.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "veto.yaml")
+	text := "auth:\n  bearerAuth: ASSET_TOKEN\ncontracts:\n  - " + contract + "\n"
+	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(text, "s3cret") {
+		t.Fatal("secret was written into yaml")
+	}
+	t.Setenv("ASSET_TOKEN", "s3cret")
+	loop, cfg, err := buildLoop(nil, path, "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Auth["bearerAuth"] != "ASSET_TOKEN" {
+		t.Fatalf("config auth: %#v", cfg.Auth)
+	}
+	exec, ok := loop.Exec.(execute.Client)
+	if !ok || exec.Auth["bearerAuth"] != "s3cret" {
+		t.Fatalf("client auth: %#v", loop.Exec)
 	}
 }

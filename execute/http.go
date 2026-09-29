@@ -18,10 +18,12 @@ import (
 
 type (
 	// Config points invoke at a base URL and optional client.
+	// Auth maps a scheme name to the secret. The value never comes from yaml.
 	Config struct {
 		BaseURL    string
 		Client     *http.Client
 		RecordBody bool
+		Auth       map[string]string
 	}
 
 	// Client is the HTTP writer the agent loop calls after policy allows an operation.
@@ -29,12 +31,13 @@ type (
 		BaseURL    string
 		HTTP       *http.Client
 		RecordBody bool
+		Auth       map[string]string
 	}
 )
 
 // Invoke performs the operation and returns the status and body.
 func (c Client) Invoke(ctx context.Context, op *catalog.Operation, params map[string]string) (agent.HTTPResult, error) {
-	resp, err := Invoke(ctx, Config{BaseURL: c.BaseURL, Client: c.HTTP, RecordBody: c.RecordBody}, op, params)
+	resp, err := Invoke(ctx, Config{BaseURL: c.BaseURL, Client: c.HTTP, RecordBody: c.RecordBody, Auth: c.Auth}, op, params)
 	if err != nil {
 		return agent.HTTPResult{}, err
 	}
@@ -110,6 +113,16 @@ func Invoke(ctx context.Context, cfg Config, op *catalog.Operation, params map[s
 		if v := params[p.Name]; v != "" {
 			req.Header.Set(p.Name, v)
 		}
+	}
+	for _, a := range op.Auth {
+		if a.Kind != "bearer" {
+			continue
+		}
+		val := cfg.Auth[a.Name]
+		if val == "" {
+			return nil, fmt.Errorf("operation %s: %s is unset", op.ID, a.Name)
+		}
+		req.Header.Set(a.Header, "Bearer "+val)
 	}
 	if formatted := formatParams(spanParams(op, params)); formatted != "" {
 		span.SetAttributes(telemetry.Attr("params", formatted))

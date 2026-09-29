@@ -27,6 +27,13 @@ type (
 	// SideEffect describes how invasive an operation is.
 	SideEffect string
 
+	// Auth is one security scheme an operation applies. The secret stays outside the catalog.
+	Auth struct {
+		Name   string
+		Header string
+		Kind   string
+	}
+
 	// Param is one request parameter from the contract.
 	Param struct {
 		Name        string
@@ -54,6 +61,7 @@ type (
 		Retry                string
 		Exposure             string
 		BaseURL              string
+		Auth                 []Auth
 	}
 
 	// OpLink is an OpenAPI link from one operation to another.
