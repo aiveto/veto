@@ -1,10 +1,5 @@
 package catalog
 
-import (
-	"fmt"
-	"sort"
-)
-
 const (
 	NodeResource  NodeKind = "resource"
 	NodeOperation NodeKind = "operation"
@@ -101,25 +96,6 @@ func (g Graph) Related(operationID string) []string {
 		return []string{}
 	}
 	return out
-}
-
-func (c *Catalog) Joins() []string {
-	if c == nil {
-		return nil
-	}
-	var lines []string
-	for _, e := range c.Graph.Edges {
-		if e.Kind != EdgeLinks && e.Kind != EdgeRelates {
-			continue
-		}
-		label := e.Note
-		if label == "" {
-			label = e.Kind
-		}
-		lines = append(lines, fmt.Sprintf("%s --[%s]--> %s", e.From, label, e.To))
-	}
-	sort.Strings(lines)
-	return lines
 }
 
 func (g Graph) Schemas(operationID string) []string {

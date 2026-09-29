@@ -290,13 +290,6 @@ func (l *Loop) runFlow(ctx context.Context, resp Response) (Call, error) {
 	return Call{Status: status, OperationID: last}, nil
 }
 
-func copyParams(in map[string]string) map[string]string {
-	if len(in) == 0 {
-		return nil
-	}
-	return maps.Clone(in)
-}
-
 func (l *Loop) memoryTurns(ctx context.Context, userText string) ([]runctx.Turn, error) {
 	if l.Memory == nil {
 		return nil, nil
@@ -325,4 +318,11 @@ func (l *Loop) memoryTurns(ctx context.Context, userText string) ([]runctx.Turn,
 		add(it)
 	}
 	return turns, nil
+}
+
+func copyParams(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	return maps.Clone(in)
 }

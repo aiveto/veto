@@ -72,6 +72,30 @@ func NewDerived(cat *catalog.Catalog) *Derived {
 	return d
 }
 
+func (d *Derived) Note(operationID string) Note {
+	n, ok := d.notes[operationID]
+	if !ok {
+		n = Note{OperationID: operationID}
+	}
+	n.Relation = relationSentence(d.cat, operationID)
+	if n.Relation != "" {
+		n.Synonyms = append(append([]string{}, n.Synonyms...), strings.Fields(n.Relation)...)
+	}
+	return n
+}
+
+func (d *Derived) Synonyms(operationID string) []string {
+	return d.Note(operationID).Synonyms
+}
+
+func (d *Derived) AllSynonyms() map[string][]string {
+	out := make(map[string][]string, len(d.notes))
+	for id := range d.notes {
+		out[id] = d.Synonyms(id)
+	}
+	return out
+}
+
 func deriveSynonyms(op catalog.Operation) []string {
 	var out []string
 	words := strings.Fields(strings.ToLower(op.Description + " " + op.Name + " " + op.ID + " " + op.Group + " " + strings.Join(op.Tags, " ")))
@@ -105,18 +129,6 @@ func deriveSynonyms(op catalog.Operation) []string {
 	return out
 }
 
-func (d *Derived) Note(operationID string) Note {
-	n, ok := d.notes[operationID]
-	if !ok {
-		n = Note{OperationID: operationID}
-	}
-	n.Relation = relationSentence(d.cat, operationID)
-	if n.Relation != "" {
-		n.Synonyms = append(append([]string{}, n.Synonyms...), strings.Fields(n.Relation)...)
-	}
-	return n
-}
-
 func relationSentence(cat *catalog.Catalog, operationID string) string {
 	if cat == nil {
 		return ""
@@ -128,18 +140,6 @@ func relationSentence(cat *catalog.Catalog, operationID string) string {
 		}
 	}
 	return strings.Join(parts, " ")
-}
-
-func (d *Derived) Synonyms(operationID string) []string {
-	return d.Note(operationID).Synonyms
-}
-
-func (d *Derived) AllSynonyms() map[string][]string {
-	out := make(map[string][]string, len(d.notes))
-	for id := range d.notes {
-		out[id] = d.Synonyms(id)
-	}
-	return out
 }
 
 func ParseOverlay(data []byte, base notes) (*FileOverlay, error) {

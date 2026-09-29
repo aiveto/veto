@@ -156,3 +156,22 @@ func (c *Catalog) Finalize() {
 	c.index()
 	c.Graph = BuildGraph(c.Operations, c.Links, c.Uses)
 }
+
+func (c *Catalog) Joins() []string {
+	if c == nil {
+		return nil
+	}
+	var lines []string
+	for _, e := range c.Graph.Edges {
+		if e.Kind != EdgeLinks && e.Kind != EdgeRelates {
+			continue
+		}
+		label := e.Note
+		if label == "" {
+			label = e.Kind
+		}
+		lines = append(lines, fmt.Sprintf("%s --[%s]--> %s", e.From, label, e.To))
+	}
+	sort.Strings(lines)
+	return lines
+}

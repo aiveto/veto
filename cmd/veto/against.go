@@ -18,6 +18,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+var errNotInRef = errors.New("path is not in the git ref")
+
 type (
 	baseline struct {
 		Operations    map[string]catalog.OpFact
@@ -42,8 +44,6 @@ type (
 		against string
 	}
 )
-
-var errNotInRef = errors.New("path is not in the git ref")
 
 func newCheckCommand() (*cobra.Command, error) {
 	cmd := &checkCmd{}

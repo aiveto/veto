@@ -7,9 +7,15 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
-type allowExporter struct {
-	next sdktrace.SpanExporter
-}
+type (
+	allowExporter struct {
+		next sdktrace.SpanExporter
+	}
+
+	allowSpan struct {
+		sdktrace.ReadOnlySpan
+	}
+)
 
 func (e allowExporter) ExportSpans(ctx context.Context, spans []sdktrace.ReadOnlySpan) error {
 	out := make([]sdktrace.ReadOnlySpan, len(spans))
@@ -21,10 +27,6 @@ func (e allowExporter) ExportSpans(ctx context.Context, spans []sdktrace.ReadOnl
 
 func (e allowExporter) Shutdown(ctx context.Context) error {
 	return e.next.Shutdown(ctx)
-}
-
-type allowSpan struct {
-	sdktrace.ReadOnlySpan
 }
 
 func (s allowSpan) Attributes() []attribute.KeyValue {
