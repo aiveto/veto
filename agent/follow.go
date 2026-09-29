@@ -15,10 +15,7 @@ import (
 func (l *Loop) Follow(ctx context.Context, operationID string, params map[string]string, approvalID string) ([]Call, error) {
 	first, err := l.Invoke(ctx, operationID, params, approvalID)
 	if err != nil || first.Status != "ok" {
-		if err != nil {
-			return []Call{first}, err
-		}
-		return []Call{first}, nil
+		return []Call{first}, err
 	}
 	calls := []Call{first}
 	if l.Catalog == nil {
