@@ -84,3 +84,36 @@ func Apply(cat *catalog.Catalog, f File) error {
 	}
 	return nil
 }
+
+// Confirmations returns operations whose confirmation field is set.
+func Confirmations(f File) map[string]*bool {
+	out := map[string]*bool{}
+	for _, e := range f.Operations {
+		if e.Confirmation == nil {
+			continue
+		}
+		v := *e.Confirmation
+		out[e.Operation] = &v
+	}
+	return out
+}
+
+// ChangedConfirmations reports operations whose confirmation field was added, removed, or flipped.
+func ChangedConfirmations(base, next map[string]*bool) map[string]bool {
+	seen := map[string]struct{}{}
+	for id := range base {
+		seen[id] = struct{}{}
+	}
+	for id := range next {
+		seen[id] = struct{}{}
+	}
+	out := map[string]bool{}
+	for id := range seen {
+		b, bok := base[id]
+		n, nok := next[id]
+		if bok != nok || (bok && (b == nil || n == nil || *b != *n)) {
+			out[id] = true
+		}
+	}
+	return out
+}

@@ -85,6 +85,11 @@ type (
 		keepSensitive bool
 		from          string
 	}
+
+	checkCmd struct {
+		evalCmd
+		against string
+	}
 )
 
 func main() {
@@ -306,7 +311,7 @@ func runServe(cmd serveCmd) {
 }
 
 func newCheckCommand() *cobra.Command {
-	cmd := &evalCmd{}
+	cmd := &checkCmd{}
 	c := &cobra.Command{
 		Use:   "check",
 		Short: "Load the catalog, print joins, and run eval cases.",
@@ -320,11 +325,12 @@ func newCheckCommand() *cobra.Command {
 	c.Flags().StringVar(&cmd.agent, "agent", "", "Path to agent.yaml. Overrides agent_file.")
 	c.Flags().StringVar(&cmd.relations, "relations", "", "Relations file. Overrides relations_file.")
 	c.Flags().StringVar(&cmd.baseURL, "base-url", "", "Override the server URL on every operation. Empty uses each contract server.")
+	c.Flags().StringVar(&cmd.against, "against", "", "Git ref or snapshot JSON. Fail if a joined operation disappeared, confirmation was dropped without an agent.yaml change, or an eval expectation changed.")
 	_ = c.MarkFlagRequired("case")
 	return c
 }
 
-func runCheck(cmd evalCmd) {
+func runCheck(cmd checkCmd) {
 	loop, _, err := buildLoop(cmd.contract, cmd.config, cmd.agent, cmd.relations, cmd.baseURL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "check: %v\n", err)
@@ -333,6 +339,12 @@ func runCheck(cmd evalCmd) {
 	fmt.Printf("ok: %s (%d operations)\n", loop.Catalog.Title, len(loop.Catalog.Operations))
 	for _, line := range loop.Catalog.Joins() {
 		fmt.Println(line)
+	}
+	if cmd.against != "" {
+		if err := diffAgainst(cmd, loop.Catalog); err != nil {
+			fmt.Fprintf(os.Stderr, "check: %v\n", err)
+			os.Exit(1)
+		}
 	}
 	if err := runCases(loop, cmd.cases); err != nil {
 		fmt.Fprintf(os.Stderr, "check: %v\n", err)

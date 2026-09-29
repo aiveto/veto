@@ -1,0 +1,427 @@
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path"
+	"path/filepath"
+	"strings"
+
+	"github.com/aiveto/veto/agentmeta"
+	"github.com/aiveto/veto/catalog"
+	"github.com/aiveto/veto/eval"
+	"gopkg.in/yaml.v3"
+)
+
+type (
+	baseline struct {
+		Operations    map[string]catalog.OpFact
+		Cases         []eval.CaseExpect
+		Confirmations map[string]*bool
+	}
+
+	snapshotFile struct {
+		Operations    map[string]catalog.OpFact `json:"operations"`
+		Cases         []eval.CaseExpect         `json:"cases"`
+		Confirmations map[string]*bool          `json:"confirmations,omitempty"`
+	}
+)
+
+var errNotInRef = errors.New("path is not in the git ref")
+
+func diffAgainst(cmd checkCmd, cat *catalog.Catalog) error {
+	base, err := loadBaseline(cmd)
+	if err != nil {
+		return err
+	}
+	_, _, _, agentPath, err := resolve(cmd.config, cmd.contract, cmd.relations, cmd.agent)
+	if err != nil {
+		return err
+	}
+	curAgent := agentmeta.File{}
+	if agentPath != "" {
+		curAgent, err = agentmeta.Load(agentPath)
+		if err != nil {
+			return err
+		}
+	}
+	cases, err := eval.LoadCases(cmd.cases)
+	if err != nil {
+		return err
+	}
+	lines := catalog.SurfaceRegressions(base.Operations, catalog.Facts(cat), agentmeta.ChangedConfirmations(base.Confirmations, agentmeta.Confirmations(curAgent)))
+	lines = append(lines, eval.Drift(base.Cases, eval.Expects(cases))...)
+	if len(lines) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%s", strings.Join(lines, "\n"))
+}
+
+func loadBaseline(cmd checkCmd) (baseline, error) {
+	info, err := os.Stat(cmd.against)
+	if err == nil && info.Mode().IsRegular() {
+		return readSnapshot(cmd.against)
+	}
+	return baselineFromGit(cmd)
+}
+
+func readSnapshot(path string) (baseline, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return baseline{}, fmt.Errorf("read snapshot: %w", err)
+	}
+	var file snapshotFile
+	if err := json.Unmarshal(data, &file); err != nil {
+		return baseline{}, fmt.Errorf("parse snapshot: %w", err)
+	}
+	if file.Operations == nil {
+		file.Operations = map[string]catalog.OpFact{}
+	}
+	return baseline{Operations: file.Operations, Cases: file.Cases, Confirmations: file.Confirmations}, nil
+}
+
+func baselineFromGit(cmd checkCmd) (baseline, error) {
+	start := cmd.config
+	if start == "" && len(cmd.contract) > 0 {
+		start = cmd.contract[0]
+	}
+	if start == "" {
+		start = "."
+	}
+	root, err := gitRoot(filepath.Dir(start))
+	if err != nil {
+		return baseline{}, err
+	}
+	if cmd.config != "" {
+		return baselineFromConfig(root, cmd.against, cmd.config, cmd.cases)
+	}
+	return baselineFromPaths(root, cmd.against, cmd.contract, cmd.relations, cmd.agent, cmd.cases)
+}
+
+func baselineFromConfig(root, ref, configPath string, casePaths []string) (baseline, error) {
+	cfgRel, err := repoRel(root, configPath)
+	if err != nil {
+		return baseline{}, err
+	}
+	raw, err := gitShow(root, ref, cfgRel)
+	if err != nil {
+		return baseline{}, err
+	}
+	tmp, err := os.MkdirTemp("", "veto-against-")
+	if err != nil {
+		return baseline{}, err
+	}
+	defer os.RemoveAll(tmp)
+	if err := writeRepoFile(tmp, cfgRel, raw); err != nil {
+		return baseline{}, err
+	}
+	var stub struct {
+		Contracts []string `yaml:"contracts"`
+		Relations string   `yaml:"relations_file"`
+		Agent     string   `yaml:"agent_file"`
+		Semantics string   `yaml:"semantics_file"`
+		Flow      string   `yaml:"flow_file"`
+	}
+	if err := yaml.Unmarshal(raw, &stub); err != nil {
+		return baseline{}, fmt.Errorf("parse config at %s: %w", ref, err)
+	}
+	names := append(append([]string{}, stub.Contracts...), stub.Relations, stub.Agent, stub.Semantics, stub.Flow)
+	for _, name := range names {
+		if name == "" || filepath.IsAbs(name) {
+			continue
+		}
+		rel := path.Clean(path.Join(path.Dir(cfgRel), filepath.ToSlash(name)))
+		data, err := gitShow(root, ref, rel)
+		if err != nil {
+			return baseline{}, err
+		}
+		if err := writeRepoFile(tmp, rel, data); err != nil {
+			return baseline{}, err
+		}
+	}
+	cfg, err := loadConfigAt(filepath.Join(tmp, filepath.FromSlash(cfgRel)))
+	if err != nil {
+		return baseline{}, err
+	}
+	cat, err := loadCatalog(cfg.Contracts, cfg.RelationsFile)
+	if err != nil {
+		return baseline{}, err
+	}
+	if err := applyAgent(cat, cfg.AgentFile); err != nil {
+		return baseline{}, err
+	}
+	conf := map[string]*bool{}
+	if cfg.AgentFile != "" {
+		agentFile, err := agentmeta.Load(cfg.AgentFile)
+		if err != nil {
+			return baseline{}, err
+		}
+		conf = agentmeta.Confirmations(agentFile)
+	}
+	cases, err := casesAtRef(root, ref, casePaths)
+	if err != nil {
+		return baseline{}, err
+	}
+	return baseline{Operations: catalog.Facts(cat), Cases: cases, Confirmations: conf}, nil
+}
+
+func baselineFromPaths(root, ref string, contracts []string, relations, agentPath string, casePaths []string) (baseline, error) {
+	tmp, err := os.MkdirTemp("", "veto-against-")
+	if err != nil {
+		return baseline{}, err
+	}
+	defer os.RemoveAll(tmp)
+	var contractPaths []string
+	for i, abs := range contracts {
+		data, _, err := showIfPresent(root, ref, abs)
+		if err != nil {
+			return baseline{}, err
+		}
+		if data == nil {
+			continue
+		}
+		name := fmt.Sprintf("contract-%d.yaml", i)
+		if err := os.WriteFile(filepath.Join(tmp, name), data, 0o644); err != nil {
+			return baseline{}, err
+		}
+		contractPaths = append(contractPaths, filepath.Join(tmp, name))
+	}
+	if len(contractPaths) == 0 {
+		return baseline{}, fmt.Errorf("no contracts at %s", ref)
+	}
+	relPath := ""
+	if relations != "" {
+		data, _, err := showIfPresent(root, ref, relations)
+		if err != nil {
+			return baseline{}, err
+		}
+		if data != nil {
+			relPath = filepath.Join(tmp, "relations.yaml")
+			if err := os.WriteFile(relPath, data, 0o644); err != nil {
+				return baseline{}, err
+			}
+		}
+	}
+	cat, err := loadCatalog(contractPaths, relPath)
+	if err != nil {
+		return baseline{}, err
+	}
+	conf := map[string]*bool{}
+	if agentPath != "" {
+		data, _, err := showIfPresent(root, ref, agentPath)
+		if err != nil {
+			return baseline{}, err
+		}
+		if data != nil {
+			agentFilePath := filepath.Join(tmp, "agent.yaml")
+			if err := os.WriteFile(agentFilePath, data, 0o644); err != nil {
+				return baseline{}, err
+			}
+			if err := applyAgent(cat, agentFilePath); err != nil {
+				return baseline{}, err
+			}
+			agentFile, err := agentmeta.Load(agentFilePath)
+			if err != nil {
+				return baseline{}, err
+			}
+			conf = agentmeta.Confirmations(agentFile)
+		}
+	}
+	cases, err := casesAtRef(root, ref, casePaths)
+	if err != nil {
+		return baseline{}, err
+	}
+	return baseline{Operations: catalog.Facts(cat), Cases: cases, Confirmations: conf}, nil
+}
+
+func loadConfigAt(configPath string) (configFile, error) {
+	cfg, _, _, _, err := resolve(configPath, nil, "", "")
+	if err != nil {
+		return configFile{}, err
+	}
+	return configFile{Contracts: cfg.Contracts, RelationsFile: cfg.RelationsFile, AgentFile: cfg.AgentFile}, nil
+}
+
+type configFile struct {
+	Contracts     []string
+	RelationsFile string
+	AgentFile     string
+}
+
+func casesAtRef(root, ref string, paths []string) ([]eval.CaseExpect, error) {
+	if len(paths) == 0 {
+		return nil, nil
+	}
+	tmp, err := os.MkdirTemp("", "veto-against-cases-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(tmp)
+	var files []string
+	for _, p := range paths {
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			return nil, err
+		}
+		info, err := os.Stat(abs)
+		if err != nil {
+			return nil, fmt.Errorf("read case: %w", err)
+		}
+		rel, err := repoRel(root, abs)
+		if err != nil {
+			return nil, err
+		}
+		if info.IsDir() {
+			names, err := gitList(root, ref, rel)
+			if err != nil {
+				return nil, err
+			}
+			for _, name := range names {
+				if !strings.HasSuffix(name, ".yaml") && !strings.HasSuffix(name, ".yml") {
+					continue
+				}
+				data, err := gitShow(root, ref, name)
+				if err != nil {
+					return nil, err
+				}
+				dest := filepath.Join(tmp, filepath.FromSlash(name))
+				if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+					return nil, err
+				}
+				if err := os.WriteFile(dest, data, 0o644); err != nil {
+					return nil, err
+				}
+				files = append(files, dest)
+			}
+			continue
+		}
+		data, err := gitShow(root, ref, rel)
+		if errors.Is(err, errNotInRef) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		dest := filepath.Join(tmp, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+			return nil, err
+		}
+		if err := os.WriteFile(dest, data, 0o644); err != nil {
+			return nil, err
+		}
+		files = append(files, dest)
+	}
+	if len(files) == 0 {
+		return nil, nil
+	}
+	cases, err := eval.LoadCases(files)
+	if err != nil {
+		return nil, err
+	}
+	return eval.Expects(cases), nil
+}
+
+func showIfPresent(root, ref, abs string) ([]byte, string, error) {
+	rel, err := repoRel(root, abs)
+	if err != nil {
+		return nil, "", err
+	}
+	data, err := gitShow(root, ref, rel)
+	if errors.Is(err, errNotInRef) {
+		return nil, rel, nil
+	}
+	if err != nil {
+		return nil, rel, err
+	}
+	return data, rel, nil
+}
+
+func writeRepoFile(tmp, rel string, data []byte) error {
+	dest := filepath.Join(tmp, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(dest, data, 0o644)
+}
+
+func gitRoot(dir string) (string, error) {
+	out, err := gitOutput(dir, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+func repoRel(root, abs string) (string, error) {
+	root, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", err
+	}
+	abs, err = filepath.Abs(abs)
+	if err != nil {
+		return "", err
+	}
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		abs = resolved
+	}
+	rel, err := filepath.Rel(root, abs)
+	if err != nil {
+		return "", err
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("%s is outside %s", abs, root)
+	}
+	return filepath.ToSlash(rel), nil
+}
+
+func gitShow(root, ref, rel string) ([]byte, error) {
+	cmd := exec.Command("git", "-C", root, "show", ref+":"+rel)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		msg := stderr.String()
+		if strings.Contains(msg, "does not exist") || strings.Contains(msg, "exists on disk, but not") {
+			return nil, errNotInRef
+		}
+		text := strings.TrimSpace(msg)
+		if text == "" {
+			text = err.Error()
+		}
+		return nil, fmt.Errorf("git show %s:%s: %s", ref, rel, text)
+	}
+	return stdout.Bytes(), nil
+}
+
+func gitList(root, ref, rel string) ([]string, error) {
+	cmd := exec.Command("git", "-C", root, "ls-tree", "-r", "--name-only", ref, "--", rel)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("git ls-tree %s %s: %s", ref, rel, strings.TrimSpace(stderr.String()))
+	}
+	var out []string
+	for _, line := range strings.Split(stdout.String(), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			out = append(out, line)
+		}
+	}
+	return out, nil
+}
+
+func gitOutput(dir string, args ...string) ([]byte, error) {
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("git %s: %s", strings.Join(args, " "), strings.TrimSpace(stderr.String()))
+	}
+	return stdout.Bytes(), nil
+}
