@@ -1,16 +1,14 @@
 # veto
 
-Veto is one guarded way for an agent to call the APIs you already have.
+You have hundreds of API calls. The agent does not get one tool per call, and it does not get the file. It gets three tools: find, read, make. It asks to delete a customer. Nothing is sent. A person says yes. Then it is sent. You can read that attempt, and the secret is not in it.
 
-Stripe's API file is 8316935 bytes and 612 calls. The agent still gets three tools: find a call, read it, make it. The note for "delete a customer" is 1302 bytes. The file stays out of the note. Delete customer stopped with zero HTTP. A get of that customer sent one request. The trace of the attempt leaves the secret out. When the file changes and a call or a stop disappears, a test fails.
+Stripe's file is 612 calls, and veto still exposes three tools. Delete sent nothing.
 
-That is the product. A small example is only how one piece looks.
+The Stripe file is not in this repository. The orders example is the small picture of a second call.
 
-## One link, when the file does not say it
+Someone asks who placed order 123. `orders.get` returns customerId 7. The note says `Order.customerId identifies customers.get`. `customers.get` is called for 7. `orders.delete` sends nothing until it is approved. The trace leaves the secret out.
 
-An orders API and a customers API sit on different hosts. Someone asks who placed order 123. Find matches `orders.get`. The call returns `customerId` 7.
-
-When a field on one service is the id for a call on another, and the API file does not already say so, you write one line:
+Veto does not infer that line. Most calls need no line. If the spec already has a link, that link is used. This file is only for a join the spec left out.
 
 ```yaml
 relations:
@@ -19,18 +17,24 @@ relations:
     to: customers.get
 ```
 
-That sentence goes in the note: `Order.customerId identifies customers.get`. Veto does not infer it. Most calls need no line. The agent then calls `customers.get` for 7.
+The command line and the generated Go client use that same door.
 
-If the agent asks to delete the order, no HTTP goes out until someone approves. Then the same call goes out.
+```bash
+go run ./examples/two-apis
+go run ./cmd/veto validate --config examples/two-apis/veto.yaml
+go run ./cmd/veto pack --config examples/two-apis/veto.yaml --message "who placed order 123"
+go run ./cmd/veto serve --config examples/two-apis/veto.yaml --stdio
+```
 
-## What you stop writing
+The first command is the walk above. `validate` prints the joins, including a link the spec already declared. `pack` prints the note for that question. The API file is not in the note. `serve` listens on stdio. The three tools are `capabilities_search`, `capabilities_describe`, and `capabilities_invoke`.
 
-You do not write one tool per URL. You do not paste the API files into the prompt. You do not copy the stop into the agent, the command line, and the generated Go client. Those three use the same door.
+You still write the API files. Content-Type `application/json;v=3` is sent as written. `customer-v3.yaml` is another file. Duplicate operation ids fail the load. You write a link line only when the file left the join out. A company rule runs in front of the stop and does not remove it. `WrapPolicy` installs that rule. If the rule does not end the check, the stop still runs. `veto serve` does not load the rule. You write the cases you care about. `veto check --against` fails when a joined call disappears, confirmation is dropped without an agent.yaml change, or a case expectation changes.
 
-You still write the API files, a link line only when the file left the join out, a company rule if the built-in stop is not enough, and the cases you care about.
+Veto does not guess connections. It does not make a large file simple. It does not remember the conversation after a restart.
 
 Module: `github.com/aiveto/veto`
 
 ```bash
-go run ./examples/two-apis
+go test ./...
+go run ./cmd/veto check --config testdata/veto.yaml --case testdata/cases --against HEAD
 ```
