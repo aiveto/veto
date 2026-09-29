@@ -46,6 +46,7 @@ func New(baseURL string, httpClient *http.Client) *Client {
 				SideEffect: {{.SideConst}},
 				RequiresConfirmation: {{.Confirm}},
 				Permissions: {{list .Permissions}},
+				BaseURL: {{quote .BaseURL}},
 				Params: []catalog.Param{
 {{- range .Params}}
 					{Name: {{quote .Name}}, In: {{quote .In}}, Required: {{.Required}}, Description: {{quote .Description}}, Schema: {{quote .Schema}}},
@@ -100,6 +101,7 @@ type helpDoc struct {
 	SideEffect   string    ` + "`json:\"side_effect\"`" + `
 	Confirmation bool      ` + "`json:\"confirmation\"`" + `
 	Permissions  []string  ` + "`json:\"permissions\"`" + `
+	Server       string    ` + "`json:\"server\"`" + `
 	Errors       []string  ` + "`json:\"errors\"`" + `
 }
 
@@ -132,11 +134,7 @@ func usage() {
 }
 
 func client() *sdk.Client {
-	base := os.Getenv("VETO_BASE_URL")
-	if base == "" {
-		base = "http://127.0.0.1:8080"
-	}
-	return sdk.New(base, nil)
+	return sdk.New(os.Getenv("VETO_BASE_URL"), nil)
 }
 
 func finish(status string, httpStatus int, err error) {
@@ -172,6 +170,7 @@ func run{{.GoName}}(args []string) {
 			SideEffect: {{quote .SideEffect}},
 			Confirmation: {{.Confirm}},
 			Permissions: {{list .Permissions}},
+			Server: {{quote .BaseURL}},
 			Errors: []string{},
 			Params: []helpArg{
 {{- range .Params}}
@@ -251,6 +250,7 @@ type (
 		SideConst   string
 		Confirm     bool
 		Permissions []string
+		BaseURL     string
 		Params      []paramView
 	}
 
@@ -319,6 +319,7 @@ func views(cat *catalog.Catalog) []opView {
 			SideConst:   sideConst(op.SideEffect),
 			Confirm:     op.RequiresConfirmation,
 			Permissions: op.Permissions,
+			BaseURL:     op.BaseURL,
 			Params:      params,
 		})
 	}

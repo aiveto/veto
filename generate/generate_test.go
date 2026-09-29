@@ -9,9 +9,33 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/generate"
 	"github.com/aiveto/veto/openapi"
 )
+
+func TestGeneratedMethodsKeepEachServerURL(t *testing.T) {
+	cat := &catalog.Catalog{Operations: []catalog.Operation{
+		{ID: "assets.get", Method: "GET", PathTemplate: "/assets/{id}", BaseURL: "http://assets.example", Params: []catalog.Param{{Name: "id", In: "path", Required: true}}},
+		{ID: "teams.get", Method: "GET", PathTemplate: "/teams/{id}", BaseURL: "http://teams.example", Params: []catalog.Param{{Name: "id", In: "path", Required: true}}},
+	}}
+	cat.Finalize()
+	files, err := generate.Render("example.com/both", cat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sdk := string(files.SDK)
+	cli := string(files.CLI)
+	if !strings.Contains(sdk, "http://assets.example") || !strings.Contains(sdk, "http://teams.example") {
+		t.Fatalf("sdk dropped a server:\n%s", sdk)
+	}
+	if strings.Contains(cli, "127.0.0.1:8080") || !strings.Contains(cli, "VETO_BASE_URL") {
+		t.Fatalf("cli override:\n%s", cli)
+	}
+	if !strings.Contains(sdk, "execute.Client{BaseURL: baseURL") {
+		t.Fatalf("override is not the client base URL:\n%s", sdk)
+	}
+}
 
 func TestGeneratedCLIHelpAndConfirm(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
@@ -58,15 +82,17 @@ func TestGeneratedCLIHelpAndConfirm(t *testing.T) {
 		t.Fatalf("help-json: %v\n%s", err, out)
 	}
 	var doc struct {
-		Command      string `json:"command"`
-		OperationID  string `json:"operation"`
-		Confirmation bool   `json:"confirmation"`
-		Method       string `json:"method"`
+		Command      string   `json:"command"`
+		OperationID  string   `json:"operation"`
+		Confirmation bool     `json:"confirmation"`
+		Method       string   `json:"method"`
+		Server       string   `json:"server"`
+		Permissions  []string `json:"permissions"`
 	}
 	if err := json.Unmarshal(out, &doc); err != nil {
 		t.Fatal(err)
 	}
-	if doc.Command != "delete" || doc.OperationID != "assets.delete" || !doc.Confirmation || doc.Method != "DELETE" {
+	if doc.Command != "delete" || doc.OperationID != "assets.delete" || !doc.Confirmation || doc.Method != "DELETE" || doc.Server != "http://127.0.0.1:8080" {
 		t.Fatalf("help doc: %+v", doc)
 	}
 
