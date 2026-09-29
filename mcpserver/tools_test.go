@@ -2,6 +2,7 @@ package mcpserver_test
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -34,6 +35,28 @@ func TestMCPToolListIsCapabilitiesPlusPins(t *testing.T) {
 	namesDefault := mcpserver.RegisterTools(nil, mcpserver.Options{})
 	if len(namesDefault) != 3 {
 		t.Fatalf("default should be 3 tools, got %v", namesDefault)
+	}
+}
+
+func TestGroupedStaysOneToolPerResource(t *testing.T) {
+	var ops []catalog.Operation
+	for i := 0; i < 50; i++ {
+		group := "assets"
+		if i >= 25 {
+			group = "teams"
+		}
+		ops = append(ops, catalog.Operation{ID: group + ".op" + strconv.Itoa(i), Group: group})
+	}
+	cat := &catalog.Catalog{Operations: ops}
+	cat.Finalize()
+	names := mcpserver.RegisterTools(cat, mcpserver.Options{Grouped: true})
+	if len(names) != 5 {
+		t.Fatalf("tools: %d %v", len(names), names)
+	}
+	for _, n := range names {
+		if strings.Contains(n, ".op") {
+			t.Fatalf("registered an operation tool: %v", names)
+		}
 	}
 }
 

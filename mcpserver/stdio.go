@@ -18,7 +18,9 @@ type (
 	}
 
 	searchArgs struct {
-		Query string `json:"query" jsonschema:"search query"`
+		Query  string `json:"query" jsonschema:"search query"`
+		Offset int    `json:"offset,omitempty" jsonschema:"hit offset"`
+		Limit  int    `json:"limit,omitempty" jsonschema:"page size"`
 	}
 
 	describeArgs struct {
@@ -41,7 +43,7 @@ func RunStdio(ctx context.Context, srv *Server, opt Options) error {
 		Name:        "capabilities_search",
 		Description: "Search operations in the contract catalog",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args searchArgs) (*mcp.CallToolResult, any, error) {
-		matches, err := srv.Search(ctx, args.Query)
+		matches, err := srv.Search(ctx, args.Query, args.Offset, args.Limit)
 		if err != nil {
 			return toolError(err)
 		}

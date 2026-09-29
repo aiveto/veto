@@ -75,6 +75,16 @@ type (
 )
 
 func main() {
+	root := newRoot()
+	if jsonHelp(os.Stdout, root, os.Args[1:]) {
+		return
+	}
+	if err := root.Execute(); err != nil {
+		os.Exit(1)
+	}
+}
+
+func newRoot() *cobra.Command {
 	root := &cobra.Command{
 		Use:          "veto",
 		SilenceUsage: true,
@@ -86,9 +96,7 @@ func main() {
 		newGenerateCommand(),
 		newReplayCommand(),
 	)
-	if err := root.Execute(); err != nil {
-		os.Exit(1)
-	}
+	return root
 }
 
 func newValidateCommand() *cobra.Command {
@@ -203,6 +211,9 @@ func runValidate(cmd validateCmd) {
 		os.Exit(1)
 	}
 	fmt.Printf("ok: %s (%d operations)\n", cat.Title, len(cat.Operations))
+	for _, line := range cat.Joins() {
+		fmt.Println(line)
+	}
 }
 
 func runGenerate(cmd generateCmd) {
@@ -311,6 +322,26 @@ func runReplay(cmd replayCmd) {
 		os.Exit(1)
 	}
 	fmt.Print(replay.FromSpans(rec.Spans(), redact).String())
+}
+
+func callerName(name string) string {
+	if name == "" {
+		return "local"
+	}
+	return name
+}
+
+func allowSet(list []string) map[string]bool {
+	if list == nil {
+		return nil
+	}
+	out := make(map[string]bool, len(list))
+	for _, p := range list {
+		if p != "" {
+			out[p] = true
+		}
+	}
+	return out
 }
 
 func authSecrets(names map[string]string) map[string]string {
@@ -454,7 +485,7 @@ func applyProviders(loop *agent.Loop, cfg config.File) error {
 	}
 	switch cfg.Policy {
 	case "builtin":
-		loop.Policy = policy.Builtin{}
+		loop.Policy = policy.Builtin{Caller: callerName(cfg.Caller), Allow: allowSet(cfg.Permissions)}
 	default:
 		return fmt.Errorf("policy provider %q is not in this slice", cfg.Policy)
 	}

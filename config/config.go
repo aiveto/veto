@@ -32,6 +32,8 @@ type File struct {
 	Auth          map[string]string `yaml:"auth"`
 	Server        string            `yaml:"server"`
 	Page          string            `yaml:"page"`
+	Caller        string            `yaml:"caller"`
+	Permissions   []string          `yaml:"permissions"`
 }
 
 // Defaults returns the in-tree providers.

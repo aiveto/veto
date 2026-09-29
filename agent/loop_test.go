@@ -60,6 +60,9 @@ func TestDeleteLoopStopsBeforeHTTPAndPacksOverlay(t *testing.T) {
 	if out.Status != "confirmation_required" || out.OperationID != "assets.delete" {
 		t.Fatalf("status %q operation %q", out.Status, out.OperationID)
 	}
+	if out.Text != "confirm assets.delete id=123" || !strings.Contains(out.Pack.Serialize(), out.Text) {
+		t.Fatalf("confirmation sentence: %q\n%s", out.Text, out.Pack.Serialize())
+	}
 	if hits.Load() != 0 {
 		t.Fatalf("HTTP ran before approval, hits=%d", hits.Load())
 	}

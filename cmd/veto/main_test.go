@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +15,52 @@ import (
 	"github.com/aiveto/veto/memory"
 	"github.com/aiveto/veto/policy"
 )
+
+func TestHelpJSONStaysOffTheHumanHelpPath(t *testing.T) {
+	root := newRoot()
+	var buf bytes.Buffer
+	if jsonHelp(&buf, root, []string{"serve", "--help"}) {
+		t.Fatal("human help was treated as JSON")
+	}
+	if !jsonHelp(&buf, root, []string{"serve", "--help-json"}) {
+		t.Fatal("expected JSON help")
+	}
+	var doc struct {
+		Command string `json:"command"`
+		Flags   []struct {
+			Name string `json:"name"`
+		} `json:"flags"`
+		Commands []string `json:"commands"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if doc.Command != "serve" || len(doc.Commands) != 0 {
+		t.Fatalf("doc: %+v", doc)
+	}
+	var sawStdio bool
+	for _, f := range doc.Flags {
+		if f.Name == "stdio" {
+			sawStdio = true
+		}
+	}
+	if !sawStdio {
+		t.Fatalf("flags: %+v", doc.Flags)
+	}
+	buf.Reset()
+	if !jsonHelp(&buf, root, []string{"--help-json"}) {
+		t.Fatal("expected root JSON help")
+	}
+	if err := json.Unmarshal(buf.Bytes(), &doc); err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(doc.Commands, ",")
+	for _, name := range []string{"serve", "eval", "replay", "validate", "generate"} {
+		if !strings.Contains(joined, name) {
+			t.Fatalf("commands: %s", joined)
+		}
+	}
+}
 
 func TestConfigIsTheCatalog(t *testing.T) {
 	_, contracts, relations, _, err := resolve("../../testdata/veto.yaml", nil, "", "")

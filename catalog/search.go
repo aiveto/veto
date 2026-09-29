@@ -13,16 +13,22 @@ type Match struct {
 	Related   []string
 }
 
+type scored struct {
+	op    Operation
+	score int
+}
+
 // Search ranks operations and returns at most hitLimit.
 // An exact id outranks a synonym. A synonym outranks a weaker substring.
 func Search(cat *Catalog, query string, synonyms map[string][]string) []Match {
+	return SearchPage(cat, query, synonyms, 0, hitLimit)
+}
+
+// SearchPage returns a window of the ranked hits. A non-positive limit uses the default page size.
+func SearchPage(cat *Catalog, query string, synonyms map[string][]string, offset, limit int) []Match {
 	q := strings.ToLower(strings.TrimSpace(query))
 	if cat == nil || q == "" {
 		return nil
-	}
-	type scored struct {
-		op    Operation
-		score int
 	}
 	var hits []scored
 	for _, op := range cat.Operations {
@@ -38,11 +44,25 @@ func Search(cat *Catalog, query string, synonyms map[string][]string) []Match {
 		}
 		return hits[i].op.ID < hits[j].op.ID
 	})
-	if len(hits) > hitLimit {
-		hits = hits[:hitLimit]
+	return pageHits(cat, hits, offset, limit)
+}
+
+func pageHits(cat *Catalog, hits []scored, offset, limit int) []Match {
+	if limit <= 0 {
+		limit = hitLimit
 	}
-	out := make([]Match, 0, len(hits))
-	for _, h := range hits {
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > len(hits) {
+		return nil
+	}
+	end := offset + limit
+	if end > len(hits) {
+		end = len(hits)
+	}
+	out := make([]Match, 0, end-offset)
+	for _, h := range hits[offset:end] {
 		out = append(out, hit(cat, h.op))
 	}
 	return out

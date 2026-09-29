@@ -51,6 +51,32 @@ func TestTagsAndPathNounAreSearchable(t *testing.T) {
 	}
 }
 
+func TestSearchPageReturnsTheNextWindow(t *testing.T) {
+	var ops []catalog.Operation
+	for i := 0; i < 10; i++ {
+		ops = append(ops, catalog.Operation{
+			ID:          fmt.Sprintf("item.%02d", i),
+			Description: "mentions item.get once",
+			Name:        "mention",
+		})
+	}
+	cat := &catalog.Catalog{Operations: ops}
+	cat.Finalize()
+	first := catalog.SearchPage(cat, "item.get", nil, 0, 3)
+	next := catalog.SearchPage(cat, "item.get", nil, 3, 3)
+	if len(first) != 3 || len(next) != 3 || first[0].Operation.ID == next[0].Operation.ID {
+		t.Fatalf("first=%v next=%v", ids(first), ids(next))
+	}
+}
+
+func ids(matches []catalog.Match) []string {
+	out := make([]string, len(matches))
+	for i, m := range matches {
+		out[i] = m.Operation.ID
+	}
+	return out
+}
+
 func TestSearchRetireFindsDelete(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
 	if err != nil {

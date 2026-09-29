@@ -147,7 +147,9 @@ func (l *Loop) Run(ctx context.Context, userText string) (Outcome, error) {
 		pending = l.State.Pending(call.ApprovalID)
 	}
 	summary := call.Status
-	if call.Code != "" {
+	if call.Status == "confirmation_required" {
+		summary = policy.ConfirmSentence(call.OperationID, callParams(l, call.ApprovalID))
+	} else if call.Code != "" {
 		summary = fmt.Sprintf("%s code=%s retryable=%t", call.Status, call.Code, call.Retryable)
 	}
 	followTurns := append(turns, runctx.Turn{Role: "tool", Content: summary + " " + call.OperationID})
@@ -258,6 +260,17 @@ func (l *Loop) runFlow(ctx context.Context, resp Response) (Call, error) {
 		status = results[len(results)-1]
 	}
 	return Call{Status: status, OperationID: last}, nil
+}
+
+func callParams(l *Loop, approvalID string) map[string]string {
+	if l == nil || l.State == nil || approvalID == "" {
+		return nil
+	}
+	pending := l.State.Pending(approvalID)
+	if pending == nil {
+		return nil
+	}
+	return pending.Params
 }
 
 func (l *Loop) ready() {

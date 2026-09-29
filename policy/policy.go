@@ -3,6 +3,8 @@ package policy
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 	"sync"
 
 	"github.com/aiveto/veto/catalog"
@@ -42,7 +44,11 @@ type (
 	Around func(ctx context.Context, op *catalog.Operation) (Decision, bool, error)
 
 	// Builtin allows a call unless the operation requires confirmation.
-	Builtin struct{}
+	// Allow nil permits every declared permission. A set denies a permission that is missing.
+	Builtin struct {
+		Caller string
+		Allow  map[string]bool
+	}
 
 	// Wrapped calls Around, then Builtin, unless Around stops.
 	Wrapped struct {
@@ -76,25 +82,45 @@ func NewState() *State {
 	return &State{pending: map[string]PendingConfirmation{}}
 }
 
-func (Builtin) Check(ctx context.Context, op *catalog.Operation) (Decision, error) {
-	_ = ctx
+func (b Builtin) Check(ctx context.Context, op *catalog.Operation) (Decision, error) {
 	if op == nil {
 		return DecisionDeny, fmt.Errorf("missing operation")
 	}
 	span := telemetry.StartSpan(ctx, "policy.decision")
 	defer span.End()
+	if b.Allow != nil {
+		for _, p := range op.Permissions {
+			if p != "" && !b.Allow[p] {
+				span.SetAttributes(telemetry.Attr("decision", string(DecisionDeny)))
+				return DecisionDeny, nil
+			}
+		}
+	}
 	if op.RequiresConfirmation {
 		span.SetAttributes(telemetry.Attr("decision", string(DecisionConfirmationNeeded)))
 		return DecisionConfirmationNeeded, nil
 	}
-	for _, p := range op.Permissions {
-		if p != "" {
-			// Builtin allows all declared permissions in MVP.
-			_ = p
-		}
-	}
 	span.SetAttributes(telemetry.Attr("decision", string(DecisionAllow)))
 	return DecisionAllow, nil
+}
+
+// ConfirmSentence is the line a human confirms and the pack repeats.
+func ConfirmSentence(operationID string, params map[string]string) string {
+	keys := make([]string, 0, len(params))
+	for k := range params {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	b.WriteString("confirm ")
+	b.WriteString(operationID)
+	for _, k := range keys {
+		b.WriteByte(' ')
+		b.WriteString(k)
+		b.WriteByte('=')
+		b.WriteString(params[k])
+	}
+	return b.String()
 }
 
 // Check runs the hook and returns a decision for op.

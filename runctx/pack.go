@@ -126,7 +126,7 @@ func (p Pack) Serialize() string {
 		parts = append(parts, "related: "+rel)
 	}
 	if p.PendingConfirmation != nil {
-		parts = append(parts, "pending_confirmation: "+p.PendingConfirmation.OperationID)
+		parts = append(parts, "pending_confirmation: "+policy.ConfirmSentence(p.PendingConfirmation.OperationID, p.PendingConfirmation.Params))
 	}
 	return strings.Join(parts, "\n")
 }

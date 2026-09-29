@@ -31,9 +31,12 @@ type (
 )
 
 // Search runs capability search.
-func (s *Server) Search(ctx context.Context, query string) ([]catalog.Match, error) {
-	syns := s.Semantics.AllSynonyms()
-	return catalog.Search(s.Catalog, query, syns), nil
+func (s *Server) Search(ctx context.Context, query string, offset, limit int) ([]catalog.Match, error) {
+	var syns map[string][]string
+	if s.Semantics != nil {
+		syns = s.Semantics.AllSynonyms()
+	}
+	return catalog.SearchPage(s.Catalog, query, syns, offset, limit), nil
 }
 
 // Describe returns one operation as JSON.

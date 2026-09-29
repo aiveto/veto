@@ -8,6 +8,18 @@ import (
 	"github.com/aiveto/veto/openapi"
 )
 
+func TestJoinsPrintTheRelation(t *testing.T) {
+	cat := &catalog.Catalog{Operations: []catalog.Operation{
+		{ID: "assets.get", Name: "get"},
+		{ID: "teams.get", Name: "team"},
+	}, Links: []catalog.OpLink{{From: "assets.get", To: "teams.get", Note: "Holding.teamsId"}}}
+	cat.Finalize()
+	lines := cat.Joins()
+	if len(lines) != 1 || lines[0] != "assets.get --[Holding.teamsId]--> teams.get" {
+		t.Fatalf("joins: %v", lines)
+	}
+}
+
 func TestGraphGroupsAssetsAndLinksDelete(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
 	if err != nil {
