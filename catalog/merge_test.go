@@ -52,6 +52,29 @@ func TestRelationJoinsAssetsToTeams(t *testing.T) {
 	}
 }
 
+func TestRelationRejectsUnusedSchemaAndMissingTarget(t *testing.T) {
+	assets, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	teams, err := openapi.Load(context.Background(), "../testdata/teams.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cat, err := catalog.Merge(assets, teams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = catalog.ApplyRelations(cat, []catalog.Relation{{Schema: "Missing", Field: "id", To: "teams.get"}})
+	if err == nil || !strings.Contains(err.Error(), "not used") {
+		t.Fatalf("unused schema: %v", err)
+	}
+	err = catalog.ApplyRelations(cat, []catalog.Relation{{Schema: "Holding", Field: "teamsId", To: "missing.get"}})
+	if err == nil || !strings.Contains(err.Error(), "unknown operation") {
+		t.Fatalf("missing target: %v", err)
+	}
+}
+
 func TestDuplicateOperationRefused(t *testing.T) {
 	assets, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
 	if err != nil {
