@@ -2,6 +2,8 @@ package catalog
 
 import (
 	"fmt"
+	"sort"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -21,19 +23,33 @@ type (
 func Merge(parts ...*Catalog) (*Catalog, error) {
 	out := &Catalog{Title: "catalog"}
 	seen := map[string]bool{}
+	dup := map[string]bool{}
 	for _, part := range parts {
 		if part == nil {
 			continue
 		}
 		for _, op := range part.Operations {
 			if seen[op.ID] {
-				return nil, fmt.Errorf("duplicate operation %q", op.ID)
+				dup[op.ID] = true
+				continue
 			}
 			seen[op.ID] = true
 			out.Operations = append(out.Operations, op)
 		}
 		out.Links = append(out.Links, part.Links...)
 		out.Uses = append(out.Uses, part.Uses...)
+	}
+	if len(dup) > 0 {
+		ids := make([]string, 0, len(dup))
+		for id := range dup {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		quoted := make([]string, len(ids))
+		for i, id := range ids {
+			quoted[i] = fmt.Sprintf("%q", id)
+		}
+		return nil, fmt.Errorf("duplicate operation %s", strings.Join(quoted, ", "))
 	}
 	if out.Title == "catalog" && len(parts) == 1 && parts[0] != nil && parts[0].Title != "" {
 		out.Title = parts[0].Title

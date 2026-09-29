@@ -177,6 +177,7 @@ func mapOperation(method, path, group, base string, op *openapi3.Operation) cata
 			Required:    pv.Required,
 			Description: pv.Description,
 			Schema:      schemaJSON(pv.Schema),
+			Default:     schemaDefault(pv.Schema),
 		})
 	}
 	if body, ok := bodyParam(op); ok {

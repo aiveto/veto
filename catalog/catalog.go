@@ -44,6 +44,8 @@ type (
 		Required    bool
 		Description string
 		Schema      string
+		MediaType   string
+		Default     string
 	}
 
 	Operation struct {

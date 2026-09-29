@@ -3,6 +3,7 @@ package catalog_test
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -58,4 +59,37 @@ func TestDuplicateOperationRefused(t *testing.T) {
 	require.NoError(t, err)
 	_, err = catalog.Merge(orders, orders)
 	assert.ErrorContains(t, err, "duplicate operation")
+	assert.ErrorContains(t, err, "orders.delete")
+	assert.ErrorContains(t, err, "orders.get")
+	assert.ErrorContains(t, err, "orders.list")
+
+	dir := t.TempDir()
+	const spec = `openapi: 3.0.3
+info:
+  title: Customers
+  version: "1"
+paths:
+  /customers/{id}:
+    get:
+      operationId: customers.get
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ok
+`
+	for _, name := range []string{"customers.yaml", "customer-v3.yaml"} {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(spec), 0o644))
+	}
+	left, err := openapi.Load(context.Background(), filepath.Join(dir, "customers.yaml"))
+	require.NoError(t, err)
+	right, err := openapi.Load(context.Background(), filepath.Join(dir, "customer-v3.yaml"))
+	require.NoError(t, err)
+	_, err = catalog.Merge(left, right)
+	assert.ErrorContains(t, err, "duplicate operation")
+	assert.ErrorContains(t, err, "customers.get")
 }

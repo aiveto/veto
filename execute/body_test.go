@@ -76,6 +76,35 @@ func TestMissingRequiredInputDoesNotCallDo(t *testing.T) {
 	}
 }
 
+func TestVersionedMediaTypeAndHeaderDefault(t *testing.T) {
+	op := loadSpec(t, versionSpec).ByID("customers.create")
+	body, ok := op.BodyParam()
+	require.True(t, ok)
+	assert.Equal(t, "application/json;v=3", body.MediaType)
+
+	var gotType, gotTenant string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotType = r.Header.Get("Content-Type")
+		gotTenant = r.Header.Get("X-Tenant")
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer ts.Close()
+
+	send := func(params map[string]string) {
+		t.Helper()
+		resp, err := execute.InvokeResponse(context.Background(), execute.Config{BaseURL: ts.URL}, op, params)
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+	}
+	send(map[string]string{"body": `{"name":"ada"}`})
+	assert.Equal(t, "application/json;v=3", gotType)
+	assert.Equal(t, "acme", gotTenant)
+
+	send(map[string]string{"body": `{"name":"ada"}`, "X-Tenant": "other"})
+	assert.Equal(t, "application/json;v=3", gotType)
+	assert.Equal(t, "other", gotTenant)
+}
+
 func TestNoBodySchemaOmitsContentType(t *testing.T) {
 	cat := loadSpec(t, bodySpec)
 	op := cat.ByID("orders.get")
@@ -148,4 +177,34 @@ components:
       properties:
         name:
           type: string
+`
+
+const versionSpec = `openapi: 3.0.3
+info:
+  title: Customers
+  version: "3"
+servers:
+  - url: http://127.0.0.1:9
+paths:
+  /customers:
+    post:
+      operationId: customers.create
+      parameters:
+        - name: X-Tenant
+          in: header
+          schema:
+            type: string
+            default: acme
+      requestBody:
+        required: true
+        content:
+          "application/json;v=3":
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+      responses:
+        "201":
+          description: created
 `

@@ -3,6 +3,7 @@ package openapi
 import (
 	"encoding/json"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/aiveto/veto/catalog"
@@ -16,7 +17,7 @@ func bodyParam(op *openapi3.Operation) (catalog.Param, bool) {
 		return catalog.Param{}, false
 	}
 	rb := op.RequestBody.Value
-	mt := rb.Content.Get(jsonMedia)
+	media, mt := requestMedia(rb.Content)
 	if mt == nil || mt.Schema == nil {
 		return catalog.Param{}, false
 	}
@@ -26,7 +27,71 @@ func bodyParam(op *openapi3.Operation) (catalog.Param, bool) {
 		Required:    rb.Required,
 		Description: rb.Description,
 		Schema:      schemaJSON(mt.Schema),
+		MediaType:   media,
 	}, true
+}
+
+func requestMedia(content openapi3.Content) (string, *openapi3.MediaType) {
+	type pair struct {
+		key string
+		mt  *openapi3.MediaType
+	}
+	var pairs []pair
+	for key, mt := range content {
+		if mt == nil || mt.Schema == nil {
+			continue
+		}
+		pairs = append(pairs, pair{key: key, mt: mt})
+	}
+	if len(pairs) == 0 {
+		return "", nil
+	}
+	sort.Slice(pairs, func(i, j int) bool { return pairs[i].key < pairs[j].key })
+	for _, p := range pairs {
+		if p.key == jsonMedia {
+			return p.key, p.mt
+		}
+	}
+	for _, p := range pairs {
+		if mediaBase(p.key) == jsonMedia {
+			return p.key, p.mt
+		}
+	}
+	return pairs[0].key, pairs[0].mt
+}
+
+func mediaBase(media string) string {
+	media = strings.TrimSpace(media)
+	if i := strings.IndexByte(media, ';'); i >= 0 {
+		media = strings.TrimSpace(media[:i])
+	}
+	return media
+}
+
+func schemaDefault(ref *openapi3.SchemaRef) string {
+	if ref == nil || ref.Value == nil || ref.Value.Default == nil {
+		return ""
+	}
+	switch v := ref.Value.Default.(type) {
+	case string:
+		return v
+	case bool:
+		return strconv.FormatBool(v)
+	case int:
+		return strconv.Itoa(v)
+	case int64:
+		return strconv.FormatInt(v, 10)
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	case json.Number:
+		return v.String()
+	default:
+		b, err := json.Marshal(v)
+		if err != nil {
+			return ""
+		}
+		return string(b)
+	}
 }
 
 func responseFields(op *openapi3.Operation) []string {

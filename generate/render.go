@@ -49,7 +49,7 @@ func New(baseURL string, httpClient *http.Client) (*Client, error) {
 				BaseURL: {{quote .BaseURL}},
 				Params: []catalog.Param{
 {{- range .Params}}
-					{Name: {{quote .Name}}, In: {{quote .In}}, Required: {{.Required}}, Description: {{quote .Description}}, Schema: {{quote .Schema}}},
+					{Name: {{quote .Name}}, In: {{quote .In}}, Required: {{.Required}}, Description: {{quote .Description}}, Schema: {{quote .Schema}}, MediaType: {{quote .MediaType}}, Default: {{quote .Default}}},
 {{- end}}
 				},
 			},
@@ -263,6 +263,8 @@ type (
 		Required    bool
 		Description string
 		Schema      string
+		MediaType   string
+		Default     string
 	}
 )
 
@@ -305,6 +307,8 @@ func views(cat *catalog.Catalog) []opView {
 				Required:    p.Required || p.In == "path",
 				Description: p.Description,
 				Schema:      p.Schema,
+				MediaType:   p.MediaType,
+				Default:     p.Default,
 			})
 		}
 		out = append(out, opView{

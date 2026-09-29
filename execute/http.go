@@ -89,18 +89,20 @@ func InvokeResponse(ctx context.Context, cfg Config, op *catalog.Operation, para
 	endpoint := strings.TrimRight(base, "/") + path
 
 	var body io.Reader
+	media := ""
 	if p, ok := op.BodyParam(); ok {
 		raw := params[p.Name]
 		if raw != "" {
 			body = bytes.NewReader([]byte(raw))
+			media = p.MediaType
+			if media == "" {
+				media = "application/json"
+			}
 		}
 	}
 	req, err := http.NewRequestWithContext(ctx, op.Method, endpoint, body)
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
-	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
 	}
 	q := req.URL.Query()
 	for _, p := range op.Params {
@@ -116,9 +118,12 @@ func InvokeResponse(ctx context.Context, cfg Config, op *catalog.Operation, para
 		if p.In != "header" {
 			continue
 		}
-		if v := params[p.Name]; v != "" {
+		if v := headerValue(p, params); v != "" {
 			req.Header.Set(p.Name, v)
 		}
+	}
+	if media != "" {
+		req.Header.Set("Content-Type", media)
 	}
 	for _, a := range op.Auth {
 		if a.Kind != "bearer" {
@@ -240,13 +245,24 @@ func classify(status int) (string, bool) {
 	}
 }
 
+func headerValue(p catalog.Param, params map[string]string) string {
+	if v := strings.TrimSpace(params[p.Name]); v != "" {
+		return v
+	}
+	return strings.TrimSpace(p.Default)
+}
+
 func requireParams(op *catalog.Operation, params map[string]string) error {
 	for _, p := range op.Params {
 		required := p.Required || p.In == "path"
 		if !required {
 			continue
 		}
-		if strings.TrimSpace(params[p.Name]) == "" {
+		v := strings.TrimSpace(params[p.Name])
+		if v == "" && p.In == "header" {
+			v = strings.TrimSpace(p.Default)
+		}
+		if v == "" {
 			return agent.ParamError{Operation: op.ID, Name: p.Name}
 		}
 	}
