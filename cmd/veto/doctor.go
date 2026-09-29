@@ -128,7 +128,9 @@ func pingServers(ctx context.Context, client *http.Client, cat *catalog.Catalog)
 			out = append(out, fmt.Sprintf("ping %s: %v", raw, err))
 			continue
 		}
-		resp.Body.Close()
+		if err := resp.Body.Close(); err != nil {
+			out = append(out, fmt.Sprintf("ping %s: %v", raw, err))
+		}
 	}
 	return out
 }

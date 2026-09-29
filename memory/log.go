@@ -28,7 +28,17 @@ func NewLog(path string) (*Log, error) {
 		}
 		return nil, fmt.Errorf("read memory: %w", err)
 	}
-	defer f.Close()
+	readErr := readItems(f, l)
+	if err := f.Close(); err != nil && readErr == nil {
+		readErr = fmt.Errorf("read memory: %w", err)
+	}
+	if readErr != nil {
+		return nil, readErr
+	}
+	return l, nil
+}
+
+func readItems(f *os.File, l *Log) error {
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		line := sc.Bytes()
@@ -37,16 +47,16 @@ func NewLog(path string) (*Log, error) {
 		}
 		var item Item
 		if err := json.Unmarshal(line, &item); err != nil {
-			return nil, fmt.Errorf("parse memory: %w", err)
+			return fmt.Errorf("parse memory: %w", err)
 		}
 		if err := l.inner.Store(context.Background(), item); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	if err := sc.Err(); err != nil {
-		return nil, fmt.Errorf("read memory: %w", err)
+		return fmt.Errorf("read memory: %w", err)
 	}
-	return l, nil
+	return nil
 }
 
 func (l *Log) Store(ctx context.Context, item Item) error {
@@ -100,12 +110,16 @@ func (l *Log) rewrite() error {
 	if err != nil {
 		return fmt.Errorf("write memory: %w", err)
 	}
-	defer f.Close()
 	enc := json.NewEncoder(f)
+	var writeErr error
 	for _, item := range items {
 		if err := enc.Encode(item); err != nil {
-			return fmt.Errorf("write memory: %w", err)
+			writeErr = fmt.Errorf("write memory: %w", err)
+			break
 		}
 	}
-	return nil
+	if err := f.Close(); err != nil && writeErr == nil {
+		writeErr = fmt.Errorf("write memory: %w", err)
+	}
+	return writeErr
 }

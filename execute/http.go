@@ -288,8 +288,10 @@ func ReadBody(resp *http.Response) (string, error) {
 	if resp == nil || resp.Body == nil {
 		return "", nil
 	}
-	defer resp.Body.Close()
 	b, err := io.ReadAll(resp.Body)
+	if closeErr := resp.Body.Close(); closeErr != nil && err == nil {
+		err = closeErr
+	}
 	if err != nil {
 		return "", fmt.Errorf("read body: %w", err)
 	}
