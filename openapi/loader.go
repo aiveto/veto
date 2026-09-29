@@ -323,12 +323,11 @@ func resolveOperationRef(doc *openapi3.T, ops []catalog.Operation, ref string) (
 	if doc.Paths != nil {
 		item = doc.Paths.Find(path)
 	}
-	if item == nil || item.GetOperation(method) == nil {
-		return "", fmt.Errorf("operationRef %q does not resolve", ref)
-	}
-	for _, op := range ops {
-		if op.Method == method && op.PathTemplate == path {
-			return op.ID, nil
+	if item != nil && item.GetOperation(method) != nil {
+		for _, op := range ops {
+			if op.Method == method && op.PathTemplate == path {
+				return op.ID, nil
+			}
 		}
 	}
 	return "", fmt.Errorf("operationRef %q does not resolve", ref)
