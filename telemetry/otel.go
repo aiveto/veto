@@ -7,6 +7,7 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
@@ -42,18 +43,38 @@ func Attr(key, value string) attribute.KeyValue {
 	return attribute.String(key, value)
 }
 
+// Allowed is the attribute set replay prints and OTLP exports.
+func Allowed(key string) bool {
+	switch key {
+	case "operation.id", "decision", "http.method", "http.status", "approval.id", "flow.name", "tools":
+		return true
+	default:
+		return false
+	}
+}
+
 // Install sets the process tracer. An empty export keeps the default noop provider.
-// "stdout" writes spans to standard output. The returned function flushes and shuts the provider down.
+// "stdout" writes spans to standard output. "otlp" sends the allowlisted attributes.
+// The returned function flushes and shuts the provider down.
 func Install(export string) (func(context.Context) error, error) {
 	if export == "" {
 		return func(context.Context) error { return nil }, nil
 	}
-	if export != "stdout" {
+	var exp sdktrace.SpanExporter
+	var err error
+	switch export {
+	case "stdout":
+		exp, err = stdouttrace.New()
+	case "otlp":
+		exp, err = otlptracehttp.New(context.Background())
+		if err == nil {
+			exp = allowExporter{next: exp}
+		}
+	default:
 		return nil, fmt.Errorf("trace export %q is not in this slice", export)
 	}
-	exp, err := stdouttrace.New()
 	if err != nil {
-		return nil, fmt.Errorf("stdout trace: %w", err)
+		return nil, fmt.Errorf("%s trace: %w", export, err)
 	}
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exp))
 	otel.SetTracerProvider(tp)

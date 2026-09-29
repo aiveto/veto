@@ -83,6 +83,7 @@ type (
 		relations     string
 		baseURL       string
 		keepSensitive bool
+		from          string
 	}
 )
 
@@ -108,6 +109,8 @@ func newRoot() *cobra.Command {
 		newGenerateCommand(),
 		newReplayCommand(),
 		newPackCommand(),
+		newDoctorCommand(),
+		newCheckCommand(),
 	)
 	return root
 }
@@ -223,7 +226,7 @@ func newReplayCommand() *cobra.Command {
 	c.Flags().StringVar(&cmd.relations, "relations", "", "Relations file. Overrides relations_file.")
 	c.Flags().StringVar(&cmd.baseURL, "base-url", "", "Override the server URL on every operation. Empty uses each contract server.")
 	c.Flags().BoolVar(&cmd.keepSensitive, "keep-sensitive", false, "Keep user messages and parameter values in the trace.")
-	_ = c.MarkFlagRequired("message")
+	c.Flags().StringVar(&cmd.from, "from", "", "Read a trace file instead of running the message.")
 	return c
 }
 
@@ -302,6 +305,41 @@ func runServe(cmd serveCmd) {
 	}
 }
 
+func newCheckCommand() *cobra.Command {
+	cmd := &evalCmd{}
+	c := &cobra.Command{
+		Use:   "check",
+		Short: "Load the catalog, print joins, and run eval cases.",
+		Run: func(*cobra.Command, []string) {
+			runCheck(*cmd)
+		},
+	}
+	c.Flags().StringArrayVar(&cmd.contract, "contract", nil, "OpenAPI file. Repeat to register another API. Overrides config.")
+	c.Flags().StringArrayVar(&cmd.cases, "case", nil, "Eval case file or directory. Repeat to add another.")
+	c.Flags().StringVar(&cmd.config, "config", "", "Path to veto.yaml provider keys.")
+	c.Flags().StringVar(&cmd.agent, "agent", "", "Path to agent.yaml. Overrides agent_file.")
+	c.Flags().StringVar(&cmd.relations, "relations", "", "Relations file. Overrides relations_file.")
+	c.Flags().StringVar(&cmd.baseURL, "base-url", "", "Override the server URL on every operation. Empty uses each contract server.")
+	_ = c.MarkFlagRequired("case")
+	return c
+}
+
+func runCheck(cmd evalCmd) {
+	loop, _, err := buildLoop(cmd.contract, cmd.config, cmd.agent, cmd.relations, cmd.baseURL)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "check: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("ok: %s (%d operations)\n", loop.Catalog.Title, len(loop.Catalog.Operations))
+	for _, line := range loop.Catalog.Joins() {
+		fmt.Println(line)
+	}
+	if err := runCases(loop, cmd.cases); err != nil {
+		fmt.Fprintf(os.Stderr, "check: %v\n", err)
+		os.Exit(1)
+	}
+}
+
 func runEval(cmd evalCmd) {
 	loop, cfg, err := buildLoop(cmd.contract, cmd.config, cmd.agent, cmd.relations, cmd.baseURL)
 	if err != nil {
@@ -314,19 +352,25 @@ func runEval(cmd evalCmd) {
 		os.Exit(1)
 	}
 	defer stop(context.Background())
-	cases, err := eval.LoadCases(cmd.cases)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "eval: %v\n", err)
+	if err := runCases(loop, cmd.cases); err != nil {
+		fmt.Fprintf(os.Stderr, "eval failed: %v\n", err)
 		os.Exit(1)
+	}
+}
+
+func runCases(loop *agent.Loop, paths []string) error {
+	cases, err := eval.LoadCases(paths)
+	if err != nil {
+		return err
 	}
 	r := &eval.Runner{Catalog: loop.Catalog, Semantics: loop.Semantics, Model: loop.Model, Loop: loop}
 	for _, c := range cases {
 		if err := r.Run(context.Background(), c); err != nil {
-			fmt.Fprintf(os.Stderr, "eval failed: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("%s: %w", c.Name, err)
 		}
 		fmt.Printf("ok: %s\n", c.Name)
 	}
+	return nil
 }
 
 func runPack(cmd packCmd) {
@@ -361,6 +405,19 @@ func packOutput(loop *agent.Loop, message string, asJSON bool) (string, error) {
 }
 
 func runReplay(cmd replayCmd) {
+	if cmd.from != "" {
+		view, err := replay.Load(cmd.from)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "replay: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Print(view.String())
+		return
+	}
+	if cmd.message == "" {
+		fmt.Fprintf(os.Stderr, "replay: message required\n")
+		os.Exit(1)
+	}
 	rec, err := telemetry.Record()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "replay: %v\n", err)
@@ -386,7 +443,22 @@ func runReplay(cmd replayCmd) {
 		fmt.Fprintf(os.Stderr, "replay: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Print(replay.FromSpans(rec.Spans(), redact).String())
+	text, err := finishReplay(rec.Spans(), redact, cfg.TraceFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "replay: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Print(text)
+}
+
+func finishReplay(spans []telemetry.Span, redact bool, traceFile string) (string, error) {
+	view := replay.FromSpans(spans, redact)
+	if traceFile != "" {
+		if err := replay.Save(traceFile, view); err != nil {
+			return "", err
+		}
+	}
+	return view.String(), nil
 }
 
 func callerName(name string) string {
@@ -557,6 +629,8 @@ func applyProviders(loop *agent.Loop, cfg config.File) error {
 	switch cfg.Policy {
 	case "builtin":
 		loop.Policy = policy.Builtin{Caller: callerName(cfg.Caller), Allow: allowSet(cfg.Permissions)}
+	case "opa", "spicedb":
+		return fmt.Errorf("policy provider %q is not in this slice", cfg.Policy)
 	default:
 		return fmt.Errorf("policy provider %q is not in this slice", cfg.Policy)
 	}

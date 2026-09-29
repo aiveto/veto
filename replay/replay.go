@@ -1,34 +1,25 @@
 package replay
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
 	"github.com/aiveto/veto/telemetry"
 )
 
-// kept is the only attributes replay prints while redaction is on.
-var kept = map[string]bool{
-	"operation.id": true,
-	"decision":     true,
-	"http.method":  true,
-	"http.status":  true,
-	"approval.id":  true,
-	"flow.name":    true,
-	"tools":        true,
-}
-
 type (
 	// Step is one recorded span after redaction.
 	Step struct {
-		Name  string
-		Attrs map[string]string
+		Name  string            `json:"name"`
+		Attrs map[string]string `json:"attrs,omitempty"`
 	}
 
 	// View is a run read back from traces.
 	View struct {
-		Steps []Step
+		Steps []Step `json:"steps"`
 	}
 )
 
@@ -45,7 +36,7 @@ func FromSpans(spans []telemetry.Span, redact bool) View {
 	for _, sp := range ordered {
 		attrs := map[string]string{}
 		for k, v := range sp.Attrs {
-			if redact && !kept[k] {
+			if redact && !telemetry.Allowed(k) {
 				continue
 			}
 			attrs[k] = v
@@ -71,4 +62,30 @@ func (v View) String() string {
 		b.WriteByte('\n')
 	}
 	return b.String()
+}
+
+// Save writes a view. Callers pass an already redacted view.
+func Save(path string, view View) error {
+	data, err := json.MarshalIndent(view, "", "  ")
+	if err != nil {
+		return fmt.Errorf("write trace: %w", err)
+	}
+	data = append(data, '\n')
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return fmt.Errorf("write trace: %w", err)
+	}
+	return nil
+}
+
+// Load reads a trace file written by Save.
+func Load(path string) (View, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return View{}, fmt.Errorf("read trace: %w", err)
+	}
+	var view View
+	if err := json.Unmarshal(data, &view); err != nil {
+		return View{}, fmt.Errorf("parse trace: %w", err)
+	}
+	return view, nil
 }

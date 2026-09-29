@@ -28,6 +28,7 @@ type File struct {
 	RelationsFile string            `yaml:"relations_file"`
 	Contracts     []string          `yaml:"contracts"`
 	ReplayRedact  string            `yaml:"replay_redact"`
+	TraceFile     string            `yaml:"trace_file"`
 	Timeout       time.Duration     `yaml:"timeout"`
 	Auth          map[string]string `yaml:"auth"`
 	Server        string            `yaml:"server"`
@@ -80,6 +81,9 @@ func Load(path string) (File, error) {
 	}
 	if cfg.MemoryFile != "" && !filepath.IsAbs(cfg.MemoryFile) {
 		cfg.MemoryFile = filepath.Join(dir, cfg.MemoryFile)
+	}
+	if cfg.TraceFile != "" && !filepath.IsAbs(cfg.TraceFile) {
+		cfg.TraceFile = filepath.Join(dir, cfg.TraceFile)
 	}
 	for i, name := range cfg.Contracts {
 		if name != "" && !filepath.IsAbs(name) {
@@ -142,13 +146,15 @@ func (f File) validate() error {
 	if f.Decision != "default" {
 		return fmt.Errorf("decision provider %q is not in this slice", f.Decision)
 	}
-	if f.Policy != "builtin" {
+	switch f.Policy {
+	case "builtin", "opa", "spicedb":
+	default:
 		return fmt.Errorf("policy provider %q is not in this slice", f.Policy)
 	}
 	if f.Telemetry != "otel" {
 		return fmt.Errorf("telemetry provider %q is not in this slice", f.Telemetry)
 	}
-	if f.TraceExport != "" && f.TraceExport != "stdout" {
+	if f.TraceExport != "" && f.TraceExport != "stdout" && f.TraceExport != "otlp" {
 		return fmt.Errorf("trace export %q is not in this slice", f.TraceExport)
 	}
 	if f.Execution != "in-process" {

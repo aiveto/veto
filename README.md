@@ -11,11 +11,13 @@ go run ./cmd/veto validate --config testdata/veto.yaml
 go run ./cmd/veto serve --config testdata/veto.yaml --stdio
 go run ./cmd/veto eval --config testdata/veto.yaml --case testdata/cases
 go run ./cmd/veto pack --config testdata/veto.yaml --message "delete asset 123"
+go run ./cmd/veto doctor --config testdata/veto.yaml
+go run ./cmd/veto check --config testdata/veto.yaml --case testdata/cases
 go run ./cmd/veto generate --config testdata/veto.yaml --out generated --module example.com/assets
 go run ./cmd/veto replay --config testdata/veto.yaml --message "delete asset 123"
 ```
 
-`testdata/veto.yaml` lists the contracts, the relations file, semantics, agent metadata, and the provider keys. Repeat `--contract` only to override that list. Eval cases live in `testdata/cases`. `--case` takes a file or a directory, and it repeats. `veto pack` prints the same pack `serve` builds. When a contract lists more than one server, the first URL is used unless `server` names another. `page: follow` collects list pages up to five; otherwise a list is one request. The context pack keeps the search hits and their neighbors. `model: openai` reads `OPENAI_API_KEY` and that pack. The default model is `scripted`. `serve --grouped` adds one tool per resource. Replay runs the message and prints the trace. It omits the user message unless `--keep-sensitive` is set.
+`testdata/veto.yaml` lists the contracts, the relations file, semantics, agent metadata, and the provider keys. Repeat `--contract` only to override that list. Eval cases live in `testdata/cases`. `--case` takes a file or a directory, and it repeats. `veto pack` prints the same pack `serve` builds. `policy: opa` and `policy: spicedb` are accepted keys and fail closed. Unset policy stays builtin. Confirmation stays in this process: send `approval_id` back to resume. A signed approval token is not in this slice. When a contract lists more than one server, the first URL is used unless `server` names another. `page: follow` collects list pages up to five; otherwise a list is one request. The context pack keeps the search hits and their neighbors. `model: openai` reads `OPENAI_API_KEY` and that pack. The default model is `scripted`. `serve --grouped` adds one tool per resource. Replay runs the message and prints the trace. It omits the user message unless `--keep-sensitive` is set. `trace_file` writes that redacted view, and `replay --from` prints the file without running again. `trace_export: otlp` sends only the attributes replay keeps. Empty export stays a noop.
 
 Work left before a public release is in `docs/before-open-source.md`.
 

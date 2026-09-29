@@ -2,6 +2,8 @@ package replay_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -68,5 +70,34 @@ func TestRedactDropsAttributesOutsideTheAllowlist(t *testing.T) {
 	}
 	if !strings.Contains(text, "operation.id=assets.delete") {
 		t.Fatalf("safe attribute dropped:\n%s", text)
+	}
+}
+
+func TestTraceFileOmitsTheMessage(t *testing.T) {
+	spans := []telemetry.Span{{
+		Name: "agent.run",
+		Attrs: map[string]string{
+			"operation.id": "assets.delete",
+			"user_message": "Delete asset 123",
+		},
+	}}
+	path := filepath.Join(t.TempDir(), "trace.json")
+	view := replay.FromSpans(spans, true)
+	if err := replay.Save(path, view); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "Delete asset 123") {
+		t.Fatalf("file leaked the message:\n%s", raw)
+	}
+	loaded, err := replay.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(loaded.String(), "operation.id=assets.delete") {
+		t.Fatalf("loaded:\n%s", loaded.String())
 	}
 }

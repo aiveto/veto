@@ -74,6 +74,38 @@ func TestModelBaseURLIsLoaded(t *testing.T) {
 	}
 }
 
+func TestTraceExportOTLPAndTraceFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "veto.yaml")
+	if err := os.WriteFile(path, []byte("trace_export: otlp\ntrace_file: trace.json\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.TraceExport != "otlp" || !strings.HasSuffix(cfg.TraceFile, "trace.json") {
+		t.Fatalf("%+v", cfg)
+	}
+}
+
+func TestOPAAndSpiceDBAreKeysOnly(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"opa", "spicedb"} {
+		path := filepath.Join(dir, name+".yaml")
+		if err := os.WriteFile(path, []byte("policy: "+name+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := config.Load(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.Policy != name {
+			t.Fatalf("policy: %s", cfg.Policy)
+		}
+	}
+}
+
 func TestMemoryFileRequiresAPath(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "veto.yaml")

@@ -2,7 +2,10 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +17,7 @@ import (
 	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/memory"
 	"github.com/aiveto/veto/policy"
+	"github.com/aiveto/veto/telemetry"
 )
 
 func TestHelpJSONStaysOffTheHumanHelpPath(t *testing.T) {
@@ -55,7 +59,7 @@ func TestHelpJSONStaysOffTheHumanHelpPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := strings.Join(doc.Commands, ",")
-	for _, name := range []string{"serve", "eval", "replay", "validate", "generate", "pack"} {
+	for _, name := range []string{"serve", "eval", "replay", "validate", "generate", "pack", "doctor", "check"} {
 		if !strings.Contains(joined, name) {
 			t.Fatalf("commands: %s", joined)
 		}
@@ -225,3 +229,159 @@ func TestAuthSecretComesFromTheEnv(t *testing.T) {
 		t.Fatalf("client auth: %#v", loop.Exec)
 	}
 }
+
+func TestFinishReplayWritesARedactedFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "trace.json")
+	text, err := finishReplay([]telemetry.Span{{
+		Name: "agent.run",
+		Attrs: map[string]string{
+			"operation.id": "assets.delete",
+			"user_message": "Delete asset 123",
+		},
+	}}, true, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(text, "Delete asset 123") || !strings.Contains(text, "operation.id=assets.delete") {
+		t.Fatalf("text:\n%s", text)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "Delete asset 123") {
+		t.Fatalf("file:\n%s", raw)
+	}
+	var buf bytes.Buffer
+	if !jsonHelp(&buf, newRoot(), []string{"replay", "--help-json"}) {
+		t.Fatal("expected replay JSON help")
+	}
+	if !strings.Contains(buf.String(), `"name": "from"`) {
+		t.Fatalf("help: %s", buf.String())
+	}
+}
+
+func TestExternalPolicyFailsClosed(t *testing.T) {
+	contract, err := filepath.Abs("../../testdata/openapi.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "veto.yaml")
+	if err := os.WriteFile(path, []byte("policy: opa\ncontracts:\n  - "+contract+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := buildLoop(nil, path, "", "", ""); err == nil || !strings.Contains(err.Error(), "opa") {
+		t.Fatalf("opa: %v", err)
+	}
+}
+
+func TestCheckRunsTheCaseDirectory(t *testing.T) {
+	cfg, err := filepath.Abs("../../testdata/veto.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases, err := filepath.Abs("../../testdata/cases")
+	if err != nil {
+		t.Fatal(err)
+	}
+	loop, _, err := buildLoop(nil, cfg, "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runCases(loop, []string{cases}); err != nil {
+		t.Fatal(err)
+	}
+	if len(loop.Catalog.Joins()) == 0 {
+		t.Fatal("check catalog has no joins")
+	}
+}
+
+func TestDoctorReportsPinsAuthAndPing(t *testing.T) {
+	cfgPath, err := filepath.Abs("../../testdata/veto.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	loop, cfg, err := buildLoop(nil, cfgPath, "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pins := doctorBlockers(context.Background(), loop.Catalog, cfg, []string{"assets.delete"}, false)
+	if !strings.Contains(strings.Join(pins, "\n"), "discovery-only") {
+		t.Fatalf("pins: %v", pins)
+	}
+
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer up.Close()
+	dir := t.TempDir()
+	spec := filepath.Join(dir, "api.yaml")
+	body := strings.ReplaceAll(securedSpec, "http://example.test", up.URL)
+	if err := os.WriteFile(spec, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	conf := filepath.Join(dir, "veto.yaml")
+	text := "auth:\n  bearerAuth: ASSET_TOKEN\ncontracts:\n  - " + spec + "\n"
+	if err := os.WriteFile(conf, []byte(text), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ASSET_TOKEN", "")
+	secured, loaded, err := buildLoop(nil, conf, "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	missing := doctorBlockers(context.Background(), secured.Catalog, loaded, nil, true)
+	report := strings.Join(missing, "\n")
+	if !strings.Contains(report, "ASSET_TOKEN is unset") {
+		t.Fatalf("auth report: %s", report)
+	}
+	if strings.Contains(report, "ping ") {
+		t.Fatalf("live server was a blocker: %s", report)
+	}
+	t.Setenv("ASSET_TOKEN", "s3cret")
+	set := strings.Join(doctorBlockers(context.Background(), secured.Catalog, loaded, nil, false), "\n")
+	if strings.Contains(set, "s3cret") || strings.Contains(set, "unset") {
+		t.Fatalf("secret or stale unset in report: %s", set)
+	}
+
+	downSpec := filepath.Join(dir, "down.yaml")
+	down := strings.ReplaceAll(securedSpec, "http://example.test", "http://127.0.0.1:1")
+	if err := os.WriteFile(downSpec, []byte(down), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	downConf := filepath.Join(dir, "down.yaml.conf")
+	if err := os.WriteFile(downConf, []byte("contracts:\n  - "+downSpec+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	downLoop, downCfg, err := buildLoop(nil, downConf, "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocked := doctorBlockers(context.Background(), downLoop.Catalog, downCfg, nil, true)
+	if !strings.Contains(strings.Join(blocked, "\n"), "ping ") {
+		t.Fatalf("ping: %v", blocked)
+	}
+}
+
+const securedSpec = `openapi: 3.0.3
+info:
+  title: secured
+  version: "1"
+servers:
+  - url: http://example.test
+paths:
+  /ping:
+    get:
+      operationId: ping
+      responses:
+        "204":
+          description: ok
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+security:
+  - bearerAuth: []
+`
