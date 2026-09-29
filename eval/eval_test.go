@@ -14,6 +14,19 @@ import (
 	"github.com/aiveto/veto/semantics"
 )
 
+type (
+	pickGet struct{}
+	hitExec struct{}
+)
+
+func (pickGet) Complete(context.Context, agent.Request) (agent.Response, error) {
+	return agent.Response{OperationID: "assets.get", Params: map[string]string{"id": "1"}}, nil
+}
+
+func (hitExec) InvokeHTTPResult(context.Context, *catalog.Operation, map[string]string) (agent.HTTPResult, error) {
+	return agent.HTTPResult{Status: 200, Code: "ok"}, nil
+}
+
 func TestDeleteEvalCasePasses(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
 	if err != nil {
@@ -88,6 +101,29 @@ func threeAPIs(t *testing.T) *catalog.Catalog {
 		t.Fatal(err)
 	}
 	return cat
+}
+
+func TestNoHTTPFailsWhenTheCallRuns(t *testing.T) {
+	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	loop, err := agent.New(cat, semantics.NewDerived(cat), hitExec{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	loop.Model = pickGet{}
+	err = (&eval.Runner{Loop: loop}).Run(context.Background(), &eval.Case{
+		Name:  "get",
+		Input: "get asset 1",
+		Expect: eval.Expectations{
+			OperationID: "assets.get",
+			NoHTTP:      true,
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "http ran") {
+		t.Fatalf("err: %v", err)
+	}
 }
 
 func names(cases []*eval.Case) []string {

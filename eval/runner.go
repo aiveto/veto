@@ -24,9 +24,15 @@ type (
 	Expectations struct {
 		ConfirmationRequired bool     `yaml:"confirmation_required"`
 		OperationID          string   `yaml:"operation"`
+		NoHTTP               bool     `yaml:"no_http"`
 		PackContains         []string `yaml:"pack_contains"`
 		PackExcludes         []string `yaml:"pack_excludes"`
 		Related              []string `yaml:"related"`
+	}
+
+	httpGate struct {
+		next agent.Executor
+		hits int
 	}
 
 	Runner struct {
@@ -107,10 +113,19 @@ func (r *Runner) Run(ctx context.Context, c *Case) error {
 	if err := r.checkPack(c); err != nil {
 		return err
 	}
-	if c.Expect.OperationID == "" && !c.Expect.ConfirmationRequired {
+	if c.Expect.OperationID == "" && !c.Expect.ConfirmationRequired && !c.Expect.NoHTTP {
 		return nil
 	}
+	var gate *httpGate
+	if c.Expect.NoHTTP {
+		gate = &httpGate{next: r.Loop.Exec}
+		r.Loop.Exec = gate
+		defer func() { r.Loop.Exec = gate.next }()
+	}
 	out, err := r.Loop.Run(ctx, c.Input)
+	if gate != nil && gate.hits != 0 {
+		return fmt.Errorf("http ran")
+	}
 	if err != nil {
 		return err
 	}
@@ -148,4 +163,12 @@ func (r *Runner) checkPack(c *Case) error {
 		}
 	}
 	return nil
+}
+
+func (g *httpGate) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, params map[string]string) (agent.HTTPResult, error) {
+	g.hits++
+	if g.next == nil {
+		return agent.HTTPResult{}, fmt.Errorf("http call")
+	}
+	return g.next.InvokeHTTPResult(ctx, op, params)
 }

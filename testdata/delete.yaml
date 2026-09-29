@@ -3,3 +3,4 @@ input: "Delete asset 123"
 expect:
   confirmation_required: true
   operation: assets.delete
+  no_http: true
