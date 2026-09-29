@@ -30,6 +30,8 @@ type File struct {
 	ReplayRedact  string            `yaml:"replay_redact"`
 	Timeout       time.Duration     `yaml:"timeout"`
 	Auth          map[string]string `yaml:"auth"`
+	Server        string            `yaml:"server"`
+	Page          string            `yaml:"page"`
 }
 
 // Defaults returns the in-tree providers.
@@ -148,6 +150,9 @@ func (f File) validate() error {
 	}
 	if f.ReplayRedact != "" && f.ReplayRedact != "true" && f.ReplayRedact != "false" {
 		return fmt.Errorf("replay_redact %q is not true or false", f.ReplayRedact)
+	}
+	if f.Page != "" && f.Page != "follow" {
+		return fmt.Errorf("page %q is not follow", f.Page)
 	}
 	return nil
 }

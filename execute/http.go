@@ -29,10 +29,11 @@ type (
 
 	// Client is the HTTP writer the agent loop calls after policy allows an operation.
 	Client struct {
-		BaseURL    string
-		HTTP       *http.Client
-		RecordBody bool
-		Auth       map[string]string
+		BaseURL     string
+		HTTP        *http.Client
+		RecordBody  bool
+		Auth        map[string]string
+		FollowPages int
 	}
 )
 
@@ -47,7 +48,16 @@ func (c Client) Invoke(ctx context.Context, op *catalog.Operation, params map[st
 		return agent.HTTPResult{}, err
 	}
 	code, retryable := classify(resp.StatusCode)
-	return agent.HTTPResult{Status: resp.StatusCode, Body: body, Code: code, Retryable: retryable}, nil
+	result := agent.HTTPResult{Status: resp.StatusCode, Body: body, Code: code, Retryable: retryable}
+	if c.FollowPages <= 1 || len(op.Page) == 0 {
+		return result, nil
+	}
+	merged, err := followPages(ctx, Config{BaseURL: c.BaseURL, Client: c.HTTP, RecordBody: c.RecordBody, Auth: c.Auth}, op, params, body, c.FollowPages)
+	if err != nil {
+		return agent.HTTPResult{}, err
+	}
+	result.Body = merged
+	return result, nil
 }
 
 // Invoke performs the HTTP call described by op.

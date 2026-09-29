@@ -56,6 +56,7 @@ func Load(ctx context.Context, path string) (*catalog.Catalog, error) {
 				continue
 			}
 			operation := mapOperation(method, path, group, serverURL(doc), op)
+			operation.Servers = serverList(doc)
 			operation.Auth = operationAuth(doc, op)
 			cat.Operations = append(cat.Operations, operation)
 			collectUses(operation.ID, op, &cat.Uses, seenUse)
@@ -67,6 +68,13 @@ func Load(ctx context.Context, path string) (*catalog.Catalog, error) {
 		return nil, err
 	}
 	cat.Links = links
+	for i := range cat.Operations {
+		for _, l := range links {
+			if l.From == cat.Operations[i].ID && l.To == cat.Operations[i].ID && len(l.Params) > 0 {
+				cat.Operations[i].Page = l.Params
+			}
+		}
+	}
 	cat.Finalize()
 	return cat, nil
 }
@@ -80,10 +88,25 @@ func pathGroup(path string) string {
 }
 
 func serverURL(doc *openapi3.T) string {
-	if doc == nil || len(doc.Servers) == 0 || doc.Servers[0] == nil {
+	list := serverList(doc)
+	if len(list) == 0 {
 		return ""
 	}
-	return doc.Servers[0].URL
+	return list[0].URL
+}
+
+func serverList(doc *openapi3.T) []catalog.Server {
+	if doc == nil {
+		return nil
+	}
+	var out []catalog.Server
+	for _, s := range doc.Servers {
+		if s == nil || s.URL == "" {
+			continue
+		}
+		out = append(out, catalog.Server{URL: s.URL, Name: s.Description})
+	}
+	return out
 }
 
 func mapOperation(method, path, group, base string, op *openapi3.Operation) catalog.Operation {

@@ -1,6 +1,9 @@
 package catalog
 
-import "sort"
+import (
+	"fmt"
+	"sort"
+)
 
 const (
 	KindRead   Kind = "read"
@@ -26,6 +29,12 @@ type (
 
 	// SideEffect describes how invasive an operation is.
 	SideEffect string
+
+	// Server is one URL from the contract. The first is used when no name is selected.
+	Server struct {
+		URL  string
+		Name string
+	}
 
 	// Auth is one security scheme an operation applies. The secret stays outside the catalog.
 	Auth struct {
@@ -61,6 +70,8 @@ type (
 		Retry                string
 		Exposure             string
 		BaseURL              string
+		Servers              []Server
+		Page                 map[string]string
 		Auth                 []Auth
 		Tags                 []string
 		ResponseFields       []string
@@ -128,6 +139,32 @@ func (c *Catalog) index() {
 	for i := range c.Operations {
 		c.byID[c.Operations[i].ID] = &c.Operations[i]
 	}
+}
+
+// SelectServer points every operation at the named server.
+// An empty name keeps the first server URL.
+func (c *Catalog) SelectServer(name string) error {
+	if c == nil || name == "" {
+		return nil
+	}
+	for i := range c.Operations {
+		op := &c.Operations[i]
+		if len(op.Servers) <= 1 {
+			continue
+		}
+		var url string
+		for _, s := range op.Servers {
+			if s.Name == name || s.URL == name {
+				url = s.URL
+			}
+		}
+		if url == "" {
+			return fmt.Errorf("operation %s has no server %q", op.ID, name)
+		}
+		op.BaseURL = url
+	}
+	c.index()
+	return nil
 }
 
 // Finalize sorts operations by id, then builds indexes and the capability graph.

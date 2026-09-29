@@ -408,6 +408,9 @@ func buildLoop(contracts []string, configPath, agentPath, relationsPath, baseURL
 	if err := applyAgent(cat, agentPath); err != nil {
 		return nil, config.File{}, err
 	}
+	if err := cat.SelectServer(cfg.Server); err != nil {
+		return nil, config.File{}, err
+	}
 	var sem semantics.Provider = semantics.NewDerived(cat)
 	if cfg.SemanticsFile != "" {
 		over, err := semantics.LoadOverlay(cfg.SemanticsFile, sem)
@@ -424,10 +427,15 @@ func buildLoop(contracts []string, configPath, agentPath, relationsPath, baseURL
 		}
 		flows[def.Name] = def
 	}
+	pages := 0
+	if cfg.Page == "follow" {
+		pages = 5
+	}
 	loop := agent.New(cat, sem, execute.Client{
-		BaseURL: baseURL,
-		HTTP:    &http.Client{Timeout: cfg.Timeout},
-		Auth:    authSecrets(cfg.Auth),
+		BaseURL:     baseURL,
+		HTTP:        &http.Client{Timeout: cfg.Timeout},
+		Auth:        authSecrets(cfg.Auth),
+		FollowPages: pages,
 	})
 	loop.Flows = flows
 	if err := applyProviders(loop, cfg); err != nil {
