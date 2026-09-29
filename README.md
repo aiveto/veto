@@ -8,7 +8,7 @@ The Stripe file is not in this repository. The orders example is the small pictu
 
 Someone asks who placed order 123. `orders.get` returns customerId 7. The note says `Order.customerId identifies customers.get`. `customers.get` is called for 7. `orders.delete` sends nothing until it is approved. The trace leaves the secret out.
 
-Veto does not infer that line. Most calls need no line. If the spec already has a link, that link is used. This file is only for a join the spec left out.
+Veto does not infer that line. Most calls need no line. A spec link is used only when it has a parameter mapping. A link with no mapping is not a call. This file is only for a join the spec left out.
 
 ```yaml
 relations:
@@ -30,7 +30,7 @@ The first command is the walk above. `validate` prints the joins, including a li
 
 You still write the API files. Content-Type `application/json;v=3` is sent as written. `customer-v3.yaml` is another file. Duplicate operation ids fail the load. You write a link line only when the file left the join out. A company rule runs in front of the stop and does not remove it. `WrapPolicy` installs that rule. If the rule does not end the check, the stop still runs. `veto serve` does not load the rule. You write the cases you care about. `veto check --against` fails when a joined call disappears, confirmation is dropped without an agent.yaml change, or a case expectation changes.
 
-Veto does not guess connections. It does not make a large file simple. It does not remember the conversation after a restart.
+Veto does not guess connections. It does not make a large file simple. The default memory forgets the conversation on restart. `memory: file` keeps turns.
 
 Module: `github.com/aiveto/veto`
 

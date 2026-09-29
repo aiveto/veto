@@ -9,7 +9,7 @@ Also already in the tree: bearer auth and JSON bodies from the contract, one pag
 ## This release
 
 1. Discovery-only exposure fails at invoke. `agent.Invoke` is the admission check. `capabilities_invoke` uses that path.
-2. A signed approval is one use. The token covers the operation, params, expiry, and a nonce. This process remembers consumed nonces. A restart forgets them until the token expires.
+2. A signed approval is one use. The token covers the operation, params, expiry, and a nonce. A consumed nonce is kept on this machine and is not accepted again.
 3. HTTP responses are capped at 1 MiB. A larger body is an error the caller can see.
 4. Spans do not record parameter values or the user message. Parameter names can be recorded. Replay does not receive a user message to strip.
 5. Follow stops after 8 calls. A declared relation still runs. An OpenAPI link with no parameter mapping does not invent a call. Link execution is a simple response field, not a general JSON pointer.

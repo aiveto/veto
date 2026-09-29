@@ -182,7 +182,7 @@ func newGenerateCommand() (*cobra.Command, error) {
 	cmd := &generateCmd{}
 	c := &cobra.Command{
 		Use:   "generate",
-		Short: "Write a typed SDK, CLI, and MCP dispatch.",
+		Short: "Write a Go client, CLI, and MCP dispatch.",
 		Run: func(*cobra.Command, []string) {
 			runGenerate(*cmd)
 		},
@@ -259,7 +259,7 @@ func newReplayCommand() *cobra.Command {
 	c.Flags().StringVar(&cmd.agent, "agent", "", "Path to agent.yaml. Overrides agent_file.")
 	c.Flags().StringVar(&cmd.relations, "relations", "", "Relations file. Overrides relations_file.")
 	c.Flags().StringVar(&cmd.baseURL, "base-url", "", "Override the server URL on every operation. Empty uses each contract server.")
-	c.Flags().BoolVar(&cmd.keepSensitive, "keep-sensitive", false, "Keep user messages and parameter values in the trace.")
+	c.Flags().BoolVar(&cmd.keepSensitive, "keep-sensitive", false, "Record response bodies in the trace.")
 	c.Flags().StringVar(&cmd.from, "from", "", "Read a trace file instead of running the message.")
 	return c
 }
@@ -620,7 +620,12 @@ func buildLoop(contracts []string, configPath, agentPath, relationsPath, baseURL
 		return nil, config.File{}, err
 	}
 	if secret := os.Getenv("VETO_APPROVAL_SECRET"); secret != "" {
-		loop.State.SetSigner([]byte(secret), 0)
+		if dir := os.Getenv("VETO_APPROVAL_NONCE_DIR"); dir != "" {
+			loop.State.SetNonceDir(dir)
+		}
+		if err := loop.State.SetSigner([]byte(secret), 0); err != nil {
+			return nil, config.File{}, err
+		}
 	}
 	loop.Flows = flows
 	if err := applyProviders(loop, cfg); err != nil {

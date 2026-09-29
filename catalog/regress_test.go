@@ -1,11 +1,16 @@
 package catalog_test
 
 import (
+	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/aiveto/veto/catalog"
+	"github.com/aiveto/veto/openapi"
 )
 
 func TestSurfaceRegressions(t *testing.T) {
@@ -54,6 +59,16 @@ func TestSurfaceRegressions(t *testing.T) {
 				"operation orders.delete lost permission order.delete",
 			},
 		},
+		{
+			name: "new destructive operation",
+			next: map[string]catalog.OpFact{
+				"customers.get": {Referenced: true, Callable: &no},
+				"orders.delete": {Destructive: true, Confirmation: true, Permissions: []string{"order.delete"}},
+				"orders.get":    {Referenced: true, Confirmation: false},
+				"orders.purge":  {Destructive: true, Confirmation: true},
+			},
+			want: []string{"operation orders.purge is a new destructive operation"},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -61,6 +76,52 @@ func TestSurfaceRegressions(t *testing.T) {
 		})
 	}
 }
+
+func TestSurfaceRegressionsLoadsANewDestructiveOperation(t *testing.T) {
+	dir := t.TempDir()
+	basePath := filepath.Join(dir, "base.yaml")
+	nextPath := filepath.Join(dir, "next.yaml")
+	require.NoError(t, os.WriteFile(basePath, []byte(ordersGetSpec), 0o644))
+	require.NoError(t, os.WriteFile(nextPath, []byte(ordersGetSpec+ordersDeletePath), 0o644))
+	baseCat, err := openapi.Load(context.Background(), basePath)
+	require.NoError(t, err)
+	nextCat, err := openapi.Load(context.Background(), nextPath)
+	require.NoError(t, err)
+	assert.Empty(t, catalog.SurfaceRegressions(catalog.Facts(baseCat), catalog.Facts(baseCat), nil))
+	assert.Equal(t, []string{"operation orders.delete is a new destructive operation"}, catalog.SurfaceRegressions(catalog.Facts(baseCat), catalog.Facts(nextCat), nil))
+}
+
+const ordersGetSpec = `openapi: 3.0.3
+info:
+  title: Orders
+  version: "1"
+paths:
+  /orders/{id}:
+    get:
+      operationId: orders.get
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ok
+`
+
+const ordersDeletePath = `    delete:
+      operationId: orders.delete
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: gone
+`
 
 func TestFactsMarkJoinedAndDestructiveOperations(t *testing.T) {
 	cat := &catalog.Catalog{

@@ -30,6 +30,11 @@ func TestGeneratedMethodsKeepEachServerURL(t *testing.T) {
 	assert.NotContains(t, cli, "127.0.0.1:8080")
 	assert.Contains(t, cli, "VETO_BASE_URL")
 	assert.Contains(t, sdk, "execute.Client{BaseURL: baseURL")
+	assert.Contains(t, sdk, "Go client")
+	assert.NotContains(t, sdk, "typed SDK")
+	assert.NotContains(t, sdk, "typed surface")
+	assert.Contains(t, string(files.MCP), "Go client")
+	assert.NotContains(t, string(files.MCP), "typed SDK")
 }
 
 func TestGeneratedCLIHelpAndConfirm(t *testing.T) {

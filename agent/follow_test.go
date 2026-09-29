@@ -13,6 +13,7 @@ import (
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/openapi"
+	"github.com/aiveto/veto/result"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -137,9 +138,9 @@ type countExec struct {
 	body string
 }
 
-func (c countExec) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, params map[string]string) (agent.HTTPResult, error) {
+func (c countExec) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, params map[string]string) (result.HTTPResult, error) {
 	*c.hits++
-	return agent.HTTPResult{Status: http.StatusOK, Body: c.body, Code: "ok"}, nil
+	return result.HTTPResult{Status: http.StatusOK, Body: c.body, Code: "ok"}, nil
 }
 
 func TestFollowStopsOnConfirmation(t *testing.T) {

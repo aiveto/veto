@@ -9,7 +9,7 @@
 - `veto replay --from` prints a redacted trace file. `trace_export: otlp` sends that same attribute set.
 - `memory: file` is an optional turn log. Unset memory stays in the process.
 - `policy: opa` is optional and off unless `policy_file` or `policy_bundle` is set. Builtin permissions and confirmation still apply when Rego allows the call. `policy: spicedb` stays closed.
-- `VETO_APPROVAL_SECRET` makes an approval id a signed token of the operation, params, expiry, and a nonce. This process accepts that nonce once. A restart forgets consumed nonces until the token expires. Unset, confirmation stays in the process.
+- `VETO_APPROVAL_SECRET` makes an approval id a signed token of the operation, params, expiry, and a nonce. A consumed nonce is kept on this machine and is not accepted again. `VETO_APPROVAL_NONCE_DIR` overrides that directory. Unset, confirmation stays in the process.
 - `veto check --against` fails when a joined operation disappears, confirmation is dropped without an agent.yaml change, a discovery-only operation becomes callable, a required permission is removed, or an eval expectation changes.
 - A discovery-only operation fails at invoke and does not call HTTP.
 - HTTP response bodies are capped at 1 MiB.

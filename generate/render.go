@@ -28,7 +28,7 @@ import (
 	"github.com/aiveto/veto/execute"
 )
 
-// Client is the typed surface for one contract. Calls go through agent.Invoke.
+// Client is the Go client for one contract. Calls go through agent.Invoke.
 type Client struct {
 	Loop *agent.Loop
 }
@@ -217,7 +217,7 @@ import (
 	"{{.Module}}/sdk"
 )
 
-// Call sends one operation id through the typed SDK and the policy gate.
+// Call sends one operation id through the Go client and the policy gate.
 func Call(ctx context.Context, c *sdk.Client, operationID string, params map[string]string, approvalID string) (agent.Call, error) {
 	if c == nil || c.Loop == nil {
 		return agent.Call{}, fmt.Errorf("nil sdk client")
