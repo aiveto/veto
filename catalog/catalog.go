@@ -66,11 +66,13 @@ type (
 		ResponseFields       []string
 	}
 
-	// OpLink is an OpenAPI link from one operation to another.
+	// OpLink is an OpenAPI link or a declared relation from one operation to another.
+	// Params maps a target parameter to a response expression. Note is the relation field.
 	OpLink struct {
-		From string
-		To   string
-		Note string
+		From   string
+		To     string
+		Note   string
+		Params map[string]string
 	}
 
 	// SchemaUse records a component schema referenced by an operation.

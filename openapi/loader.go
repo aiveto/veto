@@ -18,6 +18,7 @@ type rawLink struct {
 	from         string
 	operationID  string
 	operationRef string
+	params       map[string]string
 }
 
 // Load reads an OpenAPI 3 document from path into a catalog.
@@ -173,6 +174,24 @@ func sideEffectFor(id, name, method string) (catalog.SideEffect, bool) {
 	}
 }
 
+func linkParamExprs(link *openapi3.Link) map[string]string {
+	if link == nil || len(link.Parameters) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(link.Parameters))
+	for name, raw := range link.Parameters {
+		s, ok := raw.(string)
+		if !ok || s == "" {
+			continue
+		}
+		out[name] = s
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 func collectLinks(from string, op *openapi3.Operation) []rawLink {
 	if op.Responses == nil {
 		return nil
@@ -190,6 +209,7 @@ func collectLinks(from string, op *openapi3.Operation) []rawLink {
 				from:         from,
 				operationID:  link.Value.OperationID,
 				operationRef: link.Value.OperationRef,
+				params:       linkParamExprs(link.Value),
 			})
 		}
 	}
@@ -215,7 +235,7 @@ func resolveLinks(doc *openapi3.T, ops []catalog.Operation, raw []rawLink) ([]ca
 			}
 			to = id
 		}
-		out = append(out, catalog.OpLink{From: l.from, To: to})
+		out = append(out, catalog.OpLink{From: l.from, To: to, Params: l.params})
 	}
 	return out, nil
 }

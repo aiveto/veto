@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/aiveto/veto/catalog"
@@ -230,26 +231,27 @@ func (l *Loop) runFlow(ctx context.Context, resp Response) (Call, error) {
 	if def == nil {
 		return Call{}, fmt.Errorf("unknown flow %q", resp.FlowName)
 	}
-	runner := flow.Runner{Invoke: func(ctx context.Context, operationID string, params map[string]string, approvalID string) (string, error) {
+	runner := flow.Runner{Invoke: func(ctx context.Context, operationID string, params map[string]string, approvalID string) (string, string, error) {
 		if len(params) == 0 {
 			params = resp.Params
 		}
 		call, err := l.Invoke(ctx, operationID, params, approvalID)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
-		if call.Status != "ok" {
-			return call.Status, fmt.Errorf("%s", call.Status)
-		}
-		return call.Status, nil
+		return call.Status, call.Body, nil
 	}}
 	results, err := runner.Run(ctx, def, resp.Params)
+	var stopped flow.Stopped
+	if errors.As(err, &stopped) {
+		return Call{Status: stopped.Status, OperationID: stopped.Operation}, nil
+	}
 	if err != nil {
 		return Call{Status: "error", OperationID: resp.OperationID, Error: err.Error()}, err
 	}
 	last := ""
 	if n := len(def.Steps); n > 0 {
-		last = def.Steps[n-1]
+		last = def.Steps[n-1].Operation
 	}
 	status := "ok"
 	if len(results) > 0 {
