@@ -40,23 +40,23 @@ func TestFirstServerWinsUntilANameIsSelected(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			assert.Equal(t, tc.want, cat.ByID("assets.get").BaseURL)
+			assert.Equal(t, tc.want, cat.ByID("orders.get").BaseURL)
 		})
 	}
 }
 
 const twoServers = `openapi: 3.0.3
 info:
-  title: Assets
+  title: Orders
   version: "1"
 servers:
   - url: http://prod.example
   - url: http://stage.example
     description: staging
 paths:
-  /assets/{id}:
+  /orders/{id}:
     get:
-      operationId: assets.get
+      operationId: orders.get
       parameters:
         - name: id
           in: path

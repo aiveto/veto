@@ -16,7 +16,7 @@ import (
 
 func TestHTTPResultCarriesCodeAndReplayOmitsBody(t *testing.T) {
 	cat := loadSpec(t, bodySpec)
-	op := cat.ByID("assets.get")
+	op := cat.ByID("orders.get")
 	const secret = "token-in-body"
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTooManyRequests)
@@ -49,7 +49,7 @@ func TestHTTPResultCarriesCodeAndReplayOmitsBody(t *testing.T) {
 
 func TestClientTimeoutEndsAHungCall(t *testing.T) {
 	cat := loadSpec(t, bodySpec)
-	op := cat.ByID("assets.get")
+	op := cat.ByID("orders.get")
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		<-r.Context().Done()
 	}))

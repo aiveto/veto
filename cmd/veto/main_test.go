@@ -62,16 +62,16 @@ func TestConfigIsTheCatalog(t *testing.T) {
 	require.NoError(t, err)
 	cat, err := loadCatalog(contracts, relations)
 	require.NoError(t, err)
-	require.NotNil(t, cat.ByID("assets.get"))
-	require.NotNil(t, cat.ByID("teams.get"))
-	matches := catalog.Search(cat, "teamsId", nil)
+	require.NotNil(t, cat.ByID("orders.get"))
+	require.NotNil(t, cat.ByID("customers.get"))
+	matches := catalog.Search(cat, "customerId", nil)
 	var joined bool
 	for _, m := range matches {
-		if m.Operation.ID != "assets.get" {
+		if m.Operation.ID != "orders.get" {
 			continue
 		}
 		for _, id := range m.Related {
-			if id == "teams.get" {
+			if id == "customers.get" {
 				joined = true
 			}
 		}
@@ -81,7 +81,7 @@ func TestConfigIsTheCatalog(t *testing.T) {
 }
 
 func TestBuildLoopConstructsDefaultsAndOpenAIHost(t *testing.T) {
-	contract, err := filepath.Abs("../../testdata/openapi.yaml")
+	contract, err := filepath.Abs("../../testdata/orders.yaml")
 	require.NoError(t, err)
 	dir := t.TempDir()
 	fileCfg := filepath.Join(dir, "file.yaml")
@@ -114,36 +114,36 @@ func TestBuildLoopConstructsDefaultsAndOpenAIHost(t *testing.T) {
 }
 
 func TestPackPrintsTheDeleteCall(t *testing.T) {
-	contract, err := filepath.Abs("../../testdata/openapi.yaml")
+	contract, err := filepath.Abs("../../testdata/orders.yaml")
 	require.NoError(t, err)
 	dir := t.TempDir()
 	path := filepath.Join(dir, "veto.yaml")
 	require.NoError(t, os.WriteFile(path, []byte("contracts:\n  - "+contract+"\n"), 0o644))
 	loop, _, err := buildLoop(nil, path, "", "", "")
 	require.NoError(t, err)
-	text, err := packOutput(loop, "delete asset 123", false)
+	text, err := packOutput(loop, "delete order 123", false)
 	require.NoError(t, err)
-	assert.Contains(t, text, "assets.delete")
-	raw, err := packOutput(loop, "delete asset 123", true)
+	assert.Contains(t, text, "orders.delete")
+	raw, err := packOutput(loop, "delete order 123", true)
 	require.NoError(t, err)
 	var pack struct {
 		Index string `json:"Index"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(raw), &pack))
-	assert.Contains(t, pack.Index, "assets.delete")
+	assert.Contains(t, pack.Index, "orders.delete")
 }
 
 func TestAuthSecretComesFromTheEnv(t *testing.T) {
-	contract, err := filepath.Abs("../../testdata/openapi.yaml")
+	contract, err := filepath.Abs("../../testdata/orders.yaml")
 	require.NoError(t, err)
 	dir := t.TempDir()
 	path := filepath.Join(dir, "veto.yaml")
-	text := "auth:\n  bearerAuth: ASSET_TOKEN\ncontracts:\n  - " + contract + "\n"
+	text := "auth:\n  bearerAuth: ORDER_TOKEN\ncontracts:\n  - " + contract + "\n"
 	require.NoError(t, os.WriteFile(path, []byte(text), 0o644))
-	t.Setenv("ASSET_TOKEN", "s3cret")
+	t.Setenv("ORDER_TOKEN", "s3cret")
 	loop, cfg, err := buildLoop(nil, path, "", "", "")
 	require.NoError(t, err)
-	assert.Equal(t, "ASSET_TOKEN", cfg.Auth["bearerAuth"])
+	assert.Equal(t, "ORDER_TOKEN", cfg.Auth["bearerAuth"])
 	exec, ok := loop.Exec.(execute.Client)
 	require.True(t, ok)
 	assert.Equal(t, "s3cret", exec.Auth["bearerAuth"])
@@ -154,16 +154,16 @@ func TestFinishReplayWritesARedactedFile(t *testing.T) {
 	text, err := finishReplay([]telemetry.Span{{
 		Name: "agent.run",
 		Attrs: map[string]string{
-			"operation.id": "assets.delete",
-			"user_message": "Delete asset 123",
+			"operation.id": "orders.delete",
+			"user_message": "Delete order 123",
 		},
 	}}, true, path)
 	require.NoError(t, err)
-	assert.NotContains(t, text, "Delete asset 123")
-	assert.Contains(t, text, "operation.id=assets.delete")
+	assert.NotContains(t, text, "Delete order 123")
+	assert.Contains(t, text, "operation.id=orders.delete")
 	raw, err := os.ReadFile(path)
 	require.NoError(t, err)
-	assert.NotContains(t, string(raw), "Delete asset 123")
+	assert.NotContains(t, string(raw), "Delete order 123")
 	var buf bytes.Buffer
 	root, err := newRoot()
 	require.NoError(t, err)
@@ -173,18 +173,18 @@ func TestFinishReplayWritesARedactedFile(t *testing.T) {
 	assert.Contains(t, buf.String(), `"name": "from"`)
 }
 
-func TestTwoAPIExampleJoinsTeams(t *testing.T) {
+func TestTwoAPIExampleJoinsCustomers(t *testing.T) {
 	cfg, err := filepath.Abs("../../examples/two-apis/veto.yaml")
 	require.NoError(t, err)
 	loop, _, err := buildLoop(nil, cfg, "", "", "")
 	require.NoError(t, err)
-	require.NotNil(t, loop.Catalog.ByID("assets.get"))
-	require.NotNil(t, loop.Catalog.ByID("teams.get"))
-	assert.Contains(t, strings.Join(loop.Catalog.Joins(), "\n"), "teams.get")
+	require.NotNil(t, loop.Catalog.ByID("orders.get"))
+	require.NotNil(t, loop.Catalog.ByID("customers.get"))
+	assert.Contains(t, strings.Join(loop.Catalog.Joins(), "\n"), "customers.get")
 }
 
 func TestExternalPolicyFailsClosed(t *testing.T) {
-	contract, err := filepath.Abs("../../testdata/openapi.yaml")
+	contract, err := filepath.Abs("../../testdata/orders.yaml")
 	require.NoError(t, err)
 	cases := []struct {
 		name string
@@ -220,7 +220,7 @@ func TestDoctorReportsPinsAuthAndPing(t *testing.T) {
 	require.NoError(t, err)
 	loop, cfg, err := buildLoop(nil, cfgPath, "", "", "")
 	require.NoError(t, err)
-	pins := doctorBlockers(context.Background(), loop.Catalog, cfg, []string{"assets.delete"}, false)
+	pins := doctorBlockers(context.Background(), loop.Catalog, cfg, []string{"orders.delete"}, false)
 	assert.Contains(t, strings.Join(pins, "\n"), "discovery-only")
 
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -232,16 +232,16 @@ func TestDoctorReportsPinsAuthAndPing(t *testing.T) {
 	body := strings.ReplaceAll(securedSpec, "http://example.test", up.URL)
 	require.NoError(t, os.WriteFile(spec, []byte(body), 0o644))
 	conf := filepath.Join(dir, "veto.yaml")
-	text := "auth:\n  bearerAuth: ASSET_TOKEN\ncontracts:\n  - " + spec + "\n"
+	text := "auth:\n  bearerAuth: ORDER_TOKEN\ncontracts:\n  - " + spec + "\n"
 	require.NoError(t, os.WriteFile(conf, []byte(text), 0o644))
-	t.Setenv("ASSET_TOKEN", "")
+	t.Setenv("ORDER_TOKEN", "")
 	secured, loaded, err := buildLoop(nil, conf, "", "", "")
 	require.NoError(t, err)
 	missing := doctorBlockers(context.Background(), secured.Catalog, loaded, nil, true)
 	report := strings.Join(missing, "\n")
-	assert.Contains(t, report, "ASSET_TOKEN is unset")
+	assert.Contains(t, report, "ORDER_TOKEN is unset")
 	assert.NotContains(t, report, "ping ")
-	t.Setenv("ASSET_TOKEN", "s3cret")
+	t.Setenv("ORDER_TOKEN", "s3cret")
 	set := strings.Join(doctorBlockers(context.Background(), secured.Catalog, loaded, nil, false), "\n")
 	assert.NotContains(t, set, "s3cret")
 	assert.NotContains(t, set, "unset")

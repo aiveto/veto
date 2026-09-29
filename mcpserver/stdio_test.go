@@ -19,8 +19,8 @@ func TestMissingParamStaysStructuredOnTheToolResult(t *testing.T) {
 	}{
 		{
 			name:    "missing param",
-			res:     InvokeResult{Status: "error", Code: "missing_param", Error: "operation assets.get: id required"},
-			err:     errors.New("operation assets.get: id required"),
+			res:     InvokeResult{Status: "error", Code: "missing_param", Error: "operation orders.get: id required"},
+			err:     errors.New("operation orders.get: id required"),
 			isError: true,
 			text:    `"code":"missing_param"`,
 		},

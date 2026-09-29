@@ -12,30 +12,30 @@ import (
 )
 
 func TestOverlaySetsPermissionsAndCanRequireConfirmation(t *testing.T) {
-	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
 	f, err := agentmeta.Load("../testdata/agent.yaml")
 	require.NoError(t, err)
 	require.NoError(t, agentmeta.Apply(cat, f))
-	del := cat.ByID("assets.delete")
+	del := cat.ByID("orders.delete")
 	require.NotNil(t, del)
 	assert.Equal(t, "discovery-only", del.Exposure)
-	assert.Equal(t, []string{"asset.delete"}, del.Permissions)
+	assert.Equal(t, []string{"order.delete"}, del.Permissions)
 	assert.True(t, del.RequiresConfirmation)
 
 	yes := true
 	no := false
 	destructive := "destructive"
-	read := cat.ByID("assets.get")
+	read := cat.ByID("orders.get")
 	require.NoError(t, agentmeta.Apply(cat, agentmeta.File{Operations: []agentmeta.Entry{{
-		Operation:    "assets.get",
+		Operation:    "orders.get",
 		Confirmation: &yes,
 	}}}))
 	d, err := policy.Builtin{}.Check(context.Background(), read)
 	require.NoError(t, err)
 	assert.Equal(t, policy.DecisionConfirmationNeeded, d)
 	require.NoError(t, agentmeta.Apply(cat, agentmeta.File{Operations: []agentmeta.Entry{{
-		Operation:    "assets.delete",
+		Operation:    "orders.delete",
 		Confirmation: &no,
 	}}}))
 	assert.Equal(t, "destructive", string(del.SideEffect))
@@ -43,9 +43,9 @@ func TestOverlaySetsPermissionsAndCanRequireConfirmation(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, policy.DecisionAllow, d)
 
-	list := cat.ByID("assets.list")
+	list := cat.ByID("orders.list")
 	require.NoError(t, agentmeta.Apply(cat, agentmeta.File{Operations: []agentmeta.Entry{{
-		Operation:  "assets.list",
+		Operation:  "orders.list",
 		SideEffect: &destructive,
 	}}}))
 	d, err = policy.Builtin{}.Check(context.Background(), list)
@@ -54,7 +54,7 @@ func TestOverlaySetsPermissionsAndCanRequireConfirmation(t *testing.T) {
 }
 
 func TestUnknownOperationRefused(t *testing.T) {
-	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
 	err = agentmeta.Apply(cat, agentmeta.File{Operations: []agentmeta.Entry{{Operation: "missing"}}})
 	assert.Error(t, err)

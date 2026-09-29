@@ -34,7 +34,7 @@ func (flowPick) Complete(ctx context.Context, req agent.Request) (agent.Response
 }
 
 func TestDeleteLoopStopsBeforeHTTPAndPacksOverlay(t *testing.T) {
-	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
 	base := semantics.NewDerived(cat)
 	overlay, err := os.ReadFile("../testdata/semantics.yaml")
@@ -57,16 +57,16 @@ func TestDeleteLoopStopsBeforeHTTPAndPacksOverlay(t *testing.T) {
 		Memory:    memory.NewLocalMap(),
 		Packs:     runctx.NewBuilder(0),
 	}
-	out, err := loop.Run(context.Background(), "Delete asset 123")
+	out, err := loop.Run(context.Background(), "Delete order 123")
 	require.NoError(t, err)
 	assert.Equal(t, "confirmation_required", out.Status)
-	assert.Equal(t, "assets.delete", out.OperationID)
-	assert.Equal(t, "confirm assets.delete id=123", out.Text)
+	assert.Equal(t, "orders.delete", out.OperationID)
+	assert.Equal(t, "confirm orders.delete id=123", out.Text)
 	assert.Contains(t, out.Pack.Serialize(), out.Text)
 	assert.Equal(t, int32(0), hits.Load())
 	assert.False(t, runctx.ContainsRawSpec(out.Pack.Serialize()))
 	assert.Contains(t, out.Pack.DescribedDetail, "Permanently remove")
-	items, err := loop.Memory.Search(context.Background(), "Delete asset 123")
+	items, err := loop.Memory.Search(context.Background(), "Delete order 123")
 	require.NoError(t, err)
 	assert.Len(t, items, 1)
 }
@@ -74,7 +74,7 @@ func TestDeleteLoopStopsBeforeHTTPAndPacksOverlay(t *testing.T) {
 type getPick struct{}
 
 func (getPick) Complete(ctx context.Context, req agent.Request) (agent.Response, error) {
-	return agent.Response{OperationID: "assets.get", Params: map[string]string{"id": "1"}}, nil
+	return agent.Response{OperationID: "orders.get", Params: map[string]string{"id": "1"}}, nil
 }
 
 type capture struct{ saw string }
@@ -85,7 +85,7 @@ func (c *capture) Complete(ctx context.Context, req agent.Request) (agent.Respon
 }
 
 func TestRecentTurnsStayInThePack(t *testing.T) {
-	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
 	loop, err := agent.New(cat, nil, nil)
 	require.NoError(t, err)
@@ -98,7 +98,7 @@ func TestRecentTurnsStayInThePack(t *testing.T) {
 }
 
 func TestLoopShowsStableHTTPCode(t *testing.T) {
-	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "down", http.StatusBadGateway)
@@ -107,7 +107,7 @@ func TestLoopShowsStableHTTPCode(t *testing.T) {
 	loop, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
 	require.NoError(t, err)
 	loop.Model = getPick{}
-	out, err := loop.Run(context.Background(), "get asset 1")
+	out, err := loop.Run(context.Background(), "get order 1")
 	require.NoError(t, err)
 	assert.Contains(t, out.Text, "code=upstream")
 	assert.Contains(t, out.Text, "retryable=true")
@@ -115,7 +115,7 @@ func TestLoopShowsStableHTTPCode(t *testing.T) {
 }
 
 func TestWrapPolicyKeepsBuiltinUnlessItStops(t *testing.T) {
-	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
 	cases := []struct {
 		name   string
@@ -138,7 +138,7 @@ func TestWrapPolicyKeepsBuiltinUnlessItStops(t *testing.T) {
 			loop.WrapPolicy(func(ctx context.Context, op *catalog.Operation) (policy.Decision, bool, error) {
 				return policy.DecisionAllow, tc.stop, nil
 			})
-			out, err := loop.Invoke(context.Background(), "assets.delete", map[string]string{"id": "123"}, "")
+			out, err := loop.Invoke(context.Background(), "orders.delete", map[string]string{"id": "123"}, "")
 			require.NoError(t, err)
 			assert.Equal(t, tc.status, out.Status)
 			assert.Equal(t, tc.hits, hits.Load())
@@ -147,7 +147,7 @@ func TestWrapPolicyKeepsBuiltinUnlessItStops(t *testing.T) {
 }
 
 func TestLoopRunsNamedFlow(t *testing.T) {
-	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
 	flowData, err := os.ReadFile("../testdata/flow.yaml")
 	require.NoError(t, err)
@@ -168,15 +168,15 @@ func TestLoopRunsNamedFlow(t *testing.T) {
 		State:     policy.NewState(),
 		Packs:     runctx.NewBuilder(0),
 	}
-	out, err := loop.Run(context.Background(), "list assets")
+	out, err := loop.Run(context.Background(), "list orders")
 	require.NoError(t, err)
 	assert.Equal(t, "ok", out.Status)
-	assert.Equal(t, "assets.get", out.OperationID)
+	assert.Equal(t, "orders.get", out.OperationID)
 	assert.Equal(t, int32(2), hits.Load())
 }
 
 func TestSignedApprovalResumesOnAnotherLoop(t *testing.T) {
-	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
 	var hits atomic.Int32
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -188,17 +188,17 @@ func TestSignedApprovalResumesOnAnotherLoop(t *testing.T) {
 	first, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
 	require.NoError(t, err)
 	first.State.SetSigner(secret, time.Hour)
-	out, err := first.Run(context.Background(), "Delete asset 123")
+	out, err := first.Run(context.Background(), "Delete order 123")
 	require.NoError(t, err)
 	assert.Equal(t, "confirmation_required", out.Status)
-	assert.Equal(t, "confirm assets.delete id=123", out.Text)
+	assert.Equal(t, "confirm orders.delete id=123", out.Text)
 	assert.True(t, strings.HasPrefix(out.ApprovalID, "v1."))
 	assert.Nil(t, first.State.Pending(out.ApprovalID))
 	assert.Equal(t, int32(0), hits.Load())
 	second, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
 	require.NoError(t, err)
 	second.State.SetSigner(secret, time.Hour)
-	resumed, err := second.Invoke(context.Background(), "assets.delete", map[string]string{"id": "123"}, out.ApprovalID)
+	resumed, err := second.Invoke(context.Background(), "orders.delete", map[string]string{"id": "123"}, out.ApprovalID)
 	require.NoError(t, err)
 	assert.Equal(t, "ok", resumed.Status)
 	assert.Equal(t, int32(1), hits.Load())

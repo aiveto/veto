@@ -21,7 +21,7 @@ func TestGeneratedBodyParamReachesInvoke(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), spec)
 	require.NoError(t, err)
 	out := filepath.Join(dir, "gen")
-	const module = "example.com/assetgen"
+	const module = "example.com/ordergen"
 	require.NoError(t, generate.Write(out, module, cat))
 	sdk, err := os.ReadFile(filepath.Join(out, "sdk", "client.go"))
 	require.NoError(t, err)
@@ -66,14 +66,14 @@ func TestGeneratedBodyParamReachesInvoke(t *testing.T) {
 
 const createSpec = `openapi: 3.0.3
 info:
-  title: Assets
+  title: Orders
   version: "1"
 servers:
   - url: http://127.0.0.1:8080
 paths:
-  /assets:
+  /orders:
     post:
-      operationId: assets.create
+      operationId: orders.create
       requestBody:
         required: true
         content:

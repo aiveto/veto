@@ -24,13 +24,13 @@ func NewScripted() *Scripted {
 	return &Scripted{
 		patterns: []scriptPattern{
 			{
-				re:          regexp.MustCompile(`(?i)delete\s+asset\s+(\d+)`),
-				operationID: "assets.delete",
+				re:          regexp.MustCompile(`(?i)delete\s+order\s+(\d+)`),
+				operationID: "orders.delete",
 				paramNames:  []string{"id"},
 			},
 			{
-				re:          regexp.MustCompile(`(?i)delete\s+asset\s+(\w+)`),
-				operationID: "assets.delete",
+				re:          regexp.MustCompile(`(?i)delete\s+order\s+(\w+)`),
+				operationID: "orders.delete",
 				paramNames:  []string{"id"},
 			},
 		},
@@ -40,7 +40,7 @@ func NewScripted() *Scripted {
 func (s *Scripted) WithOperation(operationID string) *Scripted {
 	out := *s
 	for i := range out.patterns {
-		if strings.Contains(out.patterns[i].operationID, "delete") || out.patterns[i].operationID == "deleteAsset" {
+		if strings.Contains(out.patterns[i].operationID, "delete") || out.patterns[i].operationID == "deleteOrder" {
 			out.patterns[i].operationID = operationID
 		}
 	}

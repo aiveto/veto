@@ -10,34 +10,34 @@ import (
 )
 
 func TestStepOutputFeedsTheNextParameter(t *testing.T) {
-	def := &flow.Definition{Name: "get-team", Steps: []flow.Step{
-		{Operation: "assets.get", Output: "teamsId", To: "id"},
-		{Operation: "teams.get"},
+	def := &flow.Definition{Name: "get-customer", Steps: []flow.Step{
+		{Operation: "orders.get", Output: "customerId", To: "id"},
+		{Operation: "customers.get"},
 	}}
 	var got []map[string]string
 	runner := flow.Runner{Invoke: func(ctx context.Context, operationID string, params map[string]string, approvalID string) (string, string, error) {
 		got = append(got, clone(params))
-		if operationID == "assets.get" {
-			return "ok", `{"teamsId":"9"}`, nil
+		if operationID == "orders.get" {
+			return "ok", `{"customerId":"7"}`, nil
 		}
-		return "ok", `{"id":"9"}`, nil
+		return "ok", `{"id":"7"}`, nil
 	}}
 	results, err := runner.Run(context.Background(), def, map[string]string{"id": "1"})
 	require.NoError(t, err)
 	assert.Len(t, results, 2)
 	require.Len(t, got, 2)
-	assert.Equal(t, "9", got[1]["id"])
+	assert.Equal(t, "7", got[1]["id"])
 }
 
 func TestConfirmationStopsTheNextStep(t *testing.T) {
 	def := &flow.Definition{Name: "then-delete", Steps: []flow.Step{
-		{Operation: "assets.get", Output: "id", To: "id"},
-		{Operation: "assets.delete"},
+		{Operation: "orders.get", Output: "id", To: "id"},
+		{Operation: "orders.delete"},
 	}}
 	var called []string
 	runner := flow.Runner{Invoke: func(ctx context.Context, operationID string, params map[string]string, approvalID string) (string, string, error) {
 		called = append(called, operationID)
-		if operationID == "assets.delete" {
+		if operationID == "orders.delete" {
 			return "confirmation_required", "", nil
 		}
 		return "ok", `{"id":"7"}`, nil
@@ -45,8 +45,8 @@ func TestConfirmationStopsTheNextStep(t *testing.T) {
 	_, err := runner.Run(context.Background(), def, nil)
 	var stopped flow.Stopped
 	require.ErrorAs(t, err, &stopped)
-	assert.Equal(t, "assets.delete", stopped.Operation)
-	assert.Equal(t, []string{"assets.get", "assets.delete"}, called)
+	assert.Equal(t, "orders.delete", stopped.Operation)
+	assert.Equal(t, []string{"orders.get", "orders.delete"}, called)
 }
 
 func clone(in map[string]string) map[string]string {

@@ -17,26 +17,26 @@ import (
 
 func TestGeneratedMethodsKeepEachServerURL(t *testing.T) {
 	cat := &catalog.Catalog{Operations: []catalog.Operation{
-		{ID: "assets.get", Method: "GET", PathTemplate: "/assets/{id}", BaseURL: "http://assets.example", Params: []catalog.Param{{Name: "id", In: "path", Required: true}}},
-		{ID: "teams.get", Method: "GET", PathTemplate: "/teams/{id}", BaseURL: "http://teams.example", Params: []catalog.Param{{Name: "id", In: "path", Required: true}}},
+		{ID: "orders.get", Method: "GET", PathTemplate: "/orders/{id}", BaseURL: "http://orders.example", Params: []catalog.Param{{Name: "id", In: "path", Required: true}}},
+		{ID: "customers.get", Method: "GET", PathTemplate: "/customers/{id}", BaseURL: "http://customers.example", Params: []catalog.Param{{Name: "id", In: "path", Required: true}}},
 	}}
 	cat.Finalize()
 	files, err := generate.Render("example.com/both", cat)
 	require.NoError(t, err)
 	sdk := string(files.SDK)
 	cli := string(files.CLI)
-	assert.Contains(t, sdk, "http://assets.example")
-	assert.Contains(t, sdk, "http://teams.example")
+	assert.Contains(t, sdk, "http://orders.example")
+	assert.Contains(t, sdk, "http://customers.example")
 	assert.NotContains(t, cli, "127.0.0.1:8080")
 	assert.Contains(t, cli, "VETO_BASE_URL")
 	assert.Contains(t, sdk, "execute.Client{BaseURL: baseURL")
 }
 
 func TestGeneratedCLIHelpAndConfirm(t *testing.T) {
-	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
 	dir := t.TempDir()
-	const module = "example.com/assetgen"
+	const module = "example.com/ordergen"
 	require.NoError(t, generate.Write(dir, module, cat))
 	sdk, err := os.ReadFile(filepath.Join(dir, "sdk", "client.go"))
 	require.NoError(t, err)
@@ -74,7 +74,7 @@ func TestGeneratedCLIHelpAndConfirm(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(out, &doc))
 	assert.Equal(t, "delete", doc.Command)
-	assert.Equal(t, "assets.delete", doc.OperationID)
+	assert.Equal(t, "orders.delete", doc.OperationID)
 	assert.True(t, doc.Confirmation)
 	assert.Equal(t, "DELETE", doc.Method)
 	assert.Equal(t, "http://127.0.0.1:8080", doc.Server)

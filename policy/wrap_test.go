@@ -12,7 +12,7 @@ import (
 )
 
 func TestWrapCallsBuiltinUnlessItStops(t *testing.T) {
-	del := &catalog.Operation{ID: "assets.delete", RequiresConfirmation: true}
+	del := &catalog.Operation{ID: "orders.delete", RequiresConfirmation: true}
 	cases := []struct {
 		name   string
 		around Around

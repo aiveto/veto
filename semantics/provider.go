@@ -21,7 +21,7 @@ type (
 		OperationID string
 		Sentence    string
 		Synonyms    []string
-		Relation    string // from a declared edge, such as "Holding.teamsId identifies teams.get"
+		Relation    string // from a declared edge, such as "Order.customerId identifies customers.get"
 	}
 
 	Derived struct {

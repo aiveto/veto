@@ -1,4 +1,4 @@
 name: list-then-get
 steps:
-  - assets.list
-  - assets.get
+  - orders.list
+  - orders.get

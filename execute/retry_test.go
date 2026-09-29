@@ -25,7 +25,7 @@ func TestRetryOnlyWhenTheCallIsIdempotent(t *testing.T) {
 		{
 			name: "idempotency key retries and keeps the key",
 			op: &catalog.Operation{
-				ID: "assets.create", Method: http.MethodPost, PathTemplate: "/assets",
+				ID: "orders.create", Method: http.MethodPost, PathTemplate: "/orders",
 				Idempotency: "key", Retry: "2",
 				Params: []catalog.Param{{Name: "body", In: "body", Required: true}},
 			},
@@ -35,13 +35,13 @@ func TestRetryOnlyWhenTheCallIsIdempotent(t *testing.T) {
 		},
 		{
 			name: "retry never stays one call",
-			op:   &catalog.Operation{ID: "assets.get", Method: http.MethodGet, PathTemplate: "/assets", Retry: "never"},
+			op:   &catalog.Operation{ID: "orders.get", Method: http.MethodGet, PathTemplate: "/orders", Retry: "never"},
 			hits: 1,
 		},
 		{
 			name: "delete without a key does not retry",
 			op: &catalog.Operation{
-				ID: "assets.delete", Method: http.MethodDelete, PathTemplate: "/assets/{id}", Retry: "2",
+				ID: "orders.delete", Method: http.MethodDelete, PathTemplate: "/orders/{id}", Retry: "2",
 				Params: []catalog.Param{{Name: "id", In: "path", Required: true}},
 			},
 			params: map[string]string{"id": "1"},

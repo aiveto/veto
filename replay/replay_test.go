@@ -16,7 +16,7 @@ import (
 )
 
 func TestReplayShowsConfirmationAndOmitsTheMessage(t *testing.T) {
-	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
 	rec, err := telemetry.Record()
 	require.NoError(t, err)
@@ -24,7 +24,7 @@ func TestReplayShowsConfirmationAndOmitsTheMessage(t *testing.T) {
 
 	loop, err := agent.New(cat, nil, execute.Client{BaseURL: "http://127.0.0.1:9"})
 	require.NoError(t, err)
-	out, err := loop.Run(context.Background(), "Delete asset 123")
+	out, err := loop.Run(context.Background(), "Delete order 123")
 	require.NoError(t, err)
 	assert.Equal(t, "confirmation_required", out.Status)
 	view := replay.FromSpans(rec.Spans(), true)
@@ -32,22 +32,22 @@ func TestReplayShowsConfirmationAndOmitsTheMessage(t *testing.T) {
 	assert.Contains(t, text, "policy.decision")
 	assert.Contains(t, text, "decision=confirmation_required")
 	assert.NotContains(t, text, "execute.invoke")
-	assert.NotContains(t, text, "Delete asset 123")
+	assert.NotContains(t, text, "Delete order 123")
 	assert.NotContains(t, text, "user_message=")
 	assert.Contains(t, text, "tools=")
-	assert.Contains(t, text, "assets.delete")
+	assert.Contains(t, text, "orders.delete")
 
 	open := replay.FromSpans(rec.Spans(), false)
-	assert.Contains(t, open.String(), "user_message=Delete asset 123")
+	assert.Contains(t, open.String(), "user_message=Delete order 123")
 }
 
 func TestRedactDropsAttributesOutsideTheAllowlist(t *testing.T) {
 	spans := []telemetry.Span{{
 		Name: "model.request",
 		Attrs: map[string]string{
-			"operation.id": "assets.delete",
-			"user_message": "Delete asset 123",
-			"prompt":       "Delete asset 123",
+			"operation.id": "orders.delete",
+			"user_message": "Delete order 123",
+			"prompt":       "Delete order 123",
 			"input":        "secret",
 		},
 	}}
@@ -56,15 +56,15 @@ func TestRedactDropsAttributesOutsideTheAllowlist(t *testing.T) {
 	assert.NotContains(t, text, "secret")
 	assert.NotContains(t, text, "prompt=")
 	assert.NotContains(t, text, "input=")
-	assert.Contains(t, text, "operation.id=assets.delete")
+	assert.Contains(t, text, "operation.id=orders.delete")
 }
 
 func TestTraceFileOmitsTheMessage(t *testing.T) {
 	spans := []telemetry.Span{{
 		Name: "agent.run",
 		Attrs: map[string]string{
-			"operation.id": "assets.delete",
-			"user_message": "Delete asset 123",
+			"operation.id": "orders.delete",
+			"user_message": "Delete order 123",
 		},
 	}}
 	path := filepath.Join(t.TempDir(), "trace.json")
@@ -72,8 +72,8 @@ func TestTraceFileOmitsTheMessage(t *testing.T) {
 	require.NoError(t, replay.Save(path, view))
 	raw, err := os.ReadFile(path)
 	require.NoError(t, err)
-	assert.NotContains(t, string(raw), "Delete asset 123")
+	assert.NotContains(t, string(raw), "Delete order 123")
 	loaded, err := replay.Load(path)
 	require.NoError(t, err)
-	assert.Contains(t, loaded.String(), "operation.id=assets.delete")
+	assert.Contains(t, loaded.String(), "operation.id=orders.delete")
 }

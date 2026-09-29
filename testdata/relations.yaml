@@ -1,4 +1,4 @@
 relations:
-  - schema: Holding
-    field: teamsId
-    to: teams.get
+  - schema: Order
+    field: customerId
+    to: customers.get

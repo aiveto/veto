@@ -21,7 +21,7 @@ type (
 )
 
 func (pickGet) Complete(context.Context, agent.Request) (agent.Response, error) {
-	return agent.Response{OperationID: "assets.get", Params: map[string]string{"id": "1"}}, nil
+	return agent.Response{OperationID: "orders.get", Params: map[string]string{"id": "1"}}, nil
 }
 
 func (hitExec) InvokeHTTPResult(context.Context, *catalog.Operation, map[string]string) (agent.HTTPResult, error) {
@@ -32,7 +32,7 @@ func TestNeighborCaseSelectsTheRelationAndDropsBilling(t *testing.T) {
 	cat := threeAPIs(t)
 	cases, err := eval.LoadCases([]string{"../testdata/cases"})
 	require.NoError(t, err)
-	assert.Equal(t, []string{"delete-requires-confirmation", "holding-selects-neighbor"}, names(cases))
+	assert.Equal(t, []string{"delete-requires-confirmation", "order-selects-neighbor"}, names(cases))
 	sem := semantics.NewDerived(cat)
 	loop, err := agent.New(cat, sem, nil)
 	require.NoError(t, err)
@@ -42,15 +42,15 @@ func TestNeighborCaseSelectsTheRelationAndDropsBilling(t *testing.T) {
 	}
 	require.Len(t, cases, 2)
 	bad := *cases[1]
-	bad.Expect.PackExcludes = []string{"assets.get"}
+	bad.Expect.PackExcludes = []string{"orders.get"}
 	err = r.Run(context.Background(), &bad)
-	assert.ErrorContains(t, err, "assets.get")
+	assert.ErrorContains(t, err, "orders.get")
 }
 
 func threeAPIs(t *testing.T) *catalog.Catalog {
 	t.Helper()
 	var parts []*catalog.Catalog
-	for _, path := range []string{"../testdata/openapi.yaml", "../testdata/teams.yaml", "../testdata/billing.yaml"} {
+	for _, path := range []string{"../testdata/orders.yaml", "../testdata/customers.yaml", "../testdata/billing.yaml"} {
 		cat, err := openapi.Load(context.Background(), path)
 		require.NoError(t, err)
 		parts = append(parts, cat)
@@ -66,16 +66,16 @@ func threeAPIs(t *testing.T) *catalog.Catalog {
 }
 
 func TestNoHTTPFailsWhenTheCallRuns(t *testing.T) {
-	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
 	loop, err := agent.New(cat, semantics.NewDerived(cat), hitExec{})
 	require.NoError(t, err)
 	loop.Model = pickGet{}
 	err = (&eval.Runner{Loop: loop}).Run(context.Background(), &eval.Case{
 		Name:  "get",
-		Input: "get asset 1",
+		Input: "get order 1",
 		Expect: eval.Expectations{
-			OperationID: "assets.get",
+			OperationID: "orders.get",
 			NoHTTP:      true,
 		},
 	})

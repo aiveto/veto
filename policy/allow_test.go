@@ -13,8 +13,8 @@ import (
 
 func TestPermissionAndConfirmation(t *testing.T) {
 	op := &catalog.Operation{
-		ID:                   "assets.delete",
-		Permissions:          []string{"asset.delete"},
+		ID:                   "orders.delete",
+		Permissions:          []string{"order.delete"},
 		RequiresConfirmation: true,
 	}
 	cases := []struct {
@@ -24,7 +24,7 @@ func TestPermissionAndConfirmation(t *testing.T) {
 	}{
 		{name: "nil allow confirms", want: policy.DecisionConfirmationNeeded},
 		{name: "empty allow denies", allow: map[string]bool{}, want: policy.DecisionDeny},
-		{name: "granted permission confirms", allow: map[string]bool{"asset.delete": true}, want: policy.DecisionConfirmationNeeded},
+		{name: "granted permission confirms", allow: map[string]bool{"order.delete": true}, want: policy.DecisionConfirmationNeeded},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

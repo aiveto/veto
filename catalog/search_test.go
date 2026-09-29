@@ -80,7 +80,7 @@ func ids(matches []catalog.Match) []string {
 }
 
 func TestSearchRetireFindsDelete(t *testing.T) {
-	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
 	base := semantics.NewDerived(cat)
 	overlay, err := os.ReadFile("../testdata/semantics.yaml")
@@ -89,46 +89,59 @@ func TestSearchRetireFindsDelete(t *testing.T) {
 	require.NoError(t, err)
 	matches := catalog.Search(cat, "retire", sem.AllSynonyms())
 	require.NotEmpty(t, matches)
-	assert.Equal(t, "assets.delete", matches[0].Operation.ID)
+	assert.Equal(t, "orders.delete", matches[0].Operation.ID)
 }
 
 func TestSearchSchemaNameFindsOperations(t *testing.T) {
-	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
-	matches := catalog.Search(cat, "Holding", nil)
+	matches := catalog.Search(cat, "Order", nil)
 	got := map[string]bool{}
 	for _, m := range matches {
 		got[m.Operation.ID] = true
 	}
-	assert.True(t, got["assets.list"])
-	assert.True(t, got["assets.get"])
-	assert.False(t, got["assets.delete"])
+	assert.True(t, got["orders.list"])
+	assert.True(t, got["orders.get"])
+
+	plain := &catalog.Catalog{
+		Operations: []catalog.Operation{
+			{ID: "alpha.read", Name: "read"},
+			{ID: "beta.remove", Name: "remove"},
+		},
+		Uses: []catalog.SchemaUse{{OperationID: "alpha.read", Name: "Order"}},
+	}
+	got = map[string]bool{}
+	for _, m := range catalog.Search(plain, "Order", nil) {
+		got[m.Operation.ID] = true
+	}
+	assert.True(t, got["alpha.read"])
+	assert.False(t, got["beta.remove"])
 }
 
 func TestSearchFollowsDeclaredRelation(t *testing.T) {
-	assets, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	orders, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
-	teams, err := openapi.Load(context.Background(), "../testdata/teams.yaml")
+	customers, err := openapi.Load(context.Background(), "../testdata/customers.yaml")
 	require.NoError(t, err)
-	cat, err := catalog.Merge(assets, teams)
+	cat, err := catalog.Merge(orders, customers)
 	require.NoError(t, err)
-	before := catalog.Search(cat, "teamsId", nil)
+	before := catalog.Search(cat, "customerId", nil)
 	assert.Empty(t, before)
 	relData, err := os.ReadFile("../testdata/relations.yaml")
 	require.NoError(t, err)
 	rels, err := catalog.ParseRelations(relData)
 	require.NoError(t, err)
 	require.NoError(t, catalog.ApplyRelations(cat, rels))
-	matches := catalog.Search(cat, "teamsId", nil)
+	matches := catalog.Search(cat, "customerId", nil)
 	var found bool
 	for _, m := range matches {
-		if m.Operation.ID != "assets.get" {
+		if m.Operation.ID != "orders.get" {
 			continue
 		}
 		found = true
 		ok := false
 		for _, id := range m.Related {
-			if id == "teams.get" {
+			if id == "customers.get" {
 				ok = true
 			}
 		}

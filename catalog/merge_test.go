@@ -15,37 +15,37 @@ import (
 
 type relationSuite struct {
 	suite.Suite
-	assets *catalog.Catalog
-	teams  *catalog.Catalog
-	cat    *catalog.Catalog
+	orders    *catalog.Catalog
+	customers *catalog.Catalog
+	cat       *catalog.Catalog
 }
 
 func (s *relationSuite) SetupTest() {
 	var err error
-	s.assets, err = openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	s.orders, err = openapi.Load(context.Background(), "../testdata/orders.yaml")
 	s.Require().NoError(err)
-	s.teams, err = openapi.Load(context.Background(), "../testdata/teams.yaml")
+	s.customers, err = openapi.Load(context.Background(), "../testdata/customers.yaml")
 	s.Require().NoError(err)
-	s.cat, err = catalog.Merge(s.assets, s.teams)
+	s.cat, err = catalog.Merge(s.orders, s.customers)
 	s.Require().NoError(err)
 }
 
 func (s *relationSuite) TestJoinAppearsOnlyAfterDeclaration() {
-	s.NotContains(s.cat.Graph.Related("assets.get"), "teams.get")
+	s.NotContains(s.cat.Graph.Related("orders.get"), "customers.get")
 	relData, err := os.ReadFile("../testdata/relations.yaml")
 	s.Require().NoError(err)
 	rels, err := catalog.ParseRelations(relData)
 	s.Require().NoError(err)
 	s.Require().NoError(catalog.ApplyRelations(s.cat, rels))
-	s.Contains(s.cat.Graph.Related("assets.get"), "teams.get")
-	s.Contains(s.cat.Joins(), "assets.get --[Holding.teamsId]--> teams.get")
-	s.NotEqual(s.assets.ByID("assets.get").BaseURL, s.teams.ByID("teams.get").BaseURL)
+	s.Contains(s.cat.Graph.Related("orders.get"), "customers.get")
+	s.Contains(s.cat.Joins(), "orders.get --[Order.customerId]--> customers.get")
+	s.NotEqual(s.orders.ByID("orders.get").BaseURL, s.customers.ByID("customers.get").BaseURL)
 }
 
 func (s *relationSuite) TestRejectsUnusedSchemaAndMissingTarget() {
-	err := catalog.ApplyRelations(s.cat, []catalog.Relation{{Schema: "Missing", Field: "id", To: "teams.get"}})
+	err := catalog.ApplyRelations(s.cat, []catalog.Relation{{Schema: "Missing", Field: "id", To: "customers.get"}})
 	s.ErrorContains(err, "not used")
-	err = catalog.ApplyRelations(s.cat, []catalog.Relation{{Schema: "Holding", Field: "teamsId", To: "missing.get"}})
+	err = catalog.ApplyRelations(s.cat, []catalog.Relation{{Schema: "Order", Field: "customerId", To: "missing.get"}})
 	s.ErrorContains(err, "unknown operation")
 }
 
@@ -54,8 +54,8 @@ func TestRelations(t *testing.T) {
 }
 
 func TestDuplicateOperationRefused(t *testing.T) {
-	assets, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	orders, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
-	_, err = catalog.Merge(assets, assets)
+	_, err = catalog.Merge(orders, orders)
 	assert.ErrorContains(t, err, "duplicate operation")
 }

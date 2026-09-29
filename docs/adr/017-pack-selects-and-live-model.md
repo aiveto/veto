@@ -6,7 +6,7 @@ The pack listed every operation id. A declared relation was an edge the user cou
 
 ## Staff engineer
 
-Search the user message. Keep those operations and their neighbors. Drop the rest. Turn `Holding.teamsId` into the sentence `Holding.teamsId identifies teams.get` on the semantic note, so a semantics file is optional. `model: openai` sends that pack to an OpenAI-compatible endpoint. The API key stays in `OPENAI_API_KEY`. `scripted` stays the default so eval needs no network.
+Search the user message. Keep those operations and their neighbors. Drop the rest. Turn `Order.customerId` into the sentence `Order.customerId identifies customers.get` on the semantic note, so a semantics file is optional. `model: openai` sends that pack to an OpenAI-compatible endpoint. The API key stays in `OPENAI_API_KEY`. `scripted` stays the default so eval needs no network.
 
 ## Architect
 

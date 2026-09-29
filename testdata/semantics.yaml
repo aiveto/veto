@@ -1,5 +1,5 @@
-- operation: assets.delete
-  sentence: Permanently remove an asset from inventory.
+- operation: orders.delete
+  sentence: Permanently remove an order.
   synonyms:
     - retire
     - decommission

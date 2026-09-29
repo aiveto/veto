@@ -34,7 +34,7 @@ func TestCheckAgainstSnapshot(t *testing.T) {
 		Operations: facts,
 		Cases: []eval.CaseExpect{{
 			Name:                 "delete-requires-confirmation",
-			Operation:            "assets.get",
+			Operation:            "orders.get",
 			ConfirmationRequired: true,
 		}},
 	})
@@ -47,12 +47,12 @@ func TestCheckAgainstSnapshot(t *testing.T) {
 
 func TestCheckAgainstGitRef(t *testing.T) {
 	dir := t.TempDir()
-	caseBody := []byte("name: get-asset\ninput: get asset\nexpect:\n  operation: assets.get\n")
+	caseBody := []byte("name: get-order\ninput: get order\nexpect:\n  operation: orders.get\n")
 	require.NoError(t, os.Mkdir(filepath.Join(dir, "cases"), 0o755))
 	files := map[string]string{
-		"openapi.yaml":   headSpec,
+		"orders.yaml":    headSpec,
 		"agent.yaml":     "operations: []\n",
-		"veto.yaml":      "contracts:\n  - openapi.yaml\nagent_file: agent.yaml\n",
+		"veto.yaml":      "contracts:\n  - orders.yaml\nagent_file: agent.yaml\n",
 		"cases/get.yaml": string(caseBody),
 	}
 	for name, body := range files {
@@ -75,26 +75,26 @@ func TestCheckAgainstGitRef(t *testing.T) {
 	git("add", ".")
 	git("commit", "-m", "baseline")
 
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "openapi.yaml"), []byte(nextSpec), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "cases", "get.yaml"), []byte("name: get-asset\ninput: get asset\nexpect:\n  operation: assets.purge\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "orders.yaml"), []byte(nextSpec), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "cases", "get.yaml"), []byte("name: get-order\ninput: get order\nexpect:\n  operation: orders.purge\n"), 0o644))
 	cfgPath := filepath.Join(dir, "veto.yaml")
 	cases := filepath.Join(dir, "cases")
 	cat := loadChecked(t, cfgPath)
 	cmd := checkCmd{against: "HEAD", evalCmd: evalCmd{config: cfgPath, cases: []string{cases}}}
 	err := diffAgainst(cmd, cat)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "teams.get")
-	assert.ErrorContains(t, err, "assets.purge")
-	assert.ErrorContains(t, err, "get-asset")
+	assert.ErrorContains(t, err, "customers.get")
+	assert.ErrorContains(t, err, "orders.purge")
+	assert.ErrorContains(t, err, "get-order")
 
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "agent.yaml"), []byte("operations:\n  - operation: assets.purge\n    confirmation: false\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "agent.yaml"), []byte("operations:\n  - operation: orders.purge\n    confirmation: false\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "cases", "get.yaml"), caseBody, 0o644))
 	cat = loadChecked(t, cfgPath)
 	err = diffAgainst(cmd, cat)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "teams.get")
-	assert.NotContains(t, err.Error(), "assets.purge")
-	assert.NotContains(t, err.Error(), "get-asset")
+	assert.ErrorContains(t, err, "customers.get")
+	assert.NotContains(t, err.Error(), "orders.purge")
+	assert.NotContains(t, err.Error(), "get-order")
 }
 
 func loadChecked(t *testing.T, cfgPath string) *catalog.Catalog {
@@ -109,14 +109,14 @@ func loadChecked(t *testing.T, cfgPath string) *catalog.Catalog {
 
 const headSpec = `openapi: 3.0.3
 info:
-  title: Assets
+  title: Orders
   version: "1"
 servers:
   - url: http://127.0.0.1:9
 paths:
-  /assets/{id}:
+  /orders/{id}:
     get:
-      operationId: assets.get
+      operationId: orders.get
       parameters:
         - name: id
           in: path
@@ -125,13 +125,13 @@ paths:
             type: string
       responses:
         "200":
-          description: One asset
+          description: One order
           links:
-            team:
-              operationId: teams.get
-  /teams/{id}:
+            customer:
+              operationId: customers.get
+  /customers/{id}:
     get:
-      operationId: teams.get
+      operationId: customers.get
       parameters:
         - name: id
           in: path
@@ -140,10 +140,10 @@ paths:
             type: string
       responses:
         "200":
-          description: One team
+          description: One customer
   /purge/{id}:
     delete:
-      operationId: assets.purge
+      operationId: orders.purge
       parameters:
         - name: id
           in: path
@@ -157,14 +157,14 @@ paths:
 
 const nextSpec = `openapi: 3.0.3
 info:
-  title: Assets
+  title: Orders
   version: "1"
 servers:
   - url: http://127.0.0.1:9
 paths:
-  /assets/{id}:
+  /orders/{id}:
     get:
-      operationId: assets.get
+      operationId: orders.get
       parameters:
         - name: id
           in: path
@@ -173,10 +173,10 @@ paths:
             type: string
       responses:
         "200":
-          description: One asset
+          description: One order
   /purge/{id}:
     get:
-      operationId: assets.purge
+      operationId: orders.purge
       summary: Fetch
       parameters:
         - name: id
@@ -186,5 +186,5 @@ paths:
             type: string
       responses:
         "200":
-          description: One asset
+          description: One order
 `

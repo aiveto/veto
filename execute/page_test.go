@@ -20,7 +20,7 @@ func TestPageFollowCollectsAndDefaultStaysOne(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte(pageSpec), 0o644))
 	cat, err := openapi.Load(context.Background(), path)
 	require.NoError(t, err)
-	op := cat.ByID("assets.list")
+	op := cat.ByID("orders.list")
 	var hits atomic.Int32
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)
@@ -46,14 +46,14 @@ func TestPageFollowCollectsAndDefaultStaysOne(t *testing.T) {
 
 const pageSpec = `openapi: 3.0.3
 info:
-  title: Assets
+  title: Orders
   version: "1"
 servers:
   - url: http://127.0.0.1:9
 paths:
-  /assets:
+  /orders:
     get:
-      operationId: assets.list
+      operationId: orders.list
       parameters:
         - name: cursor
           in: query
@@ -75,7 +75,7 @@ paths:
                     type: string
           links:
             next:
-              operationId: assets.list
+              operationId: orders.list
               parameters:
                 cursor: $response.body#/next
 `

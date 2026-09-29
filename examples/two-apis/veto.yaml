@@ -4,5 +4,5 @@ semantics: derived
 policy: builtin
 relations_file: relations.yaml
 contracts:
-  - assets.yaml
-  - teams.yaml
+  - orders.yaml
+  - customers.yaml

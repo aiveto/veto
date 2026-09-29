@@ -18,7 +18,7 @@ import (
 )
 
 func TestInvokeDeleteRequiresApprovalBeforeHTTP(t *testing.T) {
-	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
 	var hits atomic.Int32
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -36,11 +36,11 @@ func TestInvokeDeleteRequiresApprovalBeforeHTTP(t *testing.T) {
 		Agent:     loop,
 	}
 	ctx := context.Background()
-	first, err := srv.Invoke(ctx, "assets.delete", map[string]string{"id": "123"}, "")
+	first, err := srv.Invoke(ctx, "orders.delete", map[string]string{"id": "123"}, "")
 	require.NoError(t, err)
 	assert.Equal(t, "confirmation_required", first.Status)
 	assert.Equal(t, int32(0), hits.Load())
-	second, err := srv.Invoke(ctx, "assets.delete", map[string]string{"id": "123"}, first.ApprovalID)
+	second, err := srv.Invoke(ctx, "orders.delete", map[string]string{"id": "123"}, first.ApprovalID)
 	require.NoError(t, err)
 	assert.Equal(t, "ok", second.Status)
 	assert.Equal(t, int32(1), hits.Load())
@@ -53,7 +53,7 @@ func TestInvokeDeleteRequiresApprovalBeforeHTTP(t *testing.T) {
 }
 
 func TestInvokeJSONCarriesCodeAndRetryable(t *testing.T) {
-	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
@@ -67,10 +67,10 @@ func TestInvokeJSONCarriesCodeAndRetryable(t *testing.T) {
 		Semantics: sem,
 		Agent:     loop,
 	}
-	missing, err := srv.Invoke(context.Background(), "assets.get", nil, "")
+	missing, err := srv.Invoke(context.Background(), "orders.get", nil, "")
 	assert.Error(t, err)
 	assert.Equal(t, "missing_param", missing.Code)
-	got, err := srv.Invoke(context.Background(), "assets.get", map[string]string{"id": "9"}, "")
+	got, err := srv.Invoke(context.Background(), "orders.get", map[string]string{"id": "9"}, "")
 	require.NoError(t, err)
 	raw, err := json.Marshal(got)
 	require.NoError(t, err)

@@ -1,6 +1,6 @@
 name: delete-requires-confirmation
-input: "Delete asset 123"
+input: "Delete order 123"
 expect:
   confirmation_required: true
-  operation: assets.delete
+  operation: orders.delete
   no_http: true

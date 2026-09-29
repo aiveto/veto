@@ -14,7 +14,7 @@ Model-graded evals catch wording drift but are flaky in CI.
 
 ## Decision
 
-`veto eval` runs yaml cases against `agent.Scripted` and `policy.Builtin`. Shipped case: "delete asset 123" requires confirmation and targets `assets.delete`.
+`veto eval` runs yaml cases against `agent.Scripted` and `policy.Builtin`. Shipped case: "delete order 123" requires confirmation and targets `orders.delete`.
 
 ## What we refused
 

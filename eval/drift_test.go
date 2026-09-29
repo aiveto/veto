@@ -10,12 +10,12 @@ import (
 
 func TestDriftLocksOperationAndConfirmation(t *testing.T) {
 	base := []eval.CaseExpect{
-		{Name: "delete", Operation: "assets.delete", ConfirmationRequired: true},
-		{Name: "gone", Operation: "assets.get"},
+		{Name: "delete", Operation: "orders.delete", ConfirmationRequired: true},
+		{Name: "gone", Operation: "orders.get"},
 	}
 	next := []eval.CaseExpect{
-		{Name: "delete", Operation: "assets.delete", ConfirmationRequired: false},
-		{Name: "added", Operation: "assets.list"},
+		{Name: "delete", Operation: "orders.delete", ConfirmationRequired: false},
+		{Name: "added", Operation: "orders.list"},
 	}
 	assert.Equal(t, []string{
 		"eval case delete changed operation or confirmation",

@@ -22,8 +22,8 @@ func TestOTLPExportDropsUnlistedAttributes(t *testing.T) {
 
 	_, span := tp.Tracer("t").Start(context.Background(), "agent.run")
 	span.SetAttributes(
-		attribute.String("operation.id", "assets.delete"),
-		attribute.String("user_message", "Delete asset 123"),
+		attribute.String("operation.id", "orders.delete"),
+		attribute.String("user_message", "Delete order 123"),
 	)
 	span.End()
 	stubs := mem.GetSpans()
@@ -34,6 +34,6 @@ func TestOTLPExportDropsUnlistedAttributes(t *testing.T) {
 		keys = append(keys, string(kv.Key)+"="+kv.Value.AsString())
 	}
 	got := strings.Join(keys, " ")
-	assert.Contains(t, got, "operation.id=assets.delete")
-	assert.NotContains(t, got, "Delete asset 123")
+	assert.Contains(t, got, "operation.id=orders.delete")
+	assert.NotContains(t, got, "Delete order 123")
 }

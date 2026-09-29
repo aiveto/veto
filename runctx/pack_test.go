@@ -15,22 +15,22 @@ import (
 )
 
 func TestPackOmitsRawSpecAndIncludesDescribed(t *testing.T) {
-	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
 	sem := semantics.NewDerived(cat)
-	op := cat.ByID("assets.delete")
+	op := cat.ByID("orders.delete")
 	pack := runctx.NewBuilder(4096).Build(cat, []runctx.Turn{{Role: "user", Content: "delete 123"}}, op, sem, nil)
 	assert.False(t, runctx.ContainsRawSpec(pack.Serialize()))
-	assert.Equal(t, "assets.delete", pack.DescribedOperationID)
+	assert.Equal(t, "orders.delete", pack.DescribedOperationID)
 }
 
 func joinedCatalog(t *testing.T) *catalog.Catalog {
 	t.Helper()
-	assets, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	orders, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
-	teams, err := openapi.Load(context.Background(), "../testdata/teams.yaml")
+	customers, err := openapi.Load(context.Background(), "../testdata/customers.yaml")
 	require.NoError(t, err)
-	cat, err := catalog.Merge(assets, teams)
+	cat, err := catalog.Merge(orders, customers)
 	require.NoError(t, err)
 	relData, err := os.ReadFile("../testdata/relations.yaml")
 	require.NoError(t, err)
@@ -41,11 +41,11 @@ func joinedCatalog(t *testing.T) *catalog.Catalog {
 }
 
 func TestPackWalksDeclaredRelation(t *testing.T) {
-	assets, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	orders, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
-	teams, err := openapi.Load(context.Background(), "../testdata/teams.yaml")
+	customers, err := openapi.Load(context.Background(), "../testdata/customers.yaml")
 	require.NoError(t, err)
-	cat, err := catalog.Merge(assets, teams)
+	cat, err := catalog.Merge(orders, customers)
 	require.NoError(t, err)
 	relData, err := os.ReadFile("../testdata/relations.yaml")
 	require.NoError(t, err)
@@ -53,20 +53,20 @@ func TestPackWalksDeclaredRelation(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, catalog.ApplyRelations(cat, rels))
 	sem := semantics.NewDerived(cat)
-	pack := runctx.NewBuilder(8192).Build(cat, nil, cat.ByID("assets.get"), sem, nil)
+	pack := runctx.NewBuilder(8192).Build(cat, nil, cat.ByID("orders.get"), sem, nil)
 	ser := pack.Serialize()
-	assert.Contains(t, ser, "related: teams.get Holding.teamsId")
-	assert.Contains(t, ser, "Holding.teamsId identifies teams.get")
+	assert.Contains(t, ser, "related: customers.get Order.customerId")
+	assert.Contains(t, ser, "Order.customerId identifies customers.get")
 }
 
 func TestPackIncludesCallShapeAndRelationField(t *testing.T) {
 	cat := joinedCatalog(t)
 	sem := semantics.NewDerived(cat)
-	pack := runctx.NewBuilder(8192).Build(cat, []runctx.Turn{{Role: "user", Content: "get asset"}}, nil, sem, nil)
+	pack := runctx.NewBuilder(8192).Build(cat, []runctx.Turn{{Role: "user", Content: "get order"}}, nil, sem, nil)
 	assert.Contains(t, pack.Index, "id path required")
-	assert.Contains(t, pack.Index, "teamsId")
+	assert.Contains(t, pack.Index, "customerId")
 	assert.NotContains(t, pack.Index, "billing.list")
-	assert.Less(t, strings.Index(pack.Index, "assets.get"), strings.Index(pack.Index, "teams.get"))
+	assert.Less(t, strings.Index(pack.Index, "orders.get"), strings.Index(pack.Index, "customers.get"))
 }
 
 func TestTruncateDropsWholeOperations(t *testing.T) {
@@ -87,11 +87,11 @@ func TestTruncateDropsWholeOperations(t *testing.T) {
 }
 
 func TestPackKeepsSearchHitsAndDropsTheRest(t *testing.T) {
-	assets, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	orders, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
-	teams, err := openapi.Load(context.Background(), "../testdata/teams.yaml")
+	customers, err := openapi.Load(context.Background(), "../testdata/customers.yaml")
 	require.NoError(t, err)
-	cat, err := catalog.Merge(assets, teams)
+	cat, err := catalog.Merge(orders, customers)
 	require.NoError(t, err)
 	cat.Operations = append(cat.Operations, catalog.Operation{
 		ID: "billing.list", Description: "List invoices", Group: "billing", Name: "List invoices",
@@ -103,9 +103,9 @@ func TestPackKeepsSearchHitsAndDropsTheRest(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, catalog.ApplyRelations(cat, rels))
 	sem := semantics.NewDerived(cat)
-	turns := []runctx.Turn{{Role: "user", Content: "delete asset 123"}}
+	turns := []runctx.Turn{{Role: "user", Content: "delete order 123"}}
 	pack := runctx.NewBuilder(8192).Build(cat, turns, nil, sem, nil)
 	assert.NotContains(t, pack.Index, "billing.list")
-	assert.Contains(t, pack.Index, "assets.delete")
+	assert.Contains(t, pack.Index, "orders.delete")
 	assert.NotEqual(t, cat.IndexLine(), pack.Index)
 }

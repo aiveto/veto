@@ -22,21 +22,21 @@ func TestFollowWalksDeclaredRelation(t *testing.T) {
 	var paths []string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, r.URL.Path)
-		if strings.HasPrefix(r.URL.Path, "/assets/") {
-			_, _ = w.Write([]byte(`{"id":"1","teamsId":"9"}`))
+		if strings.HasPrefix(r.URL.Path, "/orders/") {
+			_, _ = w.Write([]byte(`{"id":"123","customerId":"7"}`))
 			return
 		}
-		_, _ = w.Write([]byte(`{"id":"9"}`))
+		_, _ = w.Write([]byte(`{"id":"7"}`))
 	}))
 	defer ts.Close()
 	loop, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
 	require.NoError(t, err)
-	calls, err := loop.Follow(context.Background(), "assets.get", map[string]string{"id": "1"}, "")
+	calls, err := loop.Follow(context.Background(), "orders.get", map[string]string{"id": "123"}, "")
 	require.NoError(t, err)
 	require.Len(t, calls, 2)
-	assert.Equal(t, "assets.get", calls[0].OperationID)
-	assert.Equal(t, "teams.get", calls[1].OperationID)
-	assert.Equal(t, []string{"/assets/1", "/teams/9"}, paths)
+	assert.Equal(t, "orders.get", calls[0].OperationID)
+	assert.Equal(t, "customers.get", calls[1].OperationID)
+	assert.Equal(t, []string{"/orders/123", "/customers/7"}, paths)
 }
 
 func TestFollowErrorsWhenTheFieldIsMissing(t *testing.T) {
@@ -49,27 +49,27 @@ func TestFollowErrorsWhenTheFieldIsMissing(t *testing.T) {
 	defer ts.Close()
 	loop, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
 	require.NoError(t, err)
-	_, err = loop.Follow(context.Background(), "assets.get", map[string]string{"id": "1"}, "")
-	assert.ErrorContains(t, err, "teamsId")
+	_, err = loop.Follow(context.Background(), "orders.get", map[string]string{"id": "1"}, "")
+	assert.ErrorContains(t, err, "customerId")
 	assert.Equal(t, 1, hits)
 }
 
 func TestFollowDoesNotInventAnEdge(t *testing.T) {
-	assets, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	orders, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
-	teams, err := openapi.Load(context.Background(), "../testdata/teams.yaml")
+	customers, err := openapi.Load(context.Background(), "../testdata/customers.yaml")
 	require.NoError(t, err)
-	cat, err := catalog.Merge(assets, teams)
+	cat, err := catalog.Merge(orders, customers)
 	require.NoError(t, err)
 	var hits int
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits++
-		_, _ = w.Write([]byte(`{"id":"1","teamsId":"9"}`))
+		_, _ = w.Write([]byte(`{"id":"1","customerId":"7"}`))
 	}))
 	defer ts.Close()
 	loop, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
 	require.NoError(t, err)
-	calls, err := loop.Follow(context.Background(), "assets.get", map[string]string{"id": "1"}, "")
+	calls, err := loop.Follow(context.Background(), "orders.get", map[string]string{"id": "1"}, "")
 	require.NoError(t, err)
 	assert.Len(t, calls, 1)
 	assert.Equal(t, 1, hits)
@@ -83,8 +83,8 @@ func TestFollowUsesLinkParameterMapping(t *testing.T) {
 	var paths []string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, r.URL.Path)
-		if r.URL.Path == "/assets/1" {
-			_, _ = w.Write([]byte(`{"teamsId":"9"}`))
+		if r.URL.Path == "/orders/1" {
+			_, _ = w.Write([]byte(`{"customerId":"7"}`))
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -92,30 +92,30 @@ func TestFollowUsesLinkParameterMapping(t *testing.T) {
 	defer ts.Close()
 	loop, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
 	require.NoError(t, err)
-	calls, err := loop.Follow(context.Background(), "assets.get", map[string]string{"id": "1"}, "")
+	calls, err := loop.Follow(context.Background(), "orders.get", map[string]string{"id": "1"}, "")
 	require.NoError(t, err)
 	require.Len(t, calls, 2)
-	assert.Equal(t, "teams.get", calls[1].OperationID)
-	assert.Equal(t, []string{"/assets/1", "/teams/9"}, paths)
+	assert.Equal(t, "customers.get", calls[1].OperationID)
+	assert.Equal(t, []string{"/orders/1", "/customers/7"}, paths)
 
 	listed := 0
 	ts2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		listed++
-		_, _ = w.Write([]byte(`[{"teamsId":"9"}]`))
+		_, _ = w.Write([]byte(`[{"customerId":"7"}]`))
 	}))
 	defer ts2.Close()
 	loop, err = agent.New(cat, nil, execute.Client{BaseURL: ts2.URL})
 	require.NoError(t, err)
-	calls, err = loop.Follow(context.Background(), "assets.list", nil, "")
+	calls, err = loop.Follow(context.Background(), "orders.list", nil, "")
 	require.NoError(t, err)
 	assert.Len(t, calls, 1)
 	assert.Equal(t, 1, listed)
 }
 
 func TestFollowStopsOnConfirmation(t *testing.T) {
-	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
-	cat.Links = append(cat.Links, catalog.OpLink{From: "assets.get", To: "assets.delete", Note: "Holding.id"})
+	cat.Links = append(cat.Links, catalog.OpLink{From: "orders.get", To: "orders.delete", Note: "Order.id"})
 	cat.Finalize()
 	var paths []string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -125,20 +125,20 @@ func TestFollowStopsOnConfirmation(t *testing.T) {
 	defer ts.Close()
 	loop, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
 	require.NoError(t, err)
-	calls, err := loop.Follow(context.Background(), "assets.get", map[string]string{"id": "7"}, "")
+	calls, err := loop.Follow(context.Background(), "orders.get", map[string]string{"id": "7"}, "")
 	require.NoError(t, err)
 	require.Len(t, calls, 2)
 	assert.Equal(t, "confirmation_required", calls[1].Status)
-	assert.Equal(t, []string{"/assets/7"}, paths)
+	assert.Equal(t, []string{"/orders/7"}, paths)
 }
 
 func joined(t *testing.T) *catalog.Catalog {
 	t.Helper()
-	assets, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	orders, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
-	teams, err := openapi.Load(context.Background(), "../testdata/teams.yaml")
+	customers, err := openapi.Load(context.Background(), "../testdata/customers.yaml")
 	require.NoError(t, err)
-	cat, err := catalog.Merge(assets, teams)
+	cat, err := catalog.Merge(orders, customers)
 	require.NoError(t, err)
 	relData, err := os.ReadFile("../testdata/relations.yaml")
 	require.NoError(t, err)
@@ -150,14 +150,14 @@ func joined(t *testing.T) *catalog.Catalog {
 
 const linkSpec = `openapi: 3.0.3
 info:
-  title: Assets
+  title: Orders
   version: "1"
 servers:
   - url: http://127.0.0.1:9
 paths:
-  /assets:
+  /orders:
     get:
-      operationId: assets.list
+      operationId: orders.list
       responses:
         "200":
           description: list
@@ -169,10 +169,10 @@ paths:
                   type: object
           links:
             next:
-              operationId: assets.get
-  /assets/{id}:
+              operationId: orders.get
+  /orders/{id}:
     get:
-      operationId: assets.get
+      operationId: orders.get
       parameters:
         - name: id
           in: path
@@ -187,13 +187,13 @@ paths:
               schema:
                 type: object
           links:
-            team:
-              operationId: teams.get
+            customer:
+              operationId: customers.get
               parameters:
-                id: $response.body#/teamsId
-  /teams/{id}:
+                id: $response.body#/customerId
+  /customers/{id}:
     get:
-      operationId: teams.get
+      operationId: customers.get
       parameters:
         - name: id
           in: path

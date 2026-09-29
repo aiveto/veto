@@ -15,7 +15,7 @@ import (
 
 func TestBearerHeaderIsSentAndKeptOffTheSpan(t *testing.T) {
 	cat := loadSpec(t, bearerSpec)
-	op := cat.ByID("assets.get")
+	op := cat.ByID("orders.get")
 	const secret = "s3cret-token"
 	var got string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -36,9 +36,9 @@ func TestBearerHeaderIsSentAndKeptOffTheSpan(t *testing.T) {
 }
 
 func TestNoSchemeSendsNoAuthorization(t *testing.T) {
-	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
-	op := cat.ByID("assets.get")
+	op := cat.ByID("orders.get")
 	require.Empty(t, op.Auth)
 	var got string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -53,16 +53,16 @@ func TestNoSchemeSendsNoAuthorization(t *testing.T) {
 
 const bearerSpec = `openapi: 3.0.3
 info:
-  title: Assets
+  title: Orders
   version: "1"
 servers:
   - url: http://127.0.0.1:9
 security:
   - bearerAuth: []
 paths:
-  /assets/{id}:
+  /orders/{id}:
     get:
-      operationId: assets.get
+      operationId: orders.get
       parameters:
         - name: id
           in: path

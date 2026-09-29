@@ -10,13 +10,13 @@ import (
 
 func TestSurfaceRegressions(t *testing.T) {
 	base := map[string]catalog.OpFact{
-		"teams.get":     {Referenced: true},
-		"assets.delete": {Destructive: true, Confirmation: true},
-		"assets.get":    {Referenced: true, Confirmation: false},
+		"customers.get": {Referenced: true},
+		"orders.delete": {Destructive: true, Confirmation: true},
+		"orders.get":    {Referenced: true, Confirmation: false},
 	}
 	changed := map[string]catalog.OpFact{
-		"assets.delete": {Destructive: true, Confirmation: false},
-		"assets.get":    {Referenced: true},
+		"orders.delete": {Destructive: true, Confirmation: false},
+		"orders.get":    {Referenced: true},
 	}
 	cases := []struct {
 		name  string
@@ -28,15 +28,15 @@ func TestSurfaceRegressions(t *testing.T) {
 			name: "lost confirmation and removed join",
 			next: changed,
 			want: []string{
-				"operation assets.delete lost confirmation",
-				"operation teams.get referenced by a relation or link was removed",
+				"operation customers.get referenced by a relation or link was removed",
+				"operation orders.delete lost confirmation",
 			},
 		},
 		{
 			name:  "intentional confirmation change",
 			next:  changed,
-			allow: map[string]bool{"assets.delete": true},
-			want:  []string{"operation teams.get referenced by a relation or link was removed"},
+			allow: map[string]bool{"orders.delete": true},
+			want:  []string{"operation customers.get referenced by a relation or link was removed"},
 		},
 		{name: "unchanged", next: base},
 	}
@@ -50,17 +50,17 @@ func TestSurfaceRegressions(t *testing.T) {
 func TestFactsMarkJoinedAndDestructiveOperations(t *testing.T) {
 	cat := &catalog.Catalog{
 		Operations: []catalog.Operation{
-			{ID: "assets.get"},
-			{ID: "assets.delete", Kind: catalog.KindDelete, SideEffect: catalog.SideEffectDestructive, RequiresConfirmation: true},
-			{ID: "teams.get"},
+			{ID: "orders.get"},
+			{ID: "orders.delete", Kind: catalog.KindDelete, SideEffect: catalog.SideEffectDestructive, RequiresConfirmation: true},
+			{ID: "customers.get"},
 		},
-		Links: []catalog.OpLink{{From: "assets.get", To: "teams.get", Note: "Holding.teamsId"}},
+		Links: []catalog.OpLink{{From: "orders.get", To: "customers.get", Note: "Order.customerId"}},
 	}
 	cat.Finalize()
 	facts := catalog.Facts(cat)
-	assert.True(t, facts["teams.get"].Referenced)
-	assert.True(t, facts["assets.get"].Referenced)
-	del := facts["assets.delete"]
+	assert.True(t, facts["customers.get"].Referenced)
+	assert.True(t, facts["orders.get"].Referenced)
+	del := facts["orders.delete"]
 	assert.True(t, del.Destructive)
 	assert.True(t, del.Confirmation)
 	assert.False(t, del.Referenced)

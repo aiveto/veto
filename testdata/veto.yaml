@@ -11,5 +11,5 @@ flow_file: flow.yaml
 agent_file: agent.yaml
 relations_file: relations.yaml
 contracts:
-  - openapi.yaml
-  - teams.yaml
+  - orders.yaml
+  - customers.yaml

@@ -39,7 +39,7 @@ Do not rebuild these.
 
 - One catalog from many OpenAPI files. Duplicate operation ids fail the load. Each contract keeps its own server URL.
 - OpenAPI links resolve with a JSON pointer. A dangling link fails the load.
-- A relations file joins `schema.field` to an operation, for example `Holding.teamsId` to `teams.get`. A field name alone creates no edge.
+- A relations file joins `schema.field` to an operation, for example `Order.customerId` to `customers.get`. A field name alone creates no edge.
 - Search, describe, and invoke. Optional pins. Optional one tool per resource. Never one tool per operation.
 - Context pack: search hits, their neighbors, rules, the conversation, pending confirmation. The raw spec stays out. A relation becomes a sentence on the note.
 - Confirmation is the only policy gate. `agent.yaml` can turn it off, or turn it on, per operation.
@@ -79,11 +79,11 @@ Done when a bearer scheme on the contract sends `Authorization` from the env var
 
 The pack names operations and relation sentences. It does not say which parameters are required, or what the response fields are. The model still has to guess or call describe.
 
-Done when a hit in the pack includes parameter name, location, and required flag, plus the response fields needed to follow a relation (for example `teamsId` on `Holding`). The raw document is still absent. A test with an unrelated operation still drops it.
+Done when a hit in the pack includes parameter name, location, and required flag, plus the response fields needed to follow a relation (for example `customerId` on `Order`). The raw document is still absent. A test with an unrelated operation still drops it.
 
 ### 4. Walk a declared relation
 
-The sentence `Holding.teamsId identifies teams.get` is text. The user still writes a flow, or the model makes two calls and copies the id.
+The sentence `Order.customerId identifies customers.get` is text. The user still writes a flow, or the model makes two calls and copies the id.
 
 Done when one invoke can follow that edge: call the first operation, read the field, call the target with that value. Both calls use `agent.Invoke`. A missing field is an error. No new edge appears unless the relation file or an OpenAPI link declared it.
 
@@ -122,11 +122,11 @@ Done when each generated method uses the operation base URL from the catalog, an
 
 ## Relations and catalog
 
-15. `veto validate` prints the joins: operation, edge note, target. A human can see `Holding.teamsId identifies teams.get` without reading spans.
+15. `veto validate` prints the joins: operation, edge note, target. A human can see `Order.customerId identifies customers.get` without reading spans.
 16. Execute OpenAPI links the same way as item 4. The link already names the target. Use the link parameter mapping from the spec, not a guessed field.
-17. Shared schema `$ref` stays a `uses` edge. It is not a call edge. Do not turn "both operations mention Holding" into an invoke.
+17. Shared schema `$ref` stays a `uses` edge. It is not a call edge. Do not turn "both operations mention Order" into an invoke.
 18. Fail load on a relation whose schema is unused or whose target operation is missing. This already happens. Keep the test.
-19. Keep the test that `teamsId` with no relations file does not connect to `teams.get`.
+19. Keep the test that `customerId` with no relations file does not connect to `customers.get`.
 20. OpenAPI 3.1, callbacks, and webhooks. Write down what the loader accepts and what it rejects. Do not silently drop a callback and claim the catalog is complete.
 21. Protobuf stays out until OpenAPI is boring. ADR 006. No empty `protobuf` package.
 
@@ -176,7 +176,7 @@ Done when each generated method uses the operation base URL from the catalog, an
 48. Generated `--help-json` lists params, confirmation, permissions, and the server URL.
 49. A second eval case: two contracts, a relation, and a user sentence that must select the neighbor and must not select an unrelated operation.
 50. A third eval case: delete is refused without approval, and the test server receives the delete only on the second call. The sample case already covers the refusal. Keep a server assertion in the unit test.
-51. `examples/assets` is one file. Add a second example that is the assets plus teams config, with the commands from the README, so a new person can run it.
+51. `examples/orders` is one file. Add a second example that is the orders plus customers config, with the commands from the README, so a new person can run it.
 
 ## Public release hygiene
 
@@ -204,7 +204,7 @@ Philosophies in `CLAUDE.md` point here without importing their code: Eino-style 
 
 ### P0 (must-use differentiators)
 
-62. **Executable catalog.** Item 4 walks a declared relation in code, not only as a sentence in the pack. One user intent can call `assets.get`, read `teamsId`, then call `teams.get`. Every hop uses `agent.Invoke`. The trace shows each operation. OpenAPI links use the spec mapping when item 16 lands.
+62. **Executable catalog.** Item 4 walks a declared relation in code, not only as a sentence in the pack. One user intent can call `orders.get`, read `customerId`, then call `customers.get`. Every hop uses `agent.Invoke`. The trace shows each operation. OpenAPI links use the spec mapping when item 16 lands.
 
 63. **`veto pack`.** A command prints the pack for a message: `veto pack --config veto.yaml --message "..."`. A `--json` flag for CI. Assert the index contains expected operation ids, relation sentences, and neighbors, and does not contain unrelated operations. Same builder as `serve` and the live model.
 
@@ -212,7 +212,7 @@ Philosophies in `CLAUDE.md` point here without importing their code: Eino-style 
 
 ### P1 (trust and onboarding)
 
-65. **`veto validate` explains the graph.** After load, print each join as a line, for example `assets.get --[Holding.teamsId]--> teams.get`. Item 15 overlaps; keep one implementation. Optional later: warn when a contract version removes an operation a relation or link still references.
+65. **`veto validate` explains the graph.** After load, print each join as a line, for example `orders.get --[Order.customerId]--> customers.get`. Item 15 overlaps; keep one implementation. Optional later: warn when a contract version removes an operation a relation or link still references.
 
 66. **`veto doctor`.** Before `serve`, check contracts load, relations are consistent, required env vars for security schemes are set (names only, never values), pins are not discovery-only, and optional `--ping` reaches server URLs. One stderr report, exit non-zero on blockers.
 
@@ -234,7 +234,7 @@ Backend token validation and outbound auth often live on the API gateway or mesh
 
 ### Killer not on the gateway
 
-72. **`veto check` for agent surface regression.** One CI command after items 64 and 65 exist: load `veto.yaml`, relations, and agent metadata; validate the graph; run the eval case directory; fail non-zero on any error. Optional `--against` a git ref or a committed snapshot: fail when an OpenAPI change removes an operation referenced by a relation or link, when a destructive operation loses `RequiresConfirmation` without an intentional `agent.yaml` change, or when an eval case changes expected operation or confirmation behavior. Gateways validate HTTP requests. They do not know whether `Holding.teamsId` still reaches `teams.get` or whether "delete asset 123" still stops before HTTP. Platform teams need that gate when API repos and agent config ship on different PRs.
+72. **`veto check` for agent surface regression.** One CI command after items 64 and 65 exist: load `veto.yaml`, relations, and agent metadata; validate the graph; run the eval case directory; fail non-zero on any error. Optional `--against` a git ref or a committed snapshot: fail when an OpenAPI change removes an operation referenced by a relation or link, when a destructive operation loses `RequiresConfirmation` without an intentional `agent.yaml` change, or when an eval case changes expected operation or confirmation behavior. Gateways validate HTTP requests. They do not know whether `Order.customerId` still reaches `customers.get` or whether "delete order 123" still stops before HTTP. Platform teams need that gate when API repos and agent config ship on different PRs.
 
 73. **External invoke policy (`policy: opa` or `policy: spicedb`).** After item 35. Config key only until a provider package exists. Subject comes from caller identity (item 35) or MCP session metadata. Check `op.Permissions` and later resource ids from params against OPA or SpiceDB. Default stays `policy: builtin`. Eval and `veto check` must still pass with the key unset. This is agent-surface authZ, not replacement for gateway authZ on HTTP.
 

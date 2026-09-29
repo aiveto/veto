@@ -1,11 +1,11 @@
 operations:
-  - operation: assets.delete
+  - operation: orders.delete
     permissions:
-      - asset.delete
+      - order.delete
     idempotency: none
     retry: never
     exposure: discovery-only
-  - operation: assets.list
+  - operation: orders.list
     exposure: grouped
-  - operation: assets.get
+  - operation: orders.get
     exposure: grouped

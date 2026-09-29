@@ -16,35 +16,35 @@ func TestBearerSchemeAndExplicitOptOut(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte(authSpec), 0o644))
 	cat, err := openapi.Load(context.Background(), path)
 	require.NoError(t, err)
-	create := cat.ByID("assets.create")
+	create := cat.ByID("orders.create")
 	require.NotNil(t, create)
 	require.Len(t, create.Auth, 1)
 	assert.Equal(t, "bearerAuth", create.Auth[0].Name)
 	assert.Equal(t, "bearer", create.Auth[0].Kind)
 	assert.Equal(t, "Authorization", create.Auth[0].Header)
-	health := cat.ByID("assets.health")
+	health := cat.ByID("orders.health")
 	require.NotNil(t, health)
 	assert.Empty(t, health.Auth)
 }
 
 const authSpec = `openapi: 3.0.3
 info:
-  title: Assets
+  title: Orders
   version: "1"
 servers:
   - url: http://127.0.0.1:8080
 security:
   - bearerAuth: []
 paths:
-  /assets:
+  /orders:
     post:
-      operationId: assets.create
+      operationId: orders.create
       responses:
         "201":
           description: created
   /health:
     get:
-      operationId: assets.health
+      operationId: orders.health
       security: []
       responses:
         "200":

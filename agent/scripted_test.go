@@ -17,12 +17,12 @@ func TestScriptedRequiresTheMessageInThePack(t *testing.T) {
 		want string
 	}{
 		{name: "omitted", want: ""},
-		{name: "present", pack: "user: delete asset 123", want: "assets.delete"},
+		{name: "present", pack: "user: delete order 123", want: "orders.delete"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := agent.NewScripted().Complete(context.Background(), agent.Request{
-				UserMessage: "delete asset 123",
+				UserMessage: "delete order 123",
 				Context:     tc.pack,
 			})
 			require.NoError(t, err)

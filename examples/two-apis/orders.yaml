@@ -1,30 +1,30 @@
 openapi: 3.0.3
 info:
-  title: Assets API
+  title: Orders API
   version: 1.0.0
 servers:
   - url: http://127.0.0.1:8080
 paths:
-  /assets:
+  /orders:
     get:
-      operationId: assets.list
-      summary: List assets
+      operationId: orders.list
+      summary: List orders
       responses:
         "200":
-          description: Asset list
+          description: Order list
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Holding"
+                  $ref: "#/components/schemas/Order"
           links:
-            getAsset:
-              operationId: assets.get
-  /assets/{id}:
+            getOrder:
+              operationId: orders.get
+  /orders/{id}:
     get:
-      operationId: assets.get
-      summary: Get asset by id
+      operationId: orders.get
+      summary: Get order by id
       parameters:
         - name: id
           in: path
@@ -33,17 +33,17 @@ paths:
             type: string
       responses:
         "200":
-          description: One asset
+          description: One order
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Holding"
+                $ref: "#/components/schemas/Order"
           links:
-            deleteAsset:
-              operationRef: "#/paths/~1assets~1{id}/delete"
+            deleteOrder:
+              operationRef: "#/paths/~1orders~1{id}/delete"
     delete:
-      operationId: assets.delete
-      summary: Delete asset
+      operationId: orders.delete
+      summary: Delete order
       parameters:
         - name: id
           in: path
@@ -55,10 +55,10 @@ paths:
           description: Deleted
 components:
   schemas:
-    Holding:
+    Order:
       type: object
       properties:
         id:
           type: string
-        teamsId:
+        customerId:
           type: string

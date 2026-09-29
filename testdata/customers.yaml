@@ -1,14 +1,14 @@
 openapi: 3.0.3
 info:
-  title: Teams API
+  title: Customers API
   version: 1.0.0
 servers:
   - url: http://127.0.0.1:9090
 paths:
-  /teams/{id}:
+  /customers/{id}:
     get:
-      operationId: teams.get
-      summary: Get team by id
+      operationId: customers.get
+      summary: Get customer by id
       parameters:
         - name: id
           in: path
@@ -17,4 +17,4 @@ paths:
             type: string
       responses:
         "200":
-          description: One team
+          description: One customer

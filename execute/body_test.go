@@ -18,7 +18,7 @@ import (
 
 func TestJSONBodySetsContentHeaders(t *testing.T) {
 	cat := loadSpec(t, bodySpec)
-	op := cat.ByID("assets.create")
+	op := cat.ByID("orders.create")
 	body, ok := op.BodyParam()
 	require.True(t, ok)
 	assert.Equal(t, "body", body.Name)
@@ -57,9 +57,9 @@ func TestMissingRequiredInputDoesNotCallDo(t *testing.T) {
 		params map[string]string
 		want   string
 	}{
-		{name: "unset bearer", spec: bearerSpec, op: "assets.get", params: map[string]string{"id": "1"}, want: "bearerAuth is unset"},
-		{name: "empty body", spec: bodySpec, op: "assets.create", params: map[string]string{"_body": `{"name":"kit"}`}, want: "body required"},
-		{name: "empty path", spec: bodySpec, op: "assets.get", params: map[string]string{"id": "  "}, want: "id required"},
+		{name: "unset bearer", spec: bearerSpec, op: "orders.get", params: map[string]string{"id": "1"}, want: "bearerAuth is unset"},
+		{name: "empty body", spec: bodySpec, op: "orders.create", params: map[string]string{"_body": `{"name":"kit"}`}, want: "body required"},
+		{name: "empty path", spec: bodySpec, op: "orders.get", params: map[string]string{"id": "  "}, want: "id required"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -78,7 +78,7 @@ func TestMissingRequiredInputDoesNotCallDo(t *testing.T) {
 
 func TestNoBodySchemaOmitsContentType(t *testing.T) {
 	cat := loadSpec(t, bodySpec)
-	op := cat.ByID("assets.get")
+	op := cat.ByID("orders.get")
 	_, ok := op.BodyParam()
 	assert.False(t, ok)
 	var gotType string
@@ -111,26 +111,26 @@ func loadSpec(t *testing.T, spec string) *catalog.Catalog {
 
 const bodySpec = `openapi: 3.0.3
 info:
-  title: Assets
+  title: Orders
   version: "1"
 servers:
   - url: http://127.0.0.1:8080
 paths:
-  /assets:
+  /orders:
     post:
-      operationId: assets.create
+      operationId: orders.create
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Asset"
+              $ref: "#/components/schemas/Order"
       responses:
         "201":
           description: created
-  /assets/{id}:
+  /orders/{id}:
     get:
-      operationId: assets.get
+      operationId: orders.get
       parameters:
         - name: id
           in: path
@@ -142,7 +142,7 @@ paths:
           description: ok
 components:
   schemas:
-    Asset:
+    Order:
       type: object
       required: [name]
       properties:

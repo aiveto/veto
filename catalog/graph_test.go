@@ -12,18 +12,18 @@ import (
 
 func TestJoinsPrintTheRelation(t *testing.T) {
 	cat := &catalog.Catalog{Operations: []catalog.Operation{
-		{ID: "assets.get", Name: "get"},
-		{ID: "teams.get", Name: "team"},
-	}, Links: []catalog.OpLink{{From: "assets.get", To: "teams.get", Note: "Holding.teamsId"}}}
+		{ID: "orders.get", Name: "get"},
+		{ID: "customers.get", Name: "customer"},
+	}, Links: []catalog.OpLink{{From: "orders.get", To: "customers.get", Note: "Order.customerId"}}}
 	cat.Finalize()
-	assert.Equal(t, []string{"assets.get --[Holding.teamsId]--> teams.get"}, cat.Joins())
+	assert.Equal(t, []string{"orders.get --[Order.customerId]--> customers.get"}, cat.Joins())
 }
 
 func TestGraphLinksOperationsAndSchemas(t *testing.T) {
-	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
-	assert.Equal(t, []string{"assets.get"}, cat.Graph.Related("assets.list"))
-	assert.Equal(t, []string{"assets.delete"}, cat.Graph.Related("assets.get"))
-	assert.Equal(t, []string{"Holding"}, cat.Graph.Schemas("assets.get"))
-	assert.Contains(t, cat.Graph.OperationsForResource("assets"), "assets.delete")
+	assert.Equal(t, []string{"orders.get"}, cat.Graph.Related("orders.list"))
+	assert.Equal(t, []string{"orders.delete"}, cat.Graph.Related("orders.get"))
+	assert.Equal(t, []string{"Order"}, cat.Graph.Schemas("orders.get"))
+	assert.Contains(t, cat.Graph.OperationsForResource("orders"), "orders.delete")
 }

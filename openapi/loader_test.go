@@ -17,9 +17,9 @@ func TestLoadRejectsIncompleteDocuments(t *testing.T) {
 		body string
 		want string
 	}{
-		{name: "unknown operation id", body: specWithLink("operationId: assets.missing"), want: "assets.missing"},
-		{name: "external ref", body: specWithLink(`operationRef: "https://example.com/spec.yaml#/paths/~1assets~1{id}/get"`), want: "outside this document"},
-		{name: "ref is not an operation", body: specWithLink(`operationRef: "#/components/schemas/Holding"`), want: "not a path operation"},
+		{name: "unknown operation id", body: specWithLink("operationId: orders.missing"), want: "orders.missing"},
+		{name: "external ref", body: specWithLink(`operationRef: "https://example.com/spec.yaml#/paths/~1orders~1{id}/get"`), want: "outside this document"},
+		{name: "ref is not an operation", body: specWithLink(`operationRef: "#/components/schemas/Order"`), want: "not a path operation"},
 		{name: "webhooks", body: webhookSpec, want: "webhooks"},
 		{name: "callbacks", body: callbackSpec, want: "callbacks"},
 	}
@@ -67,9 +67,9 @@ info:
   title: t
   version: "1"
 paths:
-  /assets:
+  /orders:
     post:
-      operationId: assets.create
+      operationId: orders.create
       callbacks:
         onEvent:
           "https://example.com/hook":
@@ -101,9 +101,9 @@ info:
   title: t
   version: "1"
 paths:
-  /assets/{id}:
+  /orders/{id}:
     get:
-      operationId: assets.get
+      operationId: orders.get
       parameters:
         - name: id
           in: path
