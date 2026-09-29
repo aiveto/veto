@@ -7,6 +7,7 @@ import (
 
 	"github.com/aiveto/veto/agent"
 	"github.com/aiveto/veto/catalog"
+	"github.com/aiveto/veto/runctx"
 	"github.com/aiveto/veto/semantics"
 )
 
@@ -47,6 +48,8 @@ func (s *Server) Describe(ctx context.Context, operationID string) ([]byte, erro
 		"semantics": note,
 		"related":   s.Catalog.Graph.Related(operationID),
 		"schemas":   s.Catalog.Graph.Schemas(operationID),
+		"call":      runctx.OperationLine(s.Catalog, *op, note.Text()),
+		"relation":  note.Relation,
 	}
 	return json.Marshal(payload)
 }

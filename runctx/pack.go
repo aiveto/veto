@@ -78,16 +78,37 @@ func (b *Builder) Build(cat *catalog.Catalog, turns []Turn, described *catalog.O
 		p.Bytes += len(rel)
 	}
 	if p.Bytes > b.MaxBytes {
-		p.Truncated = true
-		over := p.Bytes - b.MaxBytes
-		if over < len(p.Index) {
-			p.Index = truncate(p.Index, len(p.Index)-over)
-		} else {
-			p.Index = ""
+		p.Index, p.Truncated = fitIndex(p.Index, len(p.Index)-(p.Bytes-b.MaxBytes))
+		p.Bytes = len(p.Rules) + len(p.Index)
+		for _, t := range p.Turns {
+			p.Bytes += len(t.Role) + len(t.Content)
 		}
-		p.Bytes = b.MaxBytes
+		p.Bytes += len(p.DescribedDetail)
+		for _, rel := range p.Related {
+			p.Bytes += len(rel)
+		}
+		if p.Bytes > b.MaxBytes {
+			p.Truncated = true
+		}
 	}
 	return p
+}
+
+func fitIndex(index string, budget int) (string, bool) {
+	if budget < 0 {
+		budget = 0
+	}
+	if len(index) <= budget {
+		return index, false
+	}
+	parts := strings.Split(index, "; ")
+	for len(parts) > 0 && len(strings.Join(parts, "; ")) > budget {
+		parts = parts[:len(parts)-1]
+	}
+	if len(parts) == 0 {
+		return "", true
+	}
+	return strings.Join(parts, "; "), true
 }
 
 // Serialize returns a human-readable pack for tests and debugging.
@@ -128,35 +149,94 @@ func selectedIndex(cat *catalog.Catalog, turns []Turn, described *catalog.Operat
 		seen[id] = true
 		ids = append(ids, id)
 	}
+	var hits []catalog.Match
 	if query := lastUser(turns); query != "" {
 		var syn map[string][]string
 		if sem != nil {
 			syn = sem.AllSynonyms()
 		}
-		for _, m := range catalog.Search(cat, query, syn) {
-			add(m.Operation.ID)
-			for _, rel := range m.Related {
-				add(rel)
-			}
-		}
+		hits = catalog.Search(cat, query, syn)
+	}
+	for _, m := range hits {
+		add(m.Operation.ID)
 	}
 	if described != nil {
 		add(described.ID)
+	}
+	for _, m := range hits {
+		for _, rel := range m.Related {
+			add(rel)
+		}
+	}
+	if described != nil {
 		for _, rel := range cat.Graph.Related(described.ID) {
 			add(rel)
 		}
 	}
 	parts := make([]string, 0, len(ids))
 	for _, id := range ids {
-		line := id
-		if sem != nil {
-			if text := sem.Note(id).Text(); text != "" {
-				line = id + " " + text
-			}
+		op := cat.ByID(id)
+		if op == nil {
+			continue
 		}
-		parts = append(parts, line)
+		note := ""
+		if sem != nil {
+			note = sem.Note(id).Text()
+		}
+		parts = append(parts, OperationLine(cat, *op, note))
 	}
 	return strings.Join(parts, "; ")
+}
+
+// OperationLine is one operation as the pack and describe show it.
+func OperationLine(cat *catalog.Catalog, op catalog.Operation, note string) string {
+	var b strings.Builder
+	b.WriteString(op.ID)
+	if note != "" {
+		b.WriteByte(' ')
+		b.WriteString(note)
+	}
+	for _, p := range op.Params {
+		b.WriteByte(' ')
+		b.WriteString(p.Name)
+		b.WriteByte(' ')
+		b.WriteString(p.In)
+		if p.Required || p.In == "path" {
+			b.WriteString(" required")
+		}
+	}
+	for _, field := range relationFields(cat, op) {
+		b.WriteByte(' ')
+		b.WriteString(field)
+	}
+	return b.String()
+}
+
+func relationFields(cat *catalog.Catalog, op catalog.Operation) []string {
+	if cat == nil {
+		return nil
+	}
+	have := map[string]bool{}
+	for _, f := range op.ResponseFields {
+		have[f] = true
+	}
+	var out []string
+	seen := map[string]bool{}
+	for _, e := range cat.Graph.Edges {
+		if e.From != op.ID || e.Kind != catalog.EdgeRelates {
+			continue
+		}
+		field := e.Note
+		if i := strings.LastIndex(field, "."); i >= 0 {
+			field = field[i+1:]
+		}
+		if field == "" || !have[field] || seen[field] {
+			continue
+		}
+		seen[field] = true
+		out = append(out, field)
+	}
+	return out
 }
 
 func lastUser(turns []Turn) string {
@@ -166,14 +246,4 @@ func lastUser(turns []Turn) string {
 		}
 	}
 	return ""
-}
-
-func truncate(s string, max int) string {
-	if max <= 0 {
-		return ""
-	}
-	if len(s) <= max {
-		return s
-	}
-	return s[:max]
 }

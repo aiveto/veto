@@ -19,6 +19,7 @@ type (
 	Memory interface {
 		Store(ctx context.Context, item Item) error
 		Search(ctx context.Context, query string) ([]Item, error)
+		Recent(ctx context.Context, n int) ([]Item, error)
 		Delete(ctx context.Context, id string) error
 	}
 
@@ -26,6 +27,7 @@ type (
 	LocalMap struct {
 		mu    sync.RWMutex
 		items map[string]Item
+		order []string
 	}
 )
 
@@ -40,6 +42,9 @@ func (m *LocalMap) Store(ctx context.Context, item Item) error {
 		return fmt.Errorf("memory item id required")
 	}
 	m.mu.Lock()
+	if _, ok := m.items[item.ID]; !ok {
+		m.order = append(m.order, item.ID)
+	}
 	m.items[item.ID] = item
 	m.mu.Unlock()
 	return nil
@@ -55,6 +60,29 @@ func (m *LocalMap) Search(ctx context.Context, query string) ([]Item, error) {
 		if q == "" || strings.Contains(strings.ToLower(it.Content), q) {
 			out = append(out, it)
 		}
+	}
+	return out, nil
+}
+
+func (m *LocalMap) Recent(ctx context.Context, n int) ([]Item, error) {
+	_ = ctx
+	if n <= 0 {
+		return nil, nil
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	ids := make([]string, 0, len(m.order))
+	for _, id := range m.order {
+		if _, ok := m.items[id]; ok {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) > n {
+		ids = ids[len(ids)-n:]
+	}
+	out := make([]Item, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, m.items[id])
 	}
 	return out, nil
 }

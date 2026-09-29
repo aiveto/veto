@@ -2,6 +2,8 @@ package openapi
 
 import (
 	"encoding/json"
+	"sort"
+	"strings"
 
 	"github.com/aiveto/veto/catalog"
 	"github.com/getkin/kin-openapi/openapi3"
@@ -25,6 +27,52 @@ func bodyParam(op *openapi3.Operation) (catalog.Param, bool) {
 		Description: rb.Description,
 		Schema:      schemaJSON(mt.Schema),
 	}, true
+}
+
+func responseFields(op *openapi3.Operation) []string {
+	if op == nil || op.Responses == nil {
+		return nil
+	}
+	var names []string
+	seen := map[string]bool{}
+	stack := map[*openapi3.Schema]bool{}
+	for code, ref := range op.Responses.Map() {
+		if !strings.HasPrefix(code, "2") || ref == nil || ref.Value == nil {
+			continue
+		}
+		mt := ref.Value.Content.Get(jsonMedia)
+		if mt == nil {
+			continue
+		}
+		collectFields(mt.Schema, &names, seen, stack)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func collectFields(ref *openapi3.SchemaRef, names *[]string, seen map[string]bool, stack map[*openapi3.Schema]bool) {
+	if ref == nil || ref.Value == nil || stack[ref.Value] {
+		return
+	}
+	stack[ref.Value] = true
+	defer delete(stack, ref.Value)
+	for name := range ref.Value.Properties {
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		*names = append(*names, name)
+	}
+	collectFields(ref.Value.Items, names, seen, stack)
+	for _, sub := range ref.Value.AllOf {
+		collectFields(sub, names, seen, stack)
+	}
+	for _, sub := range ref.Value.OneOf {
+		collectFields(sub, names, seen, stack)
+	}
+	for _, sub := range ref.Value.AnyOf {
+		collectFields(sub, names, seen, stack)
+	}
 }
 
 func schemaJSON(ref *openapi3.SchemaRef) string {

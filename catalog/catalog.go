@@ -62,6 +62,8 @@ type (
 		Exposure             string
 		BaseURL              string
 		Auth                 []Auth
+		Tags                 []string
+		ResponseFields       []string
 	}
 
 	// OpLink is an OpenAPI link from one operation to another.

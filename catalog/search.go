@@ -1,8 +1,11 @@
 package catalog
 
 import (
+	"sort"
 	"strings"
 )
+
+const hitLimit = 8
 
 // Match describes one search hit. Related are the graph neighbors veto already walked.
 type Match struct {
@@ -10,26 +13,77 @@ type Match struct {
 	Related   []string
 }
 
-// Search finds operations whose id, description, group, or synonyms contain query.
+// Search ranks operations and returns at most hitLimit.
+// An exact id outranks a synonym. A synonym outranks a weaker substring.
 func Search(cat *Catalog, query string, synonyms map[string][]string) []Match {
 	q := strings.ToLower(strings.TrimSpace(query))
-	if q == "" {
+	if cat == nil || q == "" {
 		return nil
 	}
-	var out []Match
+	type scored struct {
+		op    Operation
+		score int
+	}
+	var hits []scored
 	for _, op := range cat.Operations {
-		if containsFold(op.ID, q) || containsFold(op.Description, q) || containsFold(op.Group, q) || containsFold(op.Name, q) || usesSchema(cat, op.ID, q) || relationMatch(cat, op.ID, q) {
-			out = append(out, hit(cat, op))
+		s := scoreOp(cat, op, q, synonyms[op.ID])
+		if s <= 0 {
 			continue
 		}
-		for _, syn := range synonyms[op.ID] {
-			if containsFold(syn, q) || containsFold(q, syn) {
-				out = append(out, hit(cat, op))
-				break
+		hits = append(hits, scored{op: op, score: s})
+	}
+	sort.Slice(hits, func(i, j int) bool {
+		if hits[i].score != hits[j].score {
+			return hits[i].score > hits[j].score
+		}
+		return hits[i].op.ID < hits[j].op.ID
+	})
+	if len(hits) > hitLimit {
+		hits = hits[:hitLimit]
+	}
+	out := make([]Match, 0, len(hits))
+	for _, h := range hits {
+		out = append(out, hit(cat, h.op))
+	}
+	return out
+}
+
+func scoreOp(cat *Catalog, op Operation, q string, syns []string) int {
+	id := strings.ToLower(op.ID)
+	if id == q || strings.ToLower(op.Name) == q {
+		return 1000
+	}
+	score := 0
+	for _, syn := range syns {
+		if strings.EqualFold(syn, q) {
+			score += 800
+		}
+	}
+	if containsFold(op.ID, q) || containsFold(op.Name, q) || containsFold(op.Description, q) || containsFold(op.Group, q) {
+		score += 100
+	}
+	for _, tag := range op.Tags {
+		if containsFold(tag, q) || containsFold(q, tag) {
+			score += 100
+		}
+	}
+	if usesSchema(cat, op.ID, q) || relationMatch(cat, op.ID, q) {
+		score += 40
+	}
+	for _, tok := range strings.Fields(q) {
+		if len(tok) < 3 {
+			continue
+		}
+		if containsFold(op.ID, tok) || containsFold(op.Name, tok) || containsFold(op.Description, tok) || containsFold(op.Group, tok) {
+			score += 20
+		}
+		for _, syn := range syns {
+			if strings.EqualFold(syn, tok) {
+				score += 30
 			}
 		}
 	}
-	return out
+	return score
 }
 
 func hit(cat *Catalog, op Operation) Match {

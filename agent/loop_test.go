@@ -2,6 +2,7 @@ package agent_test
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/flow"
+	"github.com/aiveto/veto/memory"
 	"github.com/aiveto/veto/openapi"
 	"github.com/aiveto/veto/policy"
 	"github.com/aiveto/veto/runctx"
@@ -81,6 +83,33 @@ type getPick struct{}
 
 func (getPick) Complete(ctx context.Context, req agent.Request) (agent.Response, error) {
 	return agent.Response{OperationID: "assets.get", Params: map[string]string{"id": "1"}}, nil
+}
+
+type capture struct{ saw string }
+
+func (c *capture) Complete(ctx context.Context, req agent.Request) (agent.Response, error) {
+	c.saw = req.Context
+	return agent.Response{}, fmt.Errorf("stop")
+}
+
+func TestRecentTurnsStayInThePack(t *testing.T) {
+	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	loop := agent.New(cat, nil, nil)
+	if err := loop.Memory.Store(context.Background(), memory.Item{ID: "old", Content: "earlier turn about widgets"}); err != nil {
+		t.Fatal(err)
+	}
+	cap := &capture{}
+	loop.Model = cap
+	_, err = loop.Run(context.Background(), "brand new question")
+	if err == nil {
+		t.Fatal("expected the completer to stop the turn")
+	}
+	if !strings.Contains(cap.saw, "earlier turn about widgets") {
+		t.Fatalf("recent turn missing:\n%s", cap.saw)
+	}
 }
 
 func TestLoopShowsStableHTTPCode(t *testing.T) {

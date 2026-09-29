@@ -280,16 +280,28 @@ func (l *Loop) memoryTurns(ctx context.Context, userText string) ([]runctx.Turn,
 	if l.Memory == nil {
 		return nil, nil
 	}
-	items, err := l.Memory.Search(ctx, userText)
+	recent, err := l.Memory.Recent(ctx, 8)
 	if err != nil {
 		return nil, err
 	}
-	if len(items) == 0 {
-		return nil, nil
+	found, err := l.Memory.Search(ctx, userText)
+	if err != nil {
+		return nil, err
 	}
-	turns := make([]runctx.Turn, 0, len(items))
-	for _, it := range items {
+	seen := map[string]bool{}
+	var turns []runctx.Turn
+	add := func(it memory.Item) {
+		if it.ID == "" || seen[it.ID] {
+			return
+		}
+		seen[it.ID] = true
 		turns = append(turns, runctx.Turn{Role: "memory", Content: it.Content})
+	}
+	for _, it := range recent {
+		add(it)
+	}
+	for _, it := range found {
+		add(it)
 	}
 	return turns, nil
 }

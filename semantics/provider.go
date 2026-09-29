@@ -85,7 +85,7 @@ func NewDerived(cat *catalog.Catalog) *Derived {
 
 func deriveSynonyms(op catalog.Operation) []string {
 	var out []string
-	words := strings.Fields(strings.ToLower(op.Description + " " + op.Name + " " + op.ID))
+	words := strings.Fields(strings.ToLower(op.Description + " " + op.Name + " " + op.ID + " " + op.Group + " " + strings.Join(op.Tags, " ")))
 	seen := map[string]bool{}
 	for _, w := range words {
 		w = strings.Trim(w, ".,/")

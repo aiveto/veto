@@ -140,6 +140,8 @@ func mapOperation(method, path, group, base string, op *openapi3.Operation) cata
 		SideEffect:           side,
 		RequiresConfirmation: confirm,
 		BaseURL:              base,
+		Tags:                 append([]string(nil), op.Tags...),
+		ResponseFields:       responseFields(op),
 	}
 }
 

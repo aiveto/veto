@@ -2,12 +2,54 @@ package catalog_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/openapi"
 	"github.com/aiveto/veto/semantics"
 )
+
+func TestSearchCapsAndPrefersExactID(t *testing.T) {
+	ops := []catalog.Operation{{ID: "item.get", Name: "Get item", Description: "fetch one"}}
+	for i := 0; i < 20; i++ {
+		ops = append(ops, catalog.Operation{
+			ID:          fmt.Sprintf("widget.%02d", i),
+			Description: "mentions item.get once",
+			Name:        "mention",
+		})
+	}
+	cat := &catalog.Catalog{Operations: ops}
+	cat.Finalize()
+	matches := catalog.Search(cat, "item.get", nil)
+	if len(matches) == 0 || len(matches) > 8 || matches[0].Operation.ID != "item.get" {
+		t.Fatalf("hits: %d first=%v", len(matches), matches)
+	}
+}
+
+func TestTagsAndPathNounAreSearchable(t *testing.T) {
+	cat := &catalog.Catalog{Operations: []catalog.Operation{{
+		ID: "widgets.ping", Group: "widgets", Tags: []string{"retire"}, Name: "Ping", Description: "Ping",
+	}}}
+	cat.Finalize()
+	sem := semantics.NewDerived(cat)
+	var sawRetire, sawNoun bool
+	for _, s := range sem.AllSynonyms()["widgets.ping"] {
+		if s == "retire" {
+			sawRetire = true
+		}
+		if s == "widgets" {
+			sawNoun = true
+		}
+	}
+	if !sawRetire || !sawNoun {
+		t.Fatalf("synonyms: %v", sem.AllSynonyms()["widgets.ping"])
+	}
+	matches := catalog.Search(cat, "retire", sem.AllSynonyms())
+	if len(matches) != 1 || matches[0].Operation.ID != "widgets.ping" {
+		t.Fatalf("tag search: %v", matches)
+	}
+}
 
 func TestSearchRetireFindsDelete(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")

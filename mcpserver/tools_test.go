@@ -8,6 +8,7 @@ import (
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/mcpserver"
 	"github.com/aiveto/veto/openapi"
+	"github.com/aiveto/veto/runctx"
 	"github.com/aiveto/veto/semantics"
 )
 
@@ -69,6 +70,44 @@ func TestDescribeIncludesLinkAndSchema(t *testing.T) {
 	}
 	text := string(b)
 	if !strings.Contains(text, "assets.get") || !strings.Contains(text, "Holding") {
+		t.Fatalf("describe: %s", text)
+	}
+}
+
+func TestDescribeMatchesThePack(t *testing.T) {
+	assets, err := openapi.Load(context.Background(), "../testdata/openapi.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	teams, err := openapi.Load(context.Background(), "../testdata/teams.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cat, err := catalog.Merge(assets, teams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rels, err := catalog.LoadRelations("../testdata/relations.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := catalog.ApplyRelations(cat, rels); err != nil {
+		t.Fatal(err)
+	}
+	sem := semantics.NewDerived(cat)
+	op := cat.ByID("assets.get")
+	line := runctx.OperationLine(cat, *op, sem.Note(op.ID).Text())
+	pack := runctx.NewBuilder(8192).Build(cat, nil, op, sem, nil)
+	if !strings.Contains(pack.Index, line) {
+		t.Fatalf("pack missing describe line:\n%s\n%s", pack.Index, line)
+	}
+	srv := &mcpserver.Server{Catalog: cat, Semantics: sem}
+	b, err := srv.Describe(context.Background(), "assets.get")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(b)
+	if !strings.Contains(text, "id path required") || !strings.Contains(text, "teamsId") || !strings.Contains(text, "Holding.teamsId identifies teams.get") {
 		t.Fatalf("describe: %s", text)
 	}
 }
