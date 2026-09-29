@@ -4,6 +4,8 @@ info:
   version: 1.0.0
 servers:
   - url: http://127.0.0.1:9090
+security:
+  - bearerAuth: []
 paths:
   /customers/{id}:
     get:
@@ -18,3 +20,8 @@ paths:
       responses:
         "200":
           description: One customer
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer

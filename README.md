@@ -1,47 +1,52 @@
 # veto
 
-Contract-driven agent surface for Go. Register one or more OpenAPI files into one **catalog**. A relations file joins a schema field to an operation in another API. MCP stays three tools (`capabilities_search`, `capabilities_describe`, `capabilities_invoke`). The context pack walks those edges and does not embed the raw spec. Policy still stops a destructive call until confirmation is stored. Each contract keeps its own server URL.
+Veto is one guarded way for an agent to call the APIs you already have. You bring the API files.
+
+One catalog. Three tools, however many URLs are in the files: find a call, read it, and make it. The agent, the command line, and the generated Go client use that same door.
+
+The short note for the turn is the context. It has the matching calls, the link sentence, and the rules. The API files stay out. That note is why the next call can happen.
+
+Semantics is that sentence in the note. It is derived from the link file you write. Veto does not guess the connection. Most calls need no line.
+
+A delete does not go out until someone says yes. Then the same call goes out. A company rule can sit in front of that stop. The extra check runs, and the stop still runs.
+
+Replay reads the attempt later: what was asked, whether it was allowed, and what was sent. The secret is left out.
+
+Eval fails when an API file or a link changes, including a delete that must not send before someone says yes.
+
+Real API files are large. They have many calls, more than one host, auth, and bodies. Veto does not make them simple. Orders and customers are the small picture.
 
 Module: `github.com/aiveto/veto`
 
-## Commands
+## Orders and customers
 
-```bash
-go run ./cmd/veto validate --config examples/two-apis/veto.yaml
-go run ./cmd/veto validate --config testdata/veto.yaml
-go run ./cmd/veto serve --config testdata/veto.yaml --stdio
-go run ./cmd/veto eval --config testdata/veto.yaml --case testdata/cases
-go run ./cmd/veto pack --config testdata/veto.yaml --message "delete order 123"
-go run ./cmd/veto doctor --config testdata/veto.yaml
-go run ./cmd/veto check --config testdata/veto.yaml --case testdata/cases
-go run ./cmd/veto generate --config testdata/veto.yaml --out generated --module example.com/orders
-go run ./cmd/veto replay --config testdata/veto.yaml --message "delete order 123"
+An orders API and a customers API sit on different hosts. Someone asks who placed order 123. The matching call is `orders.get`. It returns `customerId` 7.
+
+When a field on one service is the id for a call on another, you write it:
+
+```yaml
+relations:
+  - schema: Order
+    field: customerId
+    to: customers.get
 ```
 
-`testdata/veto.yaml` lists the contracts, the relations file, semantics, agent metadata, and the provider keys. Repeat `--contract` only to override that list. Eval cases live in `testdata/cases`. `--case` takes a file or a directory, and it repeats. `veto pack` prints the same pack `serve` builds. `policy: opa` and `policy: spicedb` are accepted keys and fail closed. `execution: temporal` and `decision: jev` are accepted keys and fail closed. The clients are not imported. Unset, execution stays in-process and confirmation stays in veto. Unset policy stays builtin. Confirmation stays in this process: send `approval_id` back to resume. `VETO_APPROVAL_SECRET` makes that id an HMAC of the operation, the params, and an expiry. The caller holds the token and the process stores nothing. Unset, the pending call stays in the process. `veto check --against` a git ref or a snapshot file fails when a joined operation disappears, a destructive call loses confirmation without an agent.yaml change, or an eval case changes its operation or confirmation. When a contract lists more than one server, the first URL is used unless `server` names another. `page: follow` collects list pages up to five; otherwise a list is one request. The context pack keeps the search hits and their neighbors. `model: openai` reads `OPENAI_API_KEY` and that pack. The default model is `scripted`. `memory: file` with `memory_file` is an optional turn log. Unset memory stays in the process. `examples/two-apis` is the orders catalog plus customers. `serve --grouped` adds one tool per resource. Replay runs the message and prints the trace. It omits the user message unless `--keep-sensitive` is set. `trace_file` writes that redacted view, and `replay --from` prints the file without running again. `trace_export: otlp` sends only the attributes replay keeps. Empty export stays a noop.
+That line is `Order.customerId identifies customers.get`. The context note carries it, and the next call is `customers.get` for 7.
 
-Work left before a public release is in `docs/before-open-source.md`.
+If the ask is to delete the order, no request goes out until someone says yes.
 
-## Layout
+## Run
 
-- `catalog/`: operation model and capability graph (resources, schemas, OpenAPI links)
-- `agentmeta/`: `agent.yaml` overlay (confirmation, permissions, exposure)
-- `replay/`: read OpenTelemetry spans for one run
-- `openapi/`: kin-openapi loader
-- `semantics/`: derived synonyms and yaml overlay
-- `runctx/`: context pack builder (never embeds the raw spec)
-- `policy/`: allow, check, confirmation state
-- `agent/`: one turn: model, policy, execute. The follow-up pack goes to the caller
-- `config/`: provider keys (`testdata/veto.yaml`)
-- `mcpserver/`: MCP stdio server
-- `execute/`: HTTP invoke from catalog operations
-- `eval/`: deterministic eval cases (scripted model, real policy path)
-- `generate/`: typed SDK and CLI (`--help-json`). Calls go through `agent.Invoke`
+From this repository:
 
-See `docs/adr/` for design decisions.
-
-## Test
+```bash
+go build -o veto ./cmd/veto
+go run ./examples/two-apis
+```
 
 ```bash
 go test ./...
+go vet ./...
 ```
+
+The example is `examples/two-apis`: `orders.yaml`, `customers.yaml`, and `relations.yaml`.
