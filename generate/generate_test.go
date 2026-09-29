@@ -51,8 +51,8 @@ func TestGeneratedCLIHelpAndConfirm(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(sdk), "Loop.Invoke") || strings.Contains(string(sdk), "execute.Invoke") || strings.Contains(string(sdk), "http.NewRequest") {
-		t.Fatal("sdk must call agent.Invoke and must not build its own request")
+	if !strings.Contains(string(sdk), "Loop.Invoke") || strings.Contains(string(sdk), "execute.Invoke") || strings.Contains(string(sdk), "http.NewRequest") || strings.Contains(string(sdk), "return agent.Call{}") {
+		t.Fatal("sdk must return the invoke result and must not build its own request")
 	}
 	root, err := filepath.Abs("..")
 	if err != nil {

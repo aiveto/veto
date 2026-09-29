@@ -21,7 +21,6 @@ package sdk
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 
 	"github.com/aiveto/veto/agent"
@@ -67,13 +66,6 @@ func New(baseURL string, httpClient *http.Client) (*Client, error) {
 
 {{range .Ops}}
 func (c *Client) {{.GoName}}(ctx context.Context{{range .Params}}, {{.GoName}} string{{end}}, approvalID string) (agent.Call, error) {
-{{- range .Params}}
-{{- if .Required}}
-	if {{.GoName}} == "" {
-		return agent.Call{}, fmt.Errorf({{quote .RequiredErr}})
-	}
-{{- end}}
-{{- end}}
 	return c.Loop.Invoke(ctx, {{quote .ID}}, map[string]string{
 {{- range .Params}}
 		{{quote .Name}}: {{.GoName}},
@@ -271,7 +263,6 @@ type (
 		Required    bool
 		Description string
 		Schema      string
-		RequiredErr string
 	}
 )
 
@@ -314,7 +305,6 @@ func views(cat *catalog.Catalog) []opView {
 				Required:    p.Required || p.In == "path",
 				Description: p.Description,
 				Schema:      p.Schema,
-				RequiredErr: op.ID + ": " + p.Name + " required",
 			})
 		}
 		out = append(out, opView{

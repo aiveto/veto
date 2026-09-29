@@ -14,3 +14,4 @@
 - `execution: temporal` and `decision: jev` are config keys and fail closed. The clients are not imported.
 - MCP invoke returns `missing_param` in the same JSON shape as other invoke results.
 - An eval case can set `no_http`. The case fails when the call reaches HTTP.
+- Generated methods return the invoke result, including a missing parameter.
