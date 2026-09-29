@@ -41,7 +41,10 @@ func RunStdio(ctx context.Context, srv *Server, opt Options) error {
 		Name:        "capabilities_search",
 		Description: "Search operations in the contract catalog",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args searchArgs) (*mcp.CallToolResult, any, error) {
-		matches := srv.Search(ctx, args.Query, args.Offset, args.Limit)
+		if err := ctx.Err(); err != nil {
+			return toolError(err)
+		}
+		matches := srv.Search(args.Query, args.Offset, args.Limit)
 		b, err := json.Marshal(matches)
 		if err != nil {
 			return toolError(err)
@@ -53,7 +56,10 @@ func RunStdio(ctx context.Context, srv *Server, opt Options) error {
 		Name:        "capabilities_describe",
 		Description: "Describe one operation by id",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args describeArgs) (*mcp.CallToolResult, any, error) {
-		b, err := srv.Describe(ctx, args.OperationID)
+		if err := ctx.Err(); err != nil {
+			return toolError(err)
+		}
+		b, err := srv.Describe(args.OperationID)
 		if err != nil {
 			return toolError(err)
 		}

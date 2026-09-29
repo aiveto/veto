@@ -30,7 +30,7 @@ type (
 	}
 )
 
-func (s *Server) Search(ctx context.Context, query string, offset, limit int) []catalog.Match {
+func (s *Server) Search(query string, offset, limit int) []catalog.Match {
 	var syns map[string][]string
 	if s.Semantics != nil {
 		syns = s.Semantics.AllSynonyms()
@@ -38,7 +38,7 @@ func (s *Server) Search(ctx context.Context, query string, offset, limit int) []
 	return catalog.SearchPage(s.Catalog, query, syns, offset, limit)
 }
 
-func (s *Server) Describe(ctx context.Context, operationID string) ([]byte, error) {
+func (s *Server) Describe(operationID string) ([]byte, error) {
 	op := s.Catalog.ByID(operationID)
 	if op == nil {
 		return nil, fmt.Errorf("unknown operation %q", operationID)

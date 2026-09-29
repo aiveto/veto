@@ -89,7 +89,7 @@ func TestDescribeIncludesLinkAndSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	srv := &mcpserver.Server{Catalog: cat, Semantics: semantics.NewDerived(cat)}
-	b, err := srv.Describe(context.Background(), "assets.list")
+	b, err := srv.Describe("assets.list")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestDescribeMatchesThePack(t *testing.T) {
 		t.Fatalf("pack missing describe line:\n%s\n%s", pack.Index, line)
 	}
 	srv := &mcpserver.Server{Catalog: cat, Semantics: sem}
-	b, err := srv.Describe(context.Background(), "assets.get")
+	b, err := srv.Describe("assets.get")
 	if err != nil {
 		t.Fatal(err)
 	}
