@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/aiveto/veto/agent"
 	"github.com/aiveto/veto/agent/openai"
 	"github.com/aiveto/veto/agentmeta"
+	"github.com/aiveto/veto/auth"
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/config"
 	"github.com/aiveto/veto/eval"
@@ -138,6 +140,7 @@ func newRoot() (*cobra.Command, error) {
 		packCmd,
 		newDoctorCommand(),
 		checkCmd,
+		newAuthCommand(),
 	)
 	return root, nil
 }
@@ -481,16 +484,16 @@ func allowSet(list []string) map[string]bool {
 	return out
 }
 
-func authSecrets(names map[string]string) map[string]string {
+func authSecrets(names config.Sources) map[string]string {
 	if len(names) == 0 {
 		return nil
 	}
 	out := make(map[string]string, len(names))
-	for scheme, envName := range names {
-		if envName == "" {
+	for scheme, src := range names {
+		if src.Kind() != "env" || src.Env == "" {
 			continue
 		}
-		if val := os.Getenv(envName); val != "" {
+		if val := os.Getenv(src.Env); val != "" {
 			out[scheme] = val
 		}
 	}
@@ -498,6 +501,50 @@ func authSecrets(names map[string]string) map[string]string {
 		return nil
 	}
 	return out
+}
+
+func tokenDir(cfg config.File) string {
+	if d := os.Getenv("VETO_TOKEN_DIR"); d != "" {
+		return d
+	}
+	if cfg.TokenDir != "" {
+		return cfg.TokenDir
+	}
+	return auth.DefaultTokenDir()
+}
+
+func authResolver(cfg config.File) *auth.Resolver {
+	schemes := make([]auth.Scheme, 0, len(cfg.Auth))
+	for name, src := range cfg.Auth {
+		schemes = append(schemes, auth.Scheme{
+			Name:                   name,
+			Source:                 src.Kind(),
+			Env:                    src.Env,
+			ClientID:               src.ClientID,
+			ClientSecretEnv:        src.ClientSecretEnv,
+			AuthorizationURL:       src.AuthorizationURL,
+			TokenURL:               src.TokenURL,
+			Issuer:                 src.Issuer,
+			DeviceAuthorizationURL: src.DeviceAuthorizationURL,
+			RedirectURL:            src.RedirectURL,
+			Scopes:                 append([]string(nil), src.Scopes...),
+			Audience:               src.Audience,
+			Header:                 src.Header,
+			Command:                append([]string(nil), src.Command...),
+			Timeout:                time.Duration(src.Timeout),
+			AuthToken:              src.AuthToken,
+			UserToken:              src.UserToken,
+			UserHeader:             src.UserHeader,
+			Subject:                src.Subject,
+			SubjectTokenType:       src.SubjectTokenType,
+		})
+	}
+	return auth.New(auth.Options{
+		Schemes:        schemes,
+		Dir:            tokenDir(cfg),
+		HTTP:           &http.Client{Timeout: cfg.Timeout},
+		CommandTimeout: cfg.Timeout,
+	})
 }
 
 func applyAgent(cat *catalog.Catalog, path string) error {
@@ -613,8 +660,9 @@ func buildLoop(contracts []string, configPath, agentPath, relationsPath, baseURL
 	}
 	loop, err := agent.New(cat, sem, execute.Client{
 		BaseURL:     baseURL,
-		HTTP:        &http.Client{Timeout: cfg.Timeout},
+		HTTP:        auth.WithEnvProxy(&http.Client{Timeout: cfg.Timeout}),
 		Auth:        authSecrets(cfg.Auth),
+		Creds:       authResolver(cfg),
 		FollowPages: pages,
 	})
 	if err != nil {

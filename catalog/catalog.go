@@ -32,10 +32,16 @@ type (
 		Name string
 	}
 
+	// Auth is one scheme in a security requirement.
+	// Header is set for header placement. Query is set for an apiKey in query.
+	// UserHeader is set when the contract names a separate header for the person token.
 	Auth struct {
-		Name   string
-		Header string
-		Kind   string
+		Name       string
+		Header     string
+		Query      string
+		Kind       string
+		Scopes     []string
+		UserHeader string
 	}
 
 	Param struct {
@@ -68,6 +74,7 @@ type (
 		Servers              []Server
 		Page                 map[string]string
 		Auth                 []Auth
+		Requirements         [][]Auth // OR of AND groups. Auth is the first group.
 		Tags                 []string
 		ResponseFields       []string
 	}
@@ -94,6 +101,25 @@ type (
 		byID       map[string]*Operation
 	}
 )
+
+// AuthSchemes returns each scheme name once, across every requirement.
+func (op Operation) AuthSchemes() []Auth {
+	if len(op.Requirements) == 0 {
+		return op.Auth
+	}
+	seen := map[string]bool{}
+	var out []Auth
+	for _, group := range op.Requirements {
+		for _, a := range group {
+			if a.Name == "" || seen[a.Name] {
+				continue
+			}
+			seen[a.Name] = true
+			out = append(out, a)
+		}
+	}
+	return out
+}
 
 func (op Operation) BodyParam() (Param, bool) {
 	for _, p := range op.Params {

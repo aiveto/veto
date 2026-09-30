@@ -7,6 +7,7 @@ import (
 	"os"
 	"sort"
 
+	"github.com/aiveto/veto/auth"
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/config"
 	"github.com/aiveto/veto/mcpserver"
@@ -66,7 +67,7 @@ func doctorBlockers(ctx context.Context, cat *catalog.Catalog, cfg config.File, 
 	if err := mcpserver.ValidatePins(cat, pins); err != nil {
 		out = append(out, err.Error())
 	}
-	out = append(out, authBlockers(cat, cfg.Auth)...)
+	out = append(out, authBlockers(cat, cfg.Auth, tokenDir(cfg))...)
 	if ping {
 		out = append(out, pingServers(ctx, &http.Client{Timeout: cfg.Timeout}, cat)...)
 	}
@@ -74,29 +75,72 @@ func doctorBlockers(ctx context.Context, cat *catalog.Catalog, cfg config.File, 
 	return out
 }
 
-func authBlockers(cat *catalog.Catalog, names map[string]string) []string {
+func authBlockers(cat *catalog.Catalog, names config.Sources, dir string) []string {
 	if cat == nil {
 		return nil
 	}
 	seen := map[string]bool{}
 	var out []string
 	for _, op := range cat.Operations {
-		for _, a := range op.Auth {
+		for _, a := range op.AuthSchemes() {
 			if a.Name == "" || seen[a.Name] {
 				continue
 			}
 			seen[a.Name] = true
-			envName := names[a.Name]
-			if envName == "" {
+			src, ok := names[a.Name]
+			if !ok {
 				out = append(out, fmt.Sprintf("auth scheme %s has no env var", a.Name))
 				continue
 			}
-			if os.Getenv(envName) == "" {
-				out = append(out, envName+" is unset")
-			}
+			out = append(out, sourceBlockers(a.Name, src, dir)...)
 		}
 	}
 	return out
+}
+
+func sourceBlockers(name string, src config.Source, dir string) []string {
+	switch src.Kind() {
+	case "env":
+		if src.Env == "" {
+			return []string{fmt.Sprintf("auth scheme %s has no env var", name)}
+		}
+		if os.Getenv(src.Env) != "" || auth.HasAccessToken(dir, name) {
+			return nil
+		}
+		return []string{src.Env + " is unset"}
+	case "client_credentials":
+		if src.ClientSecretEnv == "" {
+			return []string{fmt.Sprintf("auth scheme %s has no client secret env", name)}
+		}
+		if os.Getenv(src.ClientSecretEnv) == "" {
+			return []string{src.ClientSecretEnv + " is unset"}
+		}
+		return nil
+	case "login":
+		if !auth.HasRefreshToken(dir, name) && !auth.HasAccessToken(dir, name) {
+			return []string{fmt.Sprintf("auth scheme %s has no stored token", name)}
+		}
+		return nil
+	case "command":
+		if len(src.Command) == 0 {
+			return []string{fmt.Sprintf("auth scheme %s has no command", name)}
+		}
+		return nil
+	case "token_exchange":
+		if src.ClientSecretEnv == "" || os.Getenv(src.ClientSecretEnv) == "" {
+			envName := src.ClientSecretEnv
+			if envName == "" {
+				envName = "client secret"
+			}
+			return []string{envName + " is unset"}
+		}
+		if src.Subject != "" && src.Subject != "invoke" && !auth.HasAccessToken(dir, src.Subject) {
+			return []string{fmt.Sprintf("auth scheme %s has no stored token", src.Subject)}
+		}
+		return nil
+	default:
+		return nil
+	}
 }
 
 func pingServers(ctx context.Context, client *http.Client, cat *catalog.Catalog) []string {
