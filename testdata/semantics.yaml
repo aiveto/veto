@@ -1,0 +1,5 @@
+- operation: orders.delete
+  sentence: Permanently remove an order.
+  synonyms:
+    - retire
+    - decommission

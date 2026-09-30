@@ -1,0 +1,10 @@
+operations:
+  - operation: orders.delete
+    permissions:
+      - order.delete
+    idempotency: none
+    retry: never
+  - operation: orders.list
+    exposure: discovery-only
+  - operation: orders.get
+    exposure: grouped

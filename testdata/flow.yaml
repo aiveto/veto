@@ -1,0 +1,4 @@
+name: list-then-get
+steps:
+  - orders.list
+  - orders.get

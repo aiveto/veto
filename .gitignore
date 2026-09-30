@@ -1,0 +1,6 @@
+/veto
+*.swp
+*.exe
+*.test
+*.out
+/generated

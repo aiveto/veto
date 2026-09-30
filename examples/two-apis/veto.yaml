@@ -1,0 +1,8 @@
+model: scripted
+memory: local
+semantics: derived
+policy: builtin
+relations_file: relations.yaml
+contracts:
+  - orders.yaml
+  - customers.yaml

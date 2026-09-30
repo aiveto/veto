@@ -1,0 +1,72 @@
+package agent
+
+import (
+	"context"
+	"regexp"
+	"strings"
+
+	"github.com/aiveto/veto/telemetry"
+)
+
+type (
+	Scripted struct {
+		patterns []scriptPattern
+	}
+
+	scriptPattern struct {
+		re          *regexp.Regexp
+		operationID string
+		paramNames  []string
+	}
+)
+
+func NewScripted() *Scripted {
+	return &Scripted{
+		patterns: []scriptPattern{
+			{
+				re:          regexp.MustCompile(`(?i)delete\s+order\s+(\d+)`),
+				operationID: "orders.delete",
+				paramNames:  []string{"id"},
+			},
+			{
+				re:          regexp.MustCompile(`(?i)delete\s+order\s+(\w+)`),
+				operationID: "orders.delete",
+				paramNames:  []string{"id"},
+			},
+		},
+	}
+}
+
+func (s *Scripted) WithOperation(operationID string) *Scripted {
+	out := *s
+	for i := range out.patterns {
+		if strings.Contains(out.patterns[i].operationID, "delete") || out.patterns[i].operationID == "deleteOrder" {
+			out.patterns[i].operationID = operationID
+		}
+	}
+	return &out
+}
+
+func (s *Scripted) Complete(ctx context.Context, req Request) (Response, error) {
+	span := telemetry.StartSpan(ctx, "model.request")
+	defer span.End()
+	msg := strings.TrimSpace(req.UserMessage)
+	if msg != "" && !strings.Contains(req.Context, msg) {
+		return Response{}, nil
+	}
+	for _, p := range s.patterns {
+		m := p.re.FindStringSubmatch(msg)
+		if m == nil {
+			continue
+		}
+		params := map[string]string{}
+		for i, name := range p.paramNames {
+			if i+1 < len(m) {
+				params[name] = m[i+1]
+			}
+		}
+		span.SetAttributes(telemetry.Attr("operation.id", p.operationID))
+		return Response{OperationID: p.operationID, Params: params}, nil
+	}
+	return Response{}, nil
+}

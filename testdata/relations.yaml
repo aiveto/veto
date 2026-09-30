@@ -1,0 +1,4 @@
+relations:
+  - schema: Order
+    field: customerId
+    to: customers.get

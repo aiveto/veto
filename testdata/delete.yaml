@@ -1,0 +1,6 @@
+name: delete-requires-confirmation
+input: "Delete order 123"
+expect:
+  confirmation_required: true
+  operation: orders.delete
+  no_http: true

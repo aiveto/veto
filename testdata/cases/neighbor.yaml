@@ -1,0 +1,11 @@
+name: order-selects-neighbor
+input: Order
+expect:
+  pack_contains:
+    - orders.get
+    - customers.get
+    - Order.customerId identifies customers.get
+  pack_excludes:
+    - billing.invoice
+  related:
+    - customers.get
