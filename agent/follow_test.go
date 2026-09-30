@@ -113,6 +113,69 @@ func TestFollowUsesLinkParameterMapping(t *testing.T) {
 	assert.Equal(t, 1, listed)
 }
 
+func TestFollowPointerAndUnmappedLink(t *testing.T) {
+	orders, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
+	require.NoError(t, err)
+	customers, err := openapi.Load(context.Background(), "../testdata/customers.yaml")
+	require.NoError(t, err)
+	base, err := catalog.Merge(orders, customers)
+	require.NoError(t, err)
+
+	cases := []struct {
+		name    string
+		expr    string
+		body    string
+		path    string
+		hits    int
+		wantErr string
+	}{
+		{name: "nested object", expr: "$response.body#/customer/id", body: `{"customer":{"id":"7"}}`, path: "/customers/7", hits: 2},
+		{name: "one index", expr: "$response.body#/items/0/id", body: `{"items":[{"id":"7"}]}`, path: "/customers/7", hits: 2},
+		{name: "index then object", expr: "$response.body#/addresses/0/customer/id", body: `{"addresses":[{"customer":{"id":"7"}}]}`, path: "/customers/7", hits: 2},
+		{name: "top field", expr: "$response.body#/id", body: `{"id":"7"}`, path: "/customers/7", hits: 2},
+		{name: "two indexes", expr: "$response.body#/rows/0/cols/1", body: `{"rows":[{"cols":["a","7"]}]}`, hits: 1, wantErr: "more than one index"},
+		{name: "no parameter mapping", hits: 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cat := *base
+			cat.Links = append([]catalog.OpLink{}, base.Links...)
+			if tc.expr != "" {
+				cat.Links = append(cat.Links, catalog.OpLink{
+					From:   "orders.get",
+					To:     "customers.get",
+					Params: map[string]string{"id": tc.expr},
+				})
+			}
+			cat.Finalize()
+			var paths []string
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				paths = append(paths, r.URL.Path)
+				if r.URL.Path == "/orders/1" {
+					_, _ = w.Write([]byte(tc.body))
+					return
+				}
+				w.WriteHeader(http.StatusNoContent)
+			}))
+			defer ts.Close()
+			loop, err := agent.New(&cat, nil, execute.Client{BaseURL: ts.URL})
+			require.NoError(t, err)
+			_, err = loop.Follow(context.Background(), "orders.get", map[string]string{"id": "1"}, "")
+			if tc.wantErr != "" {
+				assert.ErrorContains(t, err, tc.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+			assert.Len(t, paths, tc.hits)
+			if tc.path != "" {
+				assert.Contains(t, paths, tc.path)
+			} else {
+				assert.NotContains(t, paths, "/customers/7")
+			}
+		})
+	}
+}
+
 func TestFollowStopsAfterTheCallCap(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)

@@ -1,0 +1,15 @@
+openapi: 3.0.3
+info: {title: Customers, version: "3"}
+servers:
+  - url: http://127.0.0.1:9
+paths:
+  /customers:
+    post:
+      operationId: customers.create
+      requestBody:
+        required: true
+        content:
+          application/json;v=3:
+            schema: {type: object}
+      responses:
+        "201": {description: created}

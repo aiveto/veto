@@ -78,16 +78,138 @@ func paramsFromLink(link catalog.OpLink, body string, target *catalog.Operation)
 
 func evalResponseExpr(expr, body string) (string, error) {
 	field := strings.TrimSpace(expr)
-	field = strings.TrimPrefix(field, "$response.body#")
-	field = strings.TrimPrefix(field, "/")
-	if field == "" || strings.Contains(field, "/") {
+	rest, pointer := strings.CutPrefix(field, "$response.body#")
+	if !pointer {
+		if field == "" || strings.Contains(field, "/") {
+			return "", fmt.Errorf("response expression %q is not a field", expr)
+		}
+		val, ok := jsonField(body, field)
+		if !ok {
+			return "", fmt.Errorf("response field %s is missing", field)
+		}
+		return val, nil
+	}
+	return evalPointer(expr, rest, body)
+}
+
+func evalPointer(expr, ptr, body string) (string, error) {
+	ptr = strings.TrimPrefix(ptr, "/")
+	if ptr == "" {
 		return "", fmt.Errorf("response expression %q is not a field", expr)
 	}
-	val, ok := jsonField(body, field)
+	cur := bytes.TrimSpace([]byte(body))
+	indexes := 0
+	for _, tok := range strings.Split(ptr, "/") {
+		tok = unescapePointer(tok)
+		if tok == "" {
+			return "", fmt.Errorf("response expression %q is not a field", expr)
+		}
+		if len(cur) > 0 && cur[0] == '[' && pointerIndex(tok) {
+			indexes++
+			if indexes > 1 {
+				return "", fmt.Errorf("response expression %q has more than one index", expr)
+			}
+		}
+		next, err := pointerStep(cur, tok)
+		if err != nil {
+			return "", fmt.Errorf("response field %s is missing", ptr)
+		}
+		cur = next
+	}
+	val, ok := rawScalar(cur)
 	if !ok {
-		return "", fmt.Errorf("response field %s is missing", field)
+		return "", fmt.Errorf("response field %s is missing", ptr)
 	}
 	return val, nil
+}
+
+func pointerStep(cur []byte, tok string) ([]byte, error) {
+	cur = bytes.TrimSpace(cur)
+	if len(cur) == 0 {
+		return nil, fmt.Errorf("missing")
+	}
+	switch cur[0] {
+	case '{':
+		var obj map[string]json.RawMessage
+		if err := json.Unmarshal(cur, &obj); err != nil {
+			return nil, err
+		}
+		raw, ok := obj[tok]
+		if !ok || jsonNull(raw) {
+			return nil, fmt.Errorf("missing")
+		}
+		return raw, nil
+	case '[':
+		if !pointerIndex(tok) {
+			return nil, fmt.Errorf("missing")
+		}
+		var arr []json.RawMessage
+		if err := json.Unmarshal(cur, &arr); err != nil {
+			return nil, err
+		}
+		i := 0
+		for _, c := range tok {
+			i = i*10 + int(c-'0')
+		}
+		if i < 0 || i >= len(arr) || jsonNull(arr[i]) {
+			return nil, fmt.Errorf("missing")
+		}
+		return arr[i], nil
+	default:
+		return nil, fmt.Errorf("missing")
+	}
+}
+
+func pointerIndex(tok string) bool {
+	if tok == "" || (len(tok) > 1 && tok[0] == '0') {
+		return false
+	}
+	for _, c := range tok {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func unescapePointer(tok string) string {
+	var b strings.Builder
+	for i := 0; i < len(tok); i++ {
+		if tok[i] == '~' && i+1 < len(tok) {
+			switch tok[i+1] {
+			case '0':
+				b.WriteByte('~')
+				i++
+				continue
+			case '1':
+				b.WriteByte('/')
+				i++
+				continue
+			}
+		}
+		b.WriteByte(tok[i])
+	}
+	return b.String()
+}
+
+func jsonNull(raw []byte) bool {
+	raw = bytes.TrimSpace(raw)
+	return len(raw) == 0 || string(raw) == "null"
+}
+
+func rawScalar(raw []byte) (string, bool) {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" {
+		return "", false
+	}
+	if raw[0] == '"' {
+		var s string
+		if err := json.Unmarshal(raw, &s); err != nil {
+			return "", false
+		}
+		return s, true
+	}
+	return string(raw), true
 }
 
 func jsonField(body, field string) (string, bool) {

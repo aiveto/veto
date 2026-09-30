@@ -68,9 +68,12 @@ relations:
 `orders.get` returns a customer id. `customers.get` runs because that line says so. Veto does not guess joins from field names. The raw spec stays out of the model.
 
 ```bash
+go install github.com/aiveto/veto/cmd/veto@latest
 go run ./examples/two-apis
 go run ./cmd/veto serve --config examples/two-apis/veto.yaml --stdio
 ```
+
+A declared `Content-Type` such as `application/json;v=3` is sent as written. Setup is in [docs/guide.md](docs/guide.md).
 
 `veto check --against` fails when a confirmation disappears, a joined call is gone, or a new destructive operation appears. `veto replay` shows the decision. The user message stays off the trace.
 
