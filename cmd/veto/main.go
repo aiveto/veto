@@ -130,6 +130,7 @@ func newRoot() (*cobra.Command, error) {
 	}
 	root.AddCommand(
 		newValidateCommand(),
+		newInitCommand(),
 		newServeCommand(),
 		evalCmd,
 		generateCmd,

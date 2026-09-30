@@ -1,9 +1,11 @@
 package mcpserver
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/aiveto/veto/catalog"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -27,16 +29,20 @@ type (
 	}
 
 	invokeArgs struct {
-		OperationID string            `json:"operation_id" jsonschema:"operation id"`
-		Params      map[string]string `json:"params" jsonschema:"parameters"`
-		ApprovalID  string            `json:"approval_id" jsonschema:"approval id from confirmation"`
+		OperationID string         `json:"operation_id" jsonschema:"operation id"`
+		Params      map[string]any `json:"params,omitempty" jsonschema:"parameters; strings, or a JSON object for body"`
+		ApprovalID  string         `json:"approval_id,omitempty" jsonschema:"approval id from confirmation"`
 	}
 )
 
 func RunStdio(ctx context.Context, srv *Server, opt Options) error {
 	impl := &mcp.Implementation{Name: "veto", Version: "0.1.0"}
 	server := mcp.NewServer(impl, nil)
+	register(server, srv, opt)
+	return server.Run(ctx, &mcp.StdioTransport{})
+}
 
+func register(server *mcp.Server, srv *Server, opt Options) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "capabilities_search",
 		Description: "Search operations in the contract catalog",
@@ -68,10 +74,9 @@ func RunStdio(ctx context.Context, srv *Server, opt Options) error {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "capabilities_invoke",
-		Description: "Invoke an operation through policy and HTTP. confirmation_required includes approval_id. Send that id on the next invoke to resume. Without an approval secret the pending call stays in this process. With one, the id is a signed token. A consumed nonce is kept on this machine until the token expires.",
+		Description: "Invoke an operation through policy and HTTP. params values are strings. params.body may be a JSON object and is sent as the request body. confirmation_required includes approval_id. Send that id on the next invoke to resume. Without an approval secret the pending call stays in this process. With one, the id is a signed token. A consumed nonce is kept on this machine until the token expires.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args invokeArgs) (*mcp.CallToolResult, any, error) {
-		res, err := srv.Invoke(ctx, args.OperationID, args.Params, args.ApprovalID)
-		return invokeToolResult(res, err)
+		return invokeCall(ctx, srv, args)
 	})
 
 	if opt.Grouped {
@@ -85,8 +90,7 @@ func RunStdio(ctx context.Context, srv *Server, opt Options) error {
 				if op == nil || op.Group != group {
 					return toolError(fmt.Errorf("operation %q is not in group %s", args.OperationID, group))
 				}
-				res, err := srv.Invoke(ctx, args.OperationID, args.Params, args.ApprovalID)
-				return invokeToolResult(res, err)
+				return invokeCall(ctx, srv, args)
 			})
 		}
 	}
@@ -103,13 +107,51 @@ func RunStdio(ctx context.Context, srv *Server, opt Options) error {
 				Description: op.Description,
 			}, func(ctx context.Context, req *mcp.CallToolRequest, args invokeArgs) (*mcp.CallToolResult, any, error) {
 				args.OperationID = pinnedID
-				res, err := srv.Invoke(ctx, args.OperationID, args.Params, args.ApprovalID)
-				return invokeToolResult(res, err)
+				return invokeCall(ctx, srv, args)
 			})
 		}
 	}
+}
 
-	return server.Run(ctx, &mcp.StdioTransport{})
+func invokeCall(ctx context.Context, srv *Server, args invokeArgs) (*mcp.CallToolResult, any, error) {
+	params, err := stringParams(args.Params)
+	if err != nil {
+		return toolError(err)
+	}
+	res, err := srv.Invoke(ctx, args.OperationID, params, args.ApprovalID)
+	return invokeToolResult(res, err)
+}
+
+func stringParams(in map[string]any) (map[string]string, error) {
+	if len(in) == 0 {
+		return nil, nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		switch val := v.(type) {
+		case nil:
+			out[k] = ""
+		case string:
+			out[k] = val
+		default:
+			text, err := jsonText(val)
+			if err != nil {
+				return nil, fmt.Errorf("param %s: %w", k, err)
+			}
+			out[k] = text
+		}
+	}
+	return out, nil
+}
+
+func jsonText(v any) (string, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return "", err
+	}
+	return strings.TrimSuffix(buf.String(), "\n"), nil
 }
 
 func invokeToolResult(res InvokeResult, callErr error) (*mcp.CallToolResult, any, error) {

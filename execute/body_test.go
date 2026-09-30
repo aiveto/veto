@@ -76,6 +76,20 @@ func TestMissingRequiredInputDoesNotCallDo(t *testing.T) {
 	}
 }
 
+func TestVersionExampleFileKeepsMediaType(t *testing.T) {
+	op := loadSpec(t, mustRead(t, "../examples/two-apis/version.yaml")).ByID("customers.create")
+	body, ok := op.BodyParam()
+	require.True(t, ok)
+	assert.Equal(t, "application/json;v=3", body.MediaType)
+}
+
+func mustRead(t *testing.T, path string) string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	require.NoError(t, err)
+	return string(b)
+}
+
 func TestVersionedMediaTypeAndHeaderDefault(t *testing.T) {
 	op := loadSpec(t, versionSpec).ByID("customers.create")
 	body, ok := op.BodyParam()
