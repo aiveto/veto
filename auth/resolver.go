@@ -41,6 +41,7 @@ type (
 		commandTimeout time.Duration
 		cache          *tokenCache
 		flight         flight
+		jwks           *jwksCache
 	}
 )
 
@@ -77,7 +78,17 @@ func New(opt Options) *Resolver {
 		env:            env,
 		commandTimeout: opt.CommandTimeout,
 		cache:          &tokenCache{m: map[string]cacheEntry{}},
+		jwks:           &jwksCache{m: map[string][]sigKey{}},
 	}
+}
+
+// Configured returns the scheme named in config.
+func (r *Resolver) Configured(name string) (Scheme, bool) {
+	if r == nil || name == "" {
+		return Scheme{}, false
+	}
+	s, ok := r.schemes[name]
+	return s, ok
 }
 
 // SetSource registers a library Source for one scheme name.
@@ -282,6 +293,9 @@ func (r *Resolver) fetch(ctx context.Context, s Scheme, a catalog.Auth, op *cata
 	case "login":
 		return r.fetchLogin(ctx, s, a, need, force)
 	case "client_credentials":
+		if userHeaderName(s, a) != "" {
+			return Material{}, fmt.Errorf("%s user token is unset", a.Name)
+		}
 		return r.fetchClient(ctx, s, a, need)
 	case "command":
 		return r.fetchCommand(ctx, s, op, method, endpoint)
@@ -309,22 +323,30 @@ func (r *Resolver) fetchEnv(s Scheme, a catalog.Auth) (Material, error) {
 
 func (r *Resolver) fetchLogin(ctx context.Context, s Scheme, a catalog.Auth, need []string, force bool) (Material, error) {
 	stored, err := readToken(r.dir, s.Name)
-	if err != nil || (stored.RefreshToken == "" && stored.AccessToken == "") {
+	if err != nil || (stored.RefreshToken == "" && tokenField(stored, authFieldName(s)) == "") {
 		return Material{}, fmt.Errorf("%s has no stored token", a.Name)
 	}
 	now := r.now()
-	if !force && stored.AccessToken != "" && fresh(stored.ExpiresAt, now) && covers(stored.Scopes, need) {
-		return placeToken(a, s.Header, stored.AccessToken, stored.ExpiresAt), nil
+	if !force && loginSendable(s, a, stored, need, now) {
+		mat, perr := r.placeLogin(ctx, s, a, stored, stored.ExpiresAt)
+		if perr == nil {
+			return mat, nil
+		}
+		if stored.RefreshToken == "" {
+			return Material{}, perr
+		}
 	}
 	if stored.RefreshToken == "" {
-		if !force && stored.AccessToken != "" && usable(stored.ExpiresAt, now) {
-			return placeToken(a, s.Header, stored.AccessToken, stored.ExpiresAt), nil
+		if tokenField(stored, authFieldName(s)) == "" || force || !usable(stored.ExpiresAt, now) {
+			return Material{}, fmt.Errorf("%s has no stored token", a.Name)
 		}
-		return Material{}, fmt.Errorf("%s has no stored token", a.Name)
+		return r.placeLogin(ctx, s, a, stored, stored.ExpiresAt)
 	}
 	if err := fillEndpoints(ctx, r.http, &s); err != nil {
-		if stored.AccessToken != "" && usable(stored.ExpiresAt, now) && !force {
-			return placeToken(a, s.Header, stored.AccessToken, stored.ExpiresAt), nil
+		if !force && usable(stored.ExpiresAt, now) {
+			if mat, perr := r.placeLogin(ctx, s, a, stored, stored.ExpiresAt); perr == nil {
+				return mat, nil
+			}
 		}
 		return Material{}, err
 	}
@@ -347,10 +369,13 @@ func (r *Resolver) fetchLogin(ctx context.Context, s Scheme, a catalog.Auth, nee
 	if scopes := scopeParam(need); scopes != "" {
 		form.Set("scope", scopes)
 	}
-	tok, err := postForm(ctx, r.http, tokenURL, form, []string{secret, stored.RefreshToken, stored.AccessToken})
+	secrets := append([]string{secret, stored.RefreshToken, stored.AccessToken}, fieldSecrets(stored.Fields)...)
+	tok, err := postForm(ctx, r.http, tokenURL, form, secrets)
 	if err != nil {
-		if !force && stored.AccessToken != "" && usable(stored.ExpiresAt, now) {
-			return placeToken(a, s.Header, stored.AccessToken, stored.ExpiresAt), nil
+		if !force && usable(stored.ExpiresAt, now) {
+			if mat, perr := r.placeLogin(ctx, s, a, stored, stored.ExpiresAt); perr == nil {
+				return mat, nil
+			}
 		}
 		return Material{}, err
 	}
@@ -358,24 +383,84 @@ func (r *Resolver) fetchLogin(ctx context.Context, s Scheme, a catalog.Auth, nee
 	if err != nil {
 		return Material{}, err
 	}
-	refresh := tok.RefreshToken
-	if refresh == "" {
-		refresh = stored.RefreshToken
-	}
 	exp := expiryFrom(r.now(), tok.ExpiresIn)
-	next := storedToken{
-		RefreshToken: refresh,
-		AccessToken:  tok.AccessToken,
-		ExpiresAt:    exp,
-		Scopes:       scopes,
-		Audience:     s.Audience,
-		TokenURL:     tokenURL,
-		ClientID:     clientID,
-	}
+	next := absorb(stored, tok, s, scopes, exp, tokenURL, clientID)
 	if err := writeToken(r.dir, s.Name, next); err != nil {
 		return Material{}, err
 	}
-	return placeToken(a, s.Header, tok.AccessToken, exp), nil
+	return r.placeLogin(ctx, s, a, next, next.ExpiresAt)
+}
+
+func loginSendable(s Scheme, a catalog.Auth, stored storedToken, need []string, now time.Time) bool {
+	if tokenField(stored, authFieldName(s)) == "" || !fresh(stored.ExpiresAt, now) || !covers(stored.Scopes, need) {
+		return false
+	}
+	if userHeaderName(s, a) != "" && tokenField(stored, userFieldName(s)) == "" {
+		return false
+	}
+	return true
+}
+
+func userHeaderName(s Scheme, a catalog.Auth) string {
+	if s.UserHeader != "" {
+		return s.UserHeader
+	}
+	return a.UserHeader
+}
+
+func (r *Resolver) placeLogin(ctx context.Context, s Scheme, a catalog.Auth, stored storedToken, exp time.Time) (Material, error) {
+	authTok := tokenField(stored, authFieldName(s))
+	if authTok == "" {
+		return Material{}, fmt.Errorf("%s has no stored token", a.Name)
+	}
+	mat := placeToken(a, s.Header, authTok, exp)
+	header := userHeaderName(s, a)
+	if header == "" {
+		return mat, nil
+	}
+	for k := range mat.Headers {
+		if strings.EqualFold(k, header) {
+			return Material{}, fmt.Errorf("%s user token header matches the auth header", a.Name)
+		}
+	}
+	userTok := tokenField(stored, userFieldName(s))
+	if userTok == "" {
+		return Material{}, fmt.Errorf("%s user token is unset", a.Name)
+	}
+	userExp, err := r.checkUserToken(ctx, s, stored, userTok)
+	if err != nil {
+		return Material{}, fmt.Errorf("%s %w", a.Name, err)
+	}
+	if mat.Headers == nil {
+		mat.Headers = map[string]string{}
+	}
+	mat.Headers[header] = userTok
+	mat.Secrets = append(mat.Secrets, userTok)
+	mat.Expires = earlier(mat.Expires, userExp)
+	return mat, nil
+}
+
+func earlier(a, b time.Time) time.Time {
+	if a.IsZero() {
+		return b
+	}
+	if b.IsZero() || !b.Before(a) {
+		return a
+	}
+	return b
+}
+
+func fieldSecrets(fields map[string]string) []string {
+	if len(fields) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(fields))
+	for _, v := range fields {
+		if len(v) >= 8 {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 func (r *Resolver) fetchClient(ctx context.Context, s Scheme, a catalog.Auth, need []string) (Material, error) {
@@ -461,6 +546,9 @@ func cacheKey(s Scheme, scopes []string) string {
 		s.ClientID,
 		s.TokenURL,
 		strings.Join(s.Command, " "),
+		s.UserHeader,
+		s.AuthToken,
+		s.UserToken,
 	}, "\x00")
 	return strings.Join([]string{id, s.Audience, strings.Join(cp, " ")}, "\x00")
 }

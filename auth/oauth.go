@@ -21,14 +21,16 @@ type (
 		Authorization string
 		Token         string
 		Device        string
+		JWKS          string
 	}
 
 	tokenResponse struct {
-		AccessToken  string `json:"access_token"`
-		RefreshToken string `json:"refresh_token"`
-		ExpiresIn    int    `json:"expires_in"`
-		Scope        string `json:"scope"`
-		Error        string `json:"error"`
+		AccessToken  string            `json:"access_token"`
+		RefreshToken string            `json:"refresh_token"`
+		ExpiresIn    int               `json:"expires_in"`
+		Scope        string            `json:"scope"`
+		Error        string            `json:"error"`
+		Fields       map[string]string `json:"-"`
 	}
 )
 
@@ -57,6 +59,7 @@ func Discover(ctx context.Context, client *http.Client, issuer string) (Endpoint
 		Authorization string `json:"authorization_endpoint"`
 		Token         string `json:"token_endpoint"`
 		Device        string `json:"device_authorization_endpoint"`
+		JWKS          string `json:"jwks_uri"`
 	}
 	if err := json.Unmarshal(body, &doc); err != nil {
 		return Endpoints{}, fmt.Errorf("discover issuer: invalid document")
@@ -64,7 +67,7 @@ func Discover(ctx context.Context, client *http.Client, issuer string) (Endpoint
 	if doc.Authorization == "" || doc.Token == "" {
 		return Endpoints{}, fmt.Errorf("discover issuer: endpoints missing")
 	}
-	return Endpoints{Authorization: doc.Authorization, Token: doc.Token, Device: doc.Device}, nil
+	return Endpoints{Authorization: doc.Authorization, Token: doc.Token, Device: doc.Device, JWKS: doc.JWKS}, nil
 }
 
 func fillEndpoints(ctx context.Context, client *http.Client, scheme *Scheme) error {
@@ -74,7 +77,8 @@ func fillEndpoints(ctx context.Context, client *http.Client, scheme *Scheme) err
 	needAuth := scheme.AuthorizationURL == ""
 	needToken := scheme.TokenURL == ""
 	needDevice := scheme.DeviceAuthorizationURL == ""
-	if !needAuth && !needToken && !needDevice {
+	needJWKS := scheme.JWKSURI == ""
+	if !needAuth && !needToken && !needDevice && !needJWKS {
 		return nil
 	}
 	ep, err := Discover(ctx, client, scheme.Issuer)
@@ -89,6 +93,9 @@ func fillEndpoints(ctx context.Context, client *http.Client, scheme *Scheme) err
 	}
 	if needDevice {
 		scheme.DeviceAuthorizationURL = ep.Device
+	}
+	if needJWKS {
+		scheme.JWKSURI = ep.JWKS
 	}
 	return nil
 }
@@ -115,14 +122,57 @@ func postForm(ctx context.Context, client *http.Client, endpoint string, form ur
 	if resp.StatusCode != http.StatusOK {
 		return tokenResponse{}, fmt.Errorf("token endpoint returned %d", resp.StatusCode)
 	}
+	tok, err := decodeTokenResponse(body)
+	if err != nil {
+		return tokenResponse{}, err
+	}
+	if tok.Error != "" || !tok.hasToken() {
+		return tokenResponse{}, fmt.Errorf("token endpoint rejected the request")
+	}
+	return tok, nil
+}
+
+func decodeTokenResponse(body []byte) (tokenResponse, error) {
 	var tok tokenResponse
 	if err := json.Unmarshal(body, &tok); err != nil {
 		return tokenResponse{}, fmt.Errorf("token endpoint returned invalid JSON")
 	}
-	if tok.Error != "" || tok.AccessToken == "" {
-		return tokenResponse{}, fmt.Errorf("token endpoint rejected the request")
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return tokenResponse{}, fmt.Errorf("token endpoint returned invalid JSON")
+	}
+	tok.Fields = map[string]string{}
+	for k, v := range raw {
+		var s string
+		if json.Unmarshal(v, &s) == nil && s != "" {
+			tok.Fields[k] = s
+		}
+	}
+	if tok.AccessToken != "" && tok.Fields["access_token"] == "" {
+		tok.Fields["access_token"] = tok.AccessToken
+	}
+	if tok.RefreshToken != "" && tok.Fields["refresh_token"] == "" {
+		tok.Fields["refresh_token"] = tok.RefreshToken
 	}
 	return tok, nil
+}
+
+func (t tokenResponse) hasToken() bool {
+	if t.AccessToken != "" {
+		return true
+	}
+	for k, v := range t.Fields {
+		if v == "" {
+			continue
+		}
+		switch k {
+		case "token_type", "scope", "error", "error_description":
+			continue
+		default:
+			return true
+		}
+	}
+	return false
 }
 
 func grantedScopes(responseScope string, requested []string) ([]string, error) {

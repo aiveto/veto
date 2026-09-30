@@ -240,14 +240,14 @@ func pollDevice(ctx context.Context, client *http.Client, endpoint string, form 
 	if err != nil {
 		return tokenResponse{}, false, fmt.Errorf("token endpoint: request failed")
 	}
-	var tok tokenResponse
-	if err := json.Unmarshal(body, &tok); err != nil {
-		return tokenResponse{}, false, fmt.Errorf("token endpoint returned invalid JSON")
+	tok, err := decodeTokenResponse(body)
+	if err != nil {
+		return tokenResponse{}, false, err
 	}
 	if tok.Error == "authorization_pending" || tok.Error == "slow_down" {
 		return tokenResponse{}, true, nil
 	}
-	if resp.StatusCode != http.StatusOK || tok.Error != "" || tok.AccessToken == "" {
+	if resp.StatusCode != http.StatusOK || tok.Error != "" || !tok.hasToken() {
 		return tokenResponse{}, false, fmt.Errorf("token endpoint rejected the request")
 	}
 	return tok, false, nil
@@ -258,16 +258,7 @@ func saveMinted(dir string, scheme Scheme, tok tokenResponse, requested []string
 	if err != nil {
 		return err
 	}
-	now := time.Now()
-	stored := storedToken{
-		RefreshToken: tok.RefreshToken,
-		AccessToken:  tok.AccessToken,
-		ExpiresAt:    expiryFrom(now, tok.ExpiresIn),
-		Scopes:       scopes,
-		Audience:     scheme.Audience,
-		TokenURL:     scheme.TokenURL,
-		ClientID:     scheme.ClientID,
-	}
+	stored := absorb(storedToken{}, tok, scheme, scopes, expiryFrom(time.Now(), tok.ExpiresIn), scheme.TokenURL, scheme.ClientID)
 	if stored.RefreshToken == "" && stored.AccessToken == "" {
 		return fmt.Errorf("token endpoint rejected the request")
 	}

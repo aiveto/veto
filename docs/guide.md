@@ -59,6 +59,18 @@ veto auth login --config veto.yaml --scheme user --device
 
 The browser opens from login. Register `http://127.0.0.1:53682/callback` at the identity provider, or set `redirect_url`. Invoke reads the refresh token, refreshes it near expiry, and does not open a browser. No stored token fails the call before upstream HTTP.
 
+A token response can carry two secrets. `access_token` is sent as `Authorization: Bearer`. The user token defaults to `id_token` and is sent on `user_header`. Set `auth_token` and `user_token` when the JSON fields have other names. Both headers go out when `user_header` is set, or the contract sets `x-user-token-header` on the scheme. A client-credentials token is never placed on that user header. If the user token is required and login did not store it, the call fails before upstream HTTP. A JWT user token is checked for issuer, audience, and expiry when discovery published `jwks_uri`. An opaque user token is sent as-is.
+
+```yaml
+auth:
+  user:
+    source: login
+    client_id: veto
+    issuer: https://idp.example
+    user_header: X-User-Token
+    user_token: person_token
+```
+
 Workforce and CI use client credentials. The secret stays in the environment. There is no browser.
 
 ```yaml

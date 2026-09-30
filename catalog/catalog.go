@@ -34,12 +34,14 @@ type (
 
 	// Auth is one scheme in a security requirement.
 	// Header is set for header placement. Query is set for an apiKey in query.
+	// UserHeader is set when the contract names a separate header for the person token.
 	Auth struct {
-		Name   string
-		Header string
-		Query  string
-		Kind   string
-		Scopes []string
+		Name       string
+		Header     string
+		Query      string
+		Kind       string
+		Scopes     []string
+		UserHeader string
 	}
 
 	Param struct {

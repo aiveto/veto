@@ -10,13 +10,16 @@ import (
 )
 
 type storedToken struct {
-	RefreshToken string    `json:"refresh_token,omitempty"`
-	AccessToken  string    `json:"access_token,omitempty"`
-	ExpiresAt    time.Time `json:"expires_at,omitempty"`
-	Scopes       []string  `json:"scopes,omitempty"`
-	Audience     string    `json:"audience,omitempty"`
-	TokenURL     string    `json:"token_url,omitempty"`
-	ClientID     string    `json:"client_id,omitempty"`
+	RefreshToken string            `json:"refresh_token,omitempty"`
+	AccessToken  string            `json:"access_token,omitempty"`
+	ExpiresAt    time.Time         `json:"expires_at,omitempty"`
+	Scopes       []string          `json:"scopes,omitempty"`
+	Audience     string            `json:"audience,omitempty"`
+	TokenURL     string            `json:"token_url,omitempty"`
+	ClientID     string            `json:"client_id,omitempty"`
+	Fields       map[string]string `json:"fields,omitempty"`
+	JWKSURI      string            `json:"jwks_uri,omitempty"`
+	Issuer       string            `json:"issuer,omitempty"`
 }
 
 func DefaultTokenDir() string {
@@ -101,6 +104,102 @@ func readToken(dir, scheme string) (storedToken, error) {
 		return storedToken{}, fmt.Errorf("read token: %w", err)
 	}
 	return tok, nil
+}
+
+func authFieldName(s Scheme) string {
+	if s.AuthToken != "" {
+		return s.AuthToken
+	}
+	return "access_token"
+}
+
+func userFieldName(s Scheme) string {
+	if s.UserToken != "" {
+		return s.UserToken
+	}
+	return "id_token"
+}
+
+func tokenField(tok storedToken, name string) string {
+	if name == "" {
+		return ""
+	}
+	if tok.Fields != nil && tok.Fields[name] != "" {
+		return tok.Fields[name]
+	}
+	switch name {
+	case "access_token":
+		return tok.AccessToken
+	case "refresh_token":
+		return tok.RefreshToken
+	default:
+		return ""
+	}
+}
+
+func absorb(prev storedToken, tok tokenResponse, s Scheme, scopes []string, exp time.Time, tokenURL, clientID string) storedToken {
+	fields := map[string]string{}
+	for k, v := range prev.Fields {
+		if v != "" {
+			fields[k] = v
+		}
+	}
+	for k, v := range tok.Fields {
+		if v != "" {
+			fields[k] = v
+		}
+	}
+	refresh := tok.RefreshToken
+	if refresh == "" {
+		refresh = prev.RefreshToken
+	}
+	if refresh != "" {
+		fields["refresh_token"] = refresh
+	}
+	if tok.AccessToken != "" && fields["access_token"] == "" {
+		fields["access_token"] = tok.AccessToken
+	}
+	name := authFieldName(s)
+	access := fields[name]
+	if access == "" && name == "access_token" {
+		access = tok.AccessToken
+		if access == "" {
+			access = prev.AccessToken
+		}
+	}
+	if access != "" {
+		fields[name] = access
+	}
+	jwks := s.JWKSURI
+	if jwks == "" {
+		jwks = prev.JWKSURI
+	}
+	issuer := s.Issuer
+	if issuer == "" {
+		issuer = prev.Issuer
+	}
+	if tokenURL == "" {
+		tokenURL = prev.TokenURL
+	}
+	if clientID == "" {
+		clientID = prev.ClientID
+	}
+	audience := s.Audience
+	if audience == "" {
+		audience = prev.Audience
+	}
+	return storedToken{
+		RefreshToken: refresh,
+		AccessToken:  access,
+		ExpiresAt:    exp,
+		Scopes:       scopes,
+		Audience:     audience,
+		TokenURL:     tokenURL,
+		ClientID:     clientID,
+		Fields:       fields,
+		JWKSURI:      jwks,
+		Issuer:       issuer,
+	}
 }
 
 func tokenPath(dir, scheme string) (string, error) {

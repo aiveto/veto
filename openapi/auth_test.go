@@ -49,6 +49,10 @@ func TestAPIKeyAndOAuthSchemes(t *testing.T) {
 	require.Len(t, either.Requirements, 2)
 	assert.Equal(t, "userAuth", either.Requirements[0][0].Name)
 	assert.Equal(t, "apiAuth", either.Requirements[1][0].Name)
+
+	listed := cat.ByID("approvals.list")
+	require.Len(t, listed.Auth, 1)
+	assert.Equal(t, "X-User-Token", listed.Auth[0].UserHeader)
 }
 
 func loadAuth(t *testing.T, spec string) *catalog.Catalog {
@@ -122,6 +126,14 @@ paths:
       responses:
         "200":
           description: ok
+  /approvals:
+    get:
+      operationId: approvals.list
+      security:
+        - userAuth: []
+      responses:
+        "200":
+          description: ok
 components:
   securitySchemes:
     apiAuth:
@@ -134,6 +146,7 @@ components:
       name: api_key
     userAuth:
       type: oauth2
+      x-user-token-header: X-User-Token
       flows:
         authorizationCode:
           authorizationUrl: https://idp.example/authorize

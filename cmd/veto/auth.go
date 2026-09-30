@@ -142,6 +142,9 @@ func configuredScheme(configPath, name string) (auth.Scheme, string, error) {
 		Scopes:                 append([]string(nil), src.Scopes...),
 		Audience:               src.Audience,
 		Header:                 src.Header,
+		AuthToken:              src.AuthToken,
+		UserToken:              src.UserToken,
+		UserHeader:             src.UserHeader,
 	}, tokenDir(cfg), nil
 }
 

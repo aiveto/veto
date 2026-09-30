@@ -46,5 +46,13 @@ type (
 		Header                 string
 		Command                []string
 		Timeout                time.Duration
+		// AuthToken is the token-response field sent as the app credential. Empty means access_token.
+		AuthToken string
+		// UserToken is the token-response field that names the person. Empty means id_token.
+		UserToken string
+		// UserHeader is the upstream header that carries the person token.
+		UserHeader string
+		// JWKSURI is the jwks_uri from discovery.
+		JWKSURI string
 	}
 )

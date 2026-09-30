@@ -212,6 +212,9 @@ type (
 		Header                 string      `yaml:"header"`
 		Command                CommandLine `yaml:"command"`
 		Timeout                Duration    `yaml:"timeout"`
+		AuthToken              string      `yaml:"auth_token"`
+		UserToken              string      `yaml:"user_token"`
+		UserHeader             string      `yaml:"user_header"`
 	}
 
 	Duration time.Duration

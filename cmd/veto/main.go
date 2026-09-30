@@ -532,6 +532,9 @@ func authResolver(cfg config.File) *auth.Resolver {
 			Header:                 src.Header,
 			Command:                append([]string(nil), src.Command...),
 			Timeout:                time.Duration(src.Timeout),
+			AuthToken:              src.AuthToken,
+			UserToken:              src.UserToken,
+			UserHeader:             src.UserHeader,
 		})
 	}
 	return auth.New(auth.Options{
