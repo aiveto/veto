@@ -192,6 +192,9 @@ func (r *Resolver) Material(ctx context.Context, op *catalog.Operation, a catalo
 		need = s.Scopes
 	}
 	key := cacheKey(s, need)
+	if s.Source == "command" {
+		key += "\x00" + endpoint
+	}
 	if !force {
 		if mat, ok := r.cache.fresh(key, r.now()); ok {
 			return mat, nil
@@ -201,7 +204,7 @@ func (r *Resolver) Material(ctx context.Context, op *catalog.Operation, a catalo
 	}
 	flightKey := key
 	if s.Source == "command" {
-		flightKey += "\x00" + method + "\x00" + endpoint
+		flightKey += "\x00" + method
 	}
 	if force {
 		flightKey += "\x00force"
