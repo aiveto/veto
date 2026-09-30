@@ -4,7 +4,7 @@ go 1.26.6
 
 require (
 	github.com/getkin/kin-openapi v0.133.0
-	github.com/go-openapi/jsonpointer v1.0.0
+	github.com/go-openapi/jsonpointer v1.0.2
 	github.com/google/uuid v1.6.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/open-policy-agent/opa v1.21.1
