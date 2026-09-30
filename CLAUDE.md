@@ -115,5 +115,3 @@ A signed decision is locked only with a short file in `docs/adr/` that holds tho
 ## Not yet
 
 Ossie 0.1.1 reader. Protobuf loader. Jev. Temporal. Subagents.
-
-The assignable list is `docs/before-open-source.md`.

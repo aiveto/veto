@@ -10,7 +10,7 @@ The catalog, the relation file, the three MCP tools, the pack, and the confirmat
 
 ## Architect
 
-Keep one catalog, explicit joins, and one policy gate. Do not add a database, a second MCP tool per operation, or a guessed foreign key to make the review look bigger. The heavy lifting that is still missing is already numbered in `docs/before-open-source.md`: a JSON body, auth, the call shape in the pack, and walking a declared relation.
+Keep one catalog, explicit joins, and one policy gate. Do not add a database, a second MCP tool per operation, or a guessed foreign key to make the review look bigger. The heavy lifting that is still missing is a JSON body, auth, the call shape in the pack, and walking a declared relation.
 
 ## Decision
 
