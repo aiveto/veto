@@ -21,3 +21,21 @@ func UserToken(ctx context.Context) string {
 	v, _ := ctx.Value(userTokenKey{}).(string)
 	return v
 }
+
+type forceKey struct{}
+
+// WithForce tells a provider to skip a cached credential and obtain a new one.
+func WithForce(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, forceKey{}, true)
+}
+
+func forced(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	v, _ := ctx.Value(forceKey{}).(bool)
+	return v
+}

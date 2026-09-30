@@ -7,53 +7,93 @@ import (
 
 	"github.com/aiveto/veto/auth"
 	"github.com/aiveto/veto/catalog"
+	"github.com/aiveto/veto/credentials"
 )
 
-func applyAuth(ctx context.Context, cfg Config, op *catalog.Operation, req *http.Request, force bool) (bool, []string, []string, []func(*http.Request) error, error) {
+func obtainAuth(ctx context.Context, cfg Config, op *catalog.Operation, req *http.Request, force bool) (bool, []credentials.Credential, error) {
 	groups := op.Requirements
 	if len(groups) == 0 && len(op.Auth) > 0 {
 		groups = [][]catalog.Auth{op.Auth}
 	}
 	if len(groups) == 0 {
-		return false, nil, nil, nil, nil
+		return false, nil, nil
 	}
 	chosen, err := selectRequirement(ctx, cfg, groups)
 	if err != nil {
-		return false, nil, nil, nil, fmt.Errorf("operation %s: %w", op.ID, err)
+		return false, nil, fmt.Errorf("operation %s: %w", op.ID, err)
 	}
 	chosen = withUserTokens(cfg, chosen)
+	if force {
+		ctx = auth.WithForce(ctx)
+	}
 	var refresh bool
-	var secrets []string
-	var queryKeys []string
-	var signs []func(*http.Request) error
+	var creds []credentials.Credential
 	for _, a := range chosen {
 		if suppliedUserAPIKey(chosen, a) {
 			continue
 		}
-		mat, err := material(ctx, cfg, op, a, req.Method, req.URL.String(), force)
+		p, err := providerFor(cfg, a)
 		if err != nil {
-			return false, nil, nil, nil, fmt.Errorf("operation %s: %w", op.ID, err)
+			return false, nil, fmt.Errorf("operation %s: %w", op.ID, err)
 		}
-		for k, v := range mat.Headers {
+		cred, err := p.Resolve(ctx, credentials.Request{
+			OperationID: op.ID,
+			Method:      req.Method,
+			URL:         req.URL.String(),
+			Scheme:      a.Name,
+			UserToken:   auth.UserToken(ctx),
+			Scopes:      a.Scopes,
+		})
+		if err != nil {
+			return false, nil, fmt.Errorf("operation %s: %w", op.ID, err)
+		}
+		creds = append(creds, cred)
+		if cfg.Creds != nil && cfg.Creds.Refreshable(a.Name) {
+			refresh = true
+		}
+	}
+	return refresh, creds, nil
+}
+
+func providerFor(cfg Config, a catalog.Auth) (credentials.Provider, error) {
+	if cfg.Creds != nil {
+		if p, ok := cfg.Creds.Provider(a); ok {
+			return p, nil
+		}
+	}
+	if val := cfg.Auth[a.Name]; val != "" {
+		return auth.Fixed(a, val), nil
+	}
+	return nil, fmt.Errorf("%s is unset", a.Name)
+}
+
+func applyCredentials(req *http.Request, creds []credentials.Credential) ([]string, []string, error) {
+	var secrets []string
+	var queryKeys []string
+	var signs []func(*http.Request) error
+	for _, cred := range creds {
+		for k, v := range cred.Headers {
 			req.Header.Set(k, v)
 		}
-		if len(mat.Query) > 0 {
+		if len(cred.Query) > 0 {
 			q := req.URL.Query()
-			for k, v := range mat.Query {
+			for k, v := range cred.Query {
 				q.Set(k, v)
 				queryKeys = append(queryKeys, k)
 			}
 			req.URL.RawQuery = q.Encode()
 		}
-		secrets = append(secrets, mat.Secrets...)
-		if mat.Sign != nil {
-			signs = append(signs, mat.Sign)
+		if cred.Sign != nil {
+			signs = append(signs, cred.Sign)
 		}
-		if cfg.Creds != nil && cfg.Creds.Refreshable(a.Name) {
-			refresh = true
+		secrets = append(secrets, auth.CredentialSecrets(cred)...)
+	}
+	for _, sign := range signs {
+		if err := sign(req); err != nil {
+			return nil, nil, err
 		}
 	}
-	return refresh, secrets, queryKeys, signs, nil
+	return secrets, queryKeys, nil
 }
 
 func selectRequirement(ctx context.Context, cfg Config, groups [][]catalog.Auth) ([]catalog.Auth, error) {
@@ -92,41 +132,6 @@ func requirementError(ctx context.Context, cfg Config, group []catalog.Auth) err
 		}
 	}
 	return nil
-}
-
-func material(ctx context.Context, cfg Config, op *catalog.Operation, a catalog.Auth, method, endpoint string, force bool) (auth.Material, error) {
-	if cfg.Creds != nil && cfg.Creds.Has(a.Name) {
-		return cfg.Creds.Material(ctx, op, a, method, endpoint, force)
-	}
-	val := cfg.Auth[a.Name]
-	if val == "" {
-		return auth.Material{}, fmt.Errorf("%s is unset", a.Name)
-	}
-	return legacyMaterial(a, val), nil
-}
-
-func legacyMaterial(a catalog.Auth, val string) auth.Material {
-	switch a.Kind {
-	case "apiKey":
-		if a.Query != "" {
-			return auth.Material{Query: map[string]string{a.Query: val}, Secrets: []string{val}}
-		}
-		header := a.Header
-		if header == "" {
-			header = "Authorization"
-		}
-		return auth.Material{Headers: map[string]string{header: val}, Secrets: []string{val}}
-	default:
-		header := a.Header
-		if header == "" {
-			header = "Authorization"
-		}
-		sent := val
-		if header == "Authorization" {
-			sent = "Bearer " + val
-		}
-		return auth.Material{Headers: map[string]string{header: sent}, Secrets: []string{val, sent}}
-	}
 }
 
 func withUserTokens(cfg Config, group []catalog.Auth) []catalog.Auth {

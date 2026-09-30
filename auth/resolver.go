@@ -195,23 +195,73 @@ func (r *Resolver) Refreshable(name string) bool {
 	}
 }
 
+// Provider returns the provider that obtains material for one scheme.
+func (r *Resolver) Provider(a catalog.Auth) (credentials.Provider, bool) {
+	if r == nil || a.Name == "" {
+		return nil, false
+	}
+	if src, ok := r.extra[a.Name]; ok {
+		return extraProvider{r: r, a: a, src: src}, true
+	}
+	if _, ok := r.schemes[a.Name]; ok {
+		return schemeProvider{r: r, a: a}, true
+	}
+	return nil, false
+}
+
+// Fixed places one already-known secret. It is the provider for a static auth map.
+func Fixed(a catalog.Auth, token string) credentials.Provider {
+	return fixedProvider{a: a, token: token}
+}
+
 // Material returns headers and query values for one scheme.
 // force skips a cached token and refreshes once. It does not open a browser.
 func (r *Resolver) Material(ctx context.Context, op *catalog.Operation, a catalog.Auth, method, endpoint string, force bool) (Material, error) {
 	if r == nil {
 		return Material{}, fmt.Errorf("%s is unset", a.Name)
 	}
-	if src, ok := r.extra[a.Name]; ok {
-		return r.fromSource(ctx, src, op, a, method, endpoint, force)
+	p, ok := r.Provider(a)
+	if !ok {
+		return Material{}, fmt.Errorf("%s is unset", a.Name)
+	}
+	if force {
+		ctx = WithForce(ctx)
+	}
+	id := ""
+	if op != nil {
+		id = op.ID
+	}
+	cred, err := p.Resolve(ctx, credentials.Request{
+		OperationID: id,
+		Method:      method,
+		URL:         endpoint,
+		Scheme:      a.Name,
+		UserToken:   UserToken(ctx),
+		Scopes:      a.Scopes,
+	})
+	if err != nil {
+		return Material{}, err
+	}
+	return materialOf(cred), nil
+}
+
+func (r *Resolver) materialScheme(ctx context.Context, a catalog.Auth, in credentials.Request, force bool) (Material, error) {
+	if in.UserToken != "" && UserToken(ctx) == "" {
+		ctx = WithUserToken(ctx, in.UserToken)
 	}
 	s, ok := r.schemes[a.Name]
 	if !ok {
 		return Material{}, fmt.Errorf("%s is unset", a.Name)
 	}
-	need := a.Scopes
+	need := in.Scopes
+	if len(need) == 0 {
+		need = a.Scopes
+	}
 	if len(need) == 0 {
 		need = s.Scopes
 	}
+	endpoint := in.URL
+	method := in.Method
 	key := cacheKey(s, need)
 	if s.Source == "command" {
 		key += "\x00" + endpoint
@@ -243,7 +293,7 @@ func (r *Resolver) Material(ctx context.Context, op *catalog.Operation, a catalo
 				return mat, nil
 			}
 		}
-		mat, err := r.fetch(ctx, s, a, op, method, endpoint, need, force)
+		mat, err := r.fetch(ctx, s, a, in.OperationID, method, endpoint, need, force)
 		if err != nil {
 			if !force {
 				if stale, ok := r.cache.usable(key, r.now()); ok {
@@ -259,50 +309,7 @@ func (r *Resolver) Material(ctx context.Context, op *catalog.Operation, a catalo
 	})
 }
 
-func (r *Resolver) fromSource(ctx context.Context, src credentials.Provider, op *catalog.Operation, a catalog.Auth, method, endpoint string, force bool) (Material, error) {
-	s := Scheme{Name: a.Name, Source: "source", Audience: "", Scopes: a.Scopes}
-	if cfg, ok := r.schemes[a.Name]; ok {
-		s.Audience = cfg.Audience
-		if len(s.Scopes) == 0 {
-			s.Scopes = cfg.Scopes
-		}
-	}
-	need := a.Scopes
-	if len(need) == 0 {
-		need = s.Scopes
-	}
-	key := cacheKey(s, need)
-	if !force {
-		if mat, ok := r.cache.fresh(key, r.now()); ok {
-			return mat, nil
-		}
-	}
-	out, err := src.Resolve(ctx, credentials.Request{
-		OperationID: opID(op),
-		Method:      method,
-		URL:         endpoint,
-		Scheme:      a.Name,
-		UserToken:   UserToken(ctx),
-		Scopes:      need,
-		Audience:    s.Audience,
-	})
-	if err != nil {
-		return Material{}, err
-	}
-	mat := Material{
-		Headers: cloneMap(out.Headers),
-		Query:   cloneMap(out.Query),
-		Expires: out.ExpiresAt,
-		Secrets: append(mapValues(out.Headers), mapValues(out.Query)...),
-		Sign:    out.Sign,
-	}
-	if !mat.Expires.IsZero() {
-		r.cache.put(key, mat)
-	}
-	return mat, nil
-}
-
-func (r *Resolver) fetch(ctx context.Context, s Scheme, a catalog.Auth, op *catalog.Operation, method, endpoint string, need []string, force bool) (Material, error) {
+func (r *Resolver) fetch(ctx context.Context, s Scheme, a catalog.Auth, operationID, method, endpoint string, need []string, force bool) (Material, error) {
 	switch s.Source {
 	case "env":
 		return r.fetchEnv(s, a)
@@ -325,7 +332,7 @@ func (r *Resolver) fetch(ctx context.Context, s Scheme, a catalog.Auth, op *cata
 		}
 		return r.fetchExchange(ctx, s, a, need)
 	case "command":
-		return r.fetchCommand(ctx, s, op, method, endpoint)
+		return r.fetchCommand(ctx, s, operationID, method, endpoint)
 	default:
 		return Material{}, fmt.Errorf("security scheme %s is not supported", a.Name)
 	}
@@ -557,9 +564,9 @@ func (r *Resolver) fetchClient(ctx context.Context, s Scheme, a catalog.Auth, ne
 	return placeToken(a, s.Header, tok.AccessToken, exp), nil
 }
 
-func (r *Resolver) fetchCommand(ctx context.Context, s Scheme, op *catalog.Operation, method, endpoint string) (Material, error) {
+func (r *Resolver) fetchCommand(ctx context.Context, s Scheme, operationID, method, endpoint string) (Material, error) {
 	in := commandIn{
-		OperationID: opID(op),
+		OperationID: operationID,
 		Method:      method,
 		URL:         endpoint,
 		Scheme:      s.Name,
@@ -620,13 +627,6 @@ func cacheKey(s Scheme, scopes []string) string {
 	return strings.Join([]string{id, s.Audience, strings.Join(cp, " ")}, "\x00")
 }
 
-func opID(op *catalog.Operation) string {
-	if op == nil {
-		return ""
-	}
-	return op.ID
-}
-
 func cloneMap(in map[string]string) map[string]string {
 	if len(in) == 0 {
 		return nil
@@ -646,6 +646,135 @@ func mapValues(in map[string]string) []string {
 	for _, v := range in {
 		if v != "" {
 			out = append(out, v)
+		}
+	}
+	return out
+}
+
+type (
+	schemeProvider struct {
+		r *Resolver
+		a catalog.Auth
+	}
+	extraProvider struct {
+		r   *Resolver
+		a   catalog.Auth
+		src credentials.Provider
+	}
+	fixedProvider struct {
+		a     catalog.Auth
+		token string
+	}
+)
+
+func (p schemeProvider) Resolve(ctx context.Context, in credentials.Request) (credentials.Credential, error) {
+	mat, err := p.r.materialScheme(ctx, p.a, in, forced(ctx))
+	if err != nil {
+		return credentials.Credential{}, err
+	}
+	return credentialOf(mat), nil
+}
+
+func (p extraProvider) Resolve(ctx context.Context, in credentials.Request) (credentials.Credential, error) {
+	if in.UserToken != "" && UserToken(ctx) == "" {
+		ctx = WithUserToken(ctx, in.UserToken)
+	}
+	force := forced(ctx)
+	s := Scheme{Name: p.a.Name, Source: "source", Scopes: p.a.Scopes}
+	if cfg, ok := p.r.schemes[p.a.Name]; ok {
+		s.Audience = cfg.Audience
+		if len(s.Scopes) == 0 {
+			s.Scopes = cfg.Scopes
+		}
+	}
+	need := in.Scopes
+	if len(need) == 0 {
+		need = s.Scopes
+	}
+	if len(need) == 0 {
+		need = p.a.Scopes
+	}
+	key := cacheKey(s, need)
+	if !force {
+		if mat, ok := p.r.cache.fresh(key, p.r.now()); ok {
+			return credentialOf(mat), nil
+		}
+	}
+	if in.Scheme == "" {
+		in.Scheme = p.a.Name
+	}
+	if in.UserToken == "" {
+		in.UserToken = UserToken(ctx)
+	}
+	if len(in.Scopes) == 0 {
+		in.Scopes = need
+	}
+	if in.Audience == "" {
+		in.Audience = s.Audience
+	}
+	out, err := p.src.Resolve(ctx, in)
+	if err != nil {
+		return credentials.Credential{}, err
+	}
+	mat := materialOf(out)
+	if !mat.Expires.IsZero() {
+		p.r.cache.put(key, mat)
+	}
+	return credentialOf(mat), nil
+}
+
+func (p fixedProvider) Resolve(context.Context, credentials.Request) (credentials.Credential, error) {
+	if p.token == "" {
+		name := p.a.Name
+		if name == "" {
+			name = "credential"
+		}
+		return credentials.Credential{}, fmt.Errorf("%s is unset", name)
+	}
+	return credentialOf(placeToken(p.a, "", p.token, time.Time{})), nil
+}
+
+func credentialOf(mat Material) credentials.Credential {
+	return credentials.Credential{
+		Headers:   cloneMap(mat.Headers),
+		Query:     cloneMap(mat.Query),
+		ExpiresAt: mat.Expires,
+		Sign:      mat.Sign,
+	}
+}
+
+func materialOf(c credentials.Credential) Material {
+	return Material{
+		Headers: cloneMap(c.Headers),
+		Query:   cloneMap(c.Query),
+		Expires: c.ExpiresAt,
+		Secrets: CredentialSecrets(c),
+		Sign:    c.Sign,
+	}
+}
+
+// CredentialSecrets lists header values, query values, and a bearer token without its prefix.
+func CredentialSecrets(c credentials.Credential) []string {
+	var out []string
+	for _, v := range c.Headers {
+		out = append(out, secretParts(v)...)
+	}
+	for _, v := range c.Query {
+		out = append(out, secretParts(v)...)
+	}
+	return out
+}
+
+func secretParts(v string) []string {
+	if v == "" {
+		return nil
+	}
+	out := []string{v}
+	const prefix = "bearer "
+	if len(v) > len(prefix) && strings.EqualFold(v[:len(prefix)], prefix) {
+		raw := strings.TrimSpace(v[len(prefix):])
+		if raw != "" && raw != v {
+			out = append(out, raw)
 		}
 	}
 	return out

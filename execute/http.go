@@ -145,14 +145,15 @@ func InvokeResponse(ctx context.Context, cfg Config, op *catalog.Operation, para
 	if media != "" {
 		req.Header.Set("Content-Type", media)
 	}
-	refresh, secrets, queryKeys, signs, err := applyAuth(ctx, cfg, op, req, false)
-	if err != nil {
-		return nil, err
-	}
 	if op.Idempotency == "key" {
 		req.Header.Set("Idempotency-Key", uuid.NewString())
 	}
-	if err := applySigns(req, signs); err != nil {
+	refresh, creds, err := obtainAuth(ctx, cfg, op, req, false)
+	if err != nil {
+		return nil, err
+	}
+	secrets, queryKeys, err := applyCredentials(req, creds)
+	if err != nil {
 		return nil, err
 	}
 	if names := paramNames(params); names != "" {
@@ -192,15 +193,16 @@ type readResponse struct {
 }
 
 func retryUnauthorized(ctx context.Context, cfg Config, op *catalog.Operation, req *http.Request, secrets, queryKeys []string) (readResponse, error) {
-	_, moreSecrets, moreKeys, signs, err := applyAuth(ctx, cfg, op, req, true)
+	_, creds, err := obtainAuth(ctx, cfg, op, req, true)
+	if err != nil {
+		return readResponse{}, err
+	}
+	moreSecrets, moreKeys, err := applyCredentials(req, creds)
 	if err != nil {
 		return readResponse{}, err
 	}
 	secrets = append(secrets, moreSecrets...)
 	queryKeys = append(queryKeys, moreKeys...)
-	if err := applySigns(req, signs); err != nil {
-		return readResponse{}, err
-	}
 	if req.GetBody != nil {
 		body, err := req.GetBody()
 		if err != nil {
@@ -220,18 +222,6 @@ func retryUnauthorized(ctx context.Context, cfg Config, op *catalog.Operation, r
 		return readResponse{}, fmt.Errorf("read body: %w", err)
 	}
 	return readResponse{resp: resp, raw: raw}, nil
-}
-
-func applySigns(req *http.Request, signs []func(*http.Request) error) error {
-	for _, sign := range signs {
-		if sign == nil {
-			continue
-		}
-		if err := sign(req); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func scrubTransport(err error, secrets, queryKeys []string) error {
