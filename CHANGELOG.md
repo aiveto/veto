@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `veto init` writes `veto.yaml` for the named contracts and a `relations.yaml` stub. An existing `veto.yaml` is left as it is.
+- `capabilities_invoke` accepts a JSON object for `params.body` and sends that object. A string body is unchanged.
+- A link parameter may be `$response.body#/customer/id`: objects, and one array index. A second index is an error. A link with no parameter mapping is not called.
+- Operator notes are in `docs/guide.md`.
 - A JSON body is a catalog parameter. An empty required parameter does not call HTTP.
 - Bearer auth uses the contract. The secret is an environment variable named in config.
 - The context pack shows the selected call and declared relations. `veto pack` prints it.
