@@ -18,7 +18,6 @@ type storedToken struct {
 	TokenURL     string            `json:"token_url,omitempty"`
 	ClientID     string            `json:"client_id,omitempty"`
 	Fields       map[string]string `json:"fields,omitempty"`
-	JWKSURI      string            `json:"jwks_uri,omitempty"`
 	Issuer       string            `json:"issuer,omitempty"`
 }
 
@@ -170,10 +169,6 @@ func absorb(prev storedToken, tok tokenResponse, s Scheme, scopes []string, exp 
 	if access != "" {
 		fields[name] = access
 	}
-	jwks := s.JWKSURI
-	if jwks == "" {
-		jwks = prev.JWKSURI
-	}
 	issuer := s.Issuer
 	if issuer == "" {
 		issuer = prev.Issuer
@@ -197,7 +192,6 @@ func absorb(prev storedToken, tok tokenResponse, s Scheme, scopes []string, exp 
 		TokenURL:     tokenURL,
 		ClientID:     clientID,
 		Fields:       fields,
-		JWKSURI:      jwks,
 		Issuer:       issuer,
 	}
 }

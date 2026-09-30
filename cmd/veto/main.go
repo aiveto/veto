@@ -535,6 +535,8 @@ func authResolver(cfg config.File) *auth.Resolver {
 			AuthToken:              src.AuthToken,
 			UserToken:              src.UserToken,
 			UserHeader:             src.UserHeader,
+			Subject:                src.Subject,
+			SubjectTokenType:       src.SubjectTokenType,
 		})
 	}
 	return auth.New(auth.Options{

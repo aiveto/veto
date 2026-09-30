@@ -75,7 +75,7 @@ func TestKnownProviderKeysLoad(t *testing.T) {
 }
 
 func TestAuthSourcesKeepTheEnvShorthand(t *testing.T) {
-	body := "token_dir: tokens\nauth:\n  bearerAuth: ORDER_TOKEN\n  user:\n    source: login\n    client_id: veto\n    issuer: https://idp.example\n    scopes: [orders.read]\n    auth_token: app_token\n    user_token: person_token\n    user_header: X-User-Token\n  workforce:\n    source: client_credentials\n    token_url: https://idp.example/token\n    client_id: job\n    client_secret_env: WORKFORCE_SECRET\n    audience: https://api.example\n  sig:\n    source: command\n    command: /usr/local/bin/veto-sig\n    timeout: 5s\n"
+	body := "token_dir: tokens\nauth:\n  bearerAuth: ORDER_TOKEN\n  user:\n    source: login\n    client_id: veto\n    issuer: https://idp.example\n    scopes: [orders.read]\n    auth_token: app_token\n    user_token: person_token\n    user_header: X-User-Token\n  upstream:\n    source: token_exchange\n    token_url: https://idp.example/token\n    client_id: veto\n    client_secret_env: VETO_SECRET\n    audience: https://api.example\n    scopes: [orders.read]\n    subject: invoke\n  workforce:\n    source: client_credentials\n    token_url: https://idp.example/token\n    client_id: job\n    client_secret_env: WORKFORCE_SECRET\n    audience: https://api.example\n  sig:\n    source: command\n    command: /usr/local/bin/veto-sig\n    timeout: 5s\n"
 	path := filepath.Join(t.TempDir(), "veto.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(body), 0o644))
 	cfg, err := config.Load(path)
@@ -88,6 +88,9 @@ func TestAuthSourcesKeepTheEnvShorthand(t *testing.T) {
 	assert.Equal(t, "app_token", cfg.Auth["user"].AuthToken)
 	assert.Equal(t, "person_token", cfg.Auth["user"].UserToken)
 	assert.Equal(t, "X-User-Token", cfg.Auth["user"].UserHeader)
+	assert.Equal(t, "token_exchange", cfg.Auth["upstream"].Kind())
+	assert.Equal(t, "invoke", cfg.Auth["upstream"].Subject)
+	assert.Equal(t, "https://api.example", cfg.Auth["upstream"].Audience)
 	assert.Equal(t, "WORKFORCE_SECRET", cfg.Auth["workforce"].ClientSecretEnv)
 	assert.Equal(t, []string{"/usr/local/bin/veto-sig"}, []string(cfg.Auth["sig"].Command))
 	assert.Equal(t, 5*time.Second, time.Duration(cfg.Auth["sig"].Timeout))

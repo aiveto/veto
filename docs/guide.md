@@ -59,7 +59,9 @@ veto auth login --config veto.yaml --scheme user --device
 
 The browser opens from login. Register `http://127.0.0.1:53682/callback` at the identity provider, or set `redirect_url`. Invoke reads the refresh token, refreshes it near expiry, and does not open a browser. No stored token fails the call before upstream HTTP.
 
-A token response can carry two secrets. `access_token` is sent as `Authorization: Bearer`. The user token defaults to `id_token` and is sent on `user_header`. Set `auth_token` and `user_token` when the JSON fields have other names. Both headers go out when `user_header` is set, or the contract sets `x-user-token-header` on the scheme. A client-credentials token is never placed on that user header. If the user token is required and login did not store it, the call fails before upstream HTTP. A JWT user token is checked for issuer, audience, and expiry when discovery published `jwks_uri`. An opaque user token is sent as-is.
+OpenAPI says what a call requires. `veto.yaml` says how this deployment obtains it. `source: command` is the adapter for a scheme this binary does not speak. `source: token_exchange` trades a subject token for an access token scoped to one audience.
+
+A token response can carry two secrets. `access_token` is sent as `Authorization: Bearer`. The user token defaults to `id_token` and is sent on `user_header`. Set `auth_token` and `user_token` when the JSON fields have other names. Both headers go out when `user_header` is set, or the contract sets `x-user-token-header` on the scheme. A client-credentials token is never placed on that user header. If the user token is required and login did not store it, the call fails before upstream HTTP. The identity provider or the API checks the token. Veto stores the field and sends it.
 
 ```yaml
 auth:
@@ -84,7 +86,19 @@ auth:
     audience: https://api.example
 ```
 
-An MCP host that already has the user token passes `token` on `capabilities_invoke`. That value is sent only when the scheme says `source: invoke`.
+An MCP host that already has the user token passes `token` on `capabilities_invoke`. That value is sent only when the scheme says `source: invoke`. Token exchange can use that same token as `subject: invoke`, or name a login scheme. The upstream call sends the exchanged access token. A missing subject fails before the token URL and before upstream HTTP.
+
+```yaml
+auth:
+  upstream:
+    source: token_exchange
+    token_url: https://idp.example/oauth/token
+    client_id: veto
+    client_secret_env: VETO_SECRET
+    audience: https://api.example
+    scopes: [orders.read]
+    subject: invoke
+```
 
 Anything else is a command. Veto writes JSON to its stdin (`operation_id`, `method`, `url`, `scheme`, and `user_token` when this invoke has one) and reads `headers` plus optional `expires_at` from stdout. A non-zero exit, a timeout, or bad JSON fails the invoke before upstream HTTP. Stdin and stdout are not logged.
 

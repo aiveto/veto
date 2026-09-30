@@ -235,61 +235,6 @@ func TestContractUserHeaderAndWorkforceStayApart(t *testing.T) {
 	})
 }
 
-func TestBadUserTokenSkipsUpstream(t *testing.T) {
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	require.NoError(t, err)
-	var idp *httptest.Server
-	idp = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
-	idp.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/.well-known/openid-configuration":
-			_ = json.NewEncoder(w).Encode(map[string]string{
-				"authorization_endpoint":        idp.URL + "/authorize",
-				"token_endpoint":                idp.URL + "/token",
-				"device_authorization_endpoint": idp.URL + "/device",
-				"jwks_uri":                      idp.URL + "/jwks",
-			})
-		case "/jwks":
-			_ = json.NewEncoder(w).Encode(rsaJWKS(&key.PublicKey, "kid-1"))
-		case "/device":
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"device_code": "d", "user_code": "ABCD", "verification_uri": idp.URL + "/v", "interval": 1,
-			})
-		case "/token":
-			jwt := signUserJWT(t, key, "kid-1", idp.URL, "other-client", "ada", time.Now().Add(time.Hour))
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"access_token": "app-token", "id_token": jwt, "expires_in": 3600,
-			})
-		default:
-			http.NotFound(w, r)
-		}
-	})
-	defer idp.Close()
-	dir := t.TempDir()
-	require.NoError(t, auth.Login(context.Background(), auth.LoginOptions{
-		Scheme: auth.Scheme{
-			Name: "appAuth", Source: "login", ClientID: "veto", Issuer: idp.URL, UserHeader: "X-User-Token",
-		},
-		Dir: dir, Device: true, HTTP: idp.Client(), Out: io.Discard,
-	}))
-	var upstreamHits atomic.Int32
-	up := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
-		upstreamHits.Add(1)
-	}))
-	defer up.Close()
-	_, err = (execute.Client{
-		BaseURL: up.URL,
-		Creds: auth.New(auth.Options{Schemes: []auth.Scheme{{
-			Name: "appAuth", Source: "login", ClientID: "veto", Issuer: idp.URL,
-			UserHeader: "X-User-Token", JWKSURI: idp.URL + "/jwks",
-		}}, Dir: dir, HTTP: idp.Client()}),
-	}).InvokeHTTPResult(context.Background(), loadSpec(t, approvalsSpec).ByID("approvals.list"), nil)
-	require.Error(t, err)
-	assert.ErrorContains(t, err, "audience rejected")
-	assert.NotContains(t, err.Error(), "app-token")
-	assert.Equal(t, int32(0), upstreamHits.Load())
-}
-
 type approval struct {
 	ID      string `json:"id"`
 	Subject string `json:"subject"`

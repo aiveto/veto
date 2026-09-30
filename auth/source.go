@@ -1,34 +1,11 @@
 // Package auth places a credential on an upstream call.
-// Operators of the binary use login, client credentials, env, invoke, or a command.
-// Source is for code that embeds veto as a library.
+// Operators of the binary use login, client credentials, token exchange, env, invoke, or a command.
+// Library code implements credentials.Provider.
 package auth
 
-import (
-	"context"
-	"time"
-)
+import "time"
 
 type (
-	// Source mints headers for one scheme. The binary does not ask operators to implement it.
-	Source interface {
-		Token(ctx context.Context, in Input) (Output, error)
-	}
-
-	Input struct {
-		OperationID string
-		Method      string
-		URL         string
-		Scheme      string
-		UserToken   string
-		Scopes      []string
-		Audience    string
-	}
-
-	Output struct {
-		Headers   map[string]string
-		ExpiresAt time.Time
-	}
-
 	// Scheme is one configured security scheme. Secrets are not stored here.
 	Scheme struct {
 		Name                   string
@@ -52,7 +29,9 @@ type (
 		UserToken string
 		// UserHeader is the upstream header that carries the person token.
 		UserHeader string
-		// JWKSURI is the jwks_uri from discovery.
-		JWKSURI string
+		// Subject is "invoke" or the name of a login scheme whose stored token is exchanged.
+		Subject string
+		// SubjectTokenType is sent on token exchange. Empty means an access token.
+		SubjectTokenType string
 	}
 )

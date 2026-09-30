@@ -215,6 +215,8 @@ type (
 		AuthToken              string      `yaml:"auth_token"`
 		UserToken              string      `yaml:"user_token"`
 		UserHeader             string      `yaml:"user_header"`
+		Subject                string      `yaml:"subject"`
+		SubjectTokenType       string      `yaml:"subject_token_type"`
 	}
 
 	Duration time.Duration
@@ -313,6 +315,11 @@ func (s Source) validate(name string) error {
 	case "command":
 		if len(s.Command) == 0 {
 			return fmt.Errorf("auth %s: command required", name)
+		}
+		return nil
+	case "token_exchange":
+		if s.TokenURL == "" || s.Audience == "" || s.ClientID == "" || s.ClientSecretEnv == "" || s.Subject == "" {
+			return fmt.Errorf("auth %s: token_url, audience, client_id, client_secret_env, and subject required", name)
 		}
 		return nil
 	default:

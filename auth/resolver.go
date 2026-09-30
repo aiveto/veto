@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/aiveto/veto/catalog"
+	"github.com/aiveto/veto/credentials"
 )
 
 type (
@@ -29,11 +30,12 @@ type (
 		Query   map[string]string
 		Expires time.Time
 		Secrets []string
+		Sign    func(*http.Request) error
 	}
 
 	Resolver struct {
 		schemes        map[string]Scheme
-		extra          map[string]Source
+		extra          map[string]credentials.Provider
 		dir            string
 		http           *http.Client
 		now            func() time.Time
@@ -41,7 +43,6 @@ type (
 		commandTimeout time.Duration
 		cache          *tokenCache
 		flight         flight
-		jwks           *jwksCache
 	}
 )
 
@@ -71,15 +72,22 @@ func New(opt Options) *Resolver {
 	}
 	return &Resolver{
 		schemes:        schemes,
-		extra:          map[string]Source{},
+		extra:          map[string]credentials.Provider{},
 		dir:            dir,
 		http:           WithEnvProxy(client),
 		now:            now,
 		env:            env,
 		commandTimeout: opt.CommandTimeout,
 		cache:          &tokenCache{m: map[string]cacheEntry{}},
-		jwks:           &jwksCache{m: map[string][]sigKey{}},
 	}
+}
+
+// SetProvider registers a library Provider for one scheme name.
+func (r *Resolver) SetProvider(name string, src credentials.Provider) {
+	if r == nil || name == "" || src == nil {
+		return
+	}
+	r.extra[name] = src
 }
 
 // Configured returns the scheme named in config.
@@ -89,14 +97,6 @@ func (r *Resolver) Configured(name string) (Scheme, bool) {
 	}
 	s, ok := r.schemes[name]
 	return s, ok
-}
-
-// SetSource registers a library Source for one scheme name.
-func (r *Resolver) SetSource(name string, src Source) {
-	if r == nil || name == "" || src == nil {
-		return
-	}
-	r.extra[name] = src
 }
 
 func (r *Resolver) Has(name string) bool {
@@ -143,6 +143,11 @@ func (r *Resolver) Ready(ctx context.Context, a catalog.Auth) bool {
 		return UserToken(ctx) != ""
 	case "command":
 		return len(s.Command) > 0
+	case "token_exchange":
+		if s.TokenURL == "" || s.ClientID == "" || s.ClientSecretEnv == "" || r.env(s.ClientSecretEnv) == "" {
+			return false
+		}
+		return r.subjectToken(ctx, s) != ""
 	default:
 		return false
 	}
@@ -161,6 +166,11 @@ func (r *Resolver) UnsetError(a catalog.Auth) error {
 		return fmt.Errorf("%s client secret is unset", a.Name)
 	case "login":
 		return fmt.Errorf("%s has no stored token", a.Name)
+	case "token_exchange":
+		if s.ClientSecretEnv == "" || r.env(s.ClientSecretEnv) == "" {
+			return fmt.Errorf("%s client secret is unset", a.Name)
+		}
+		return fmt.Errorf("%s subject token is unset", a.Name)
 	default:
 		return fmt.Errorf("%s is unset", a.Name)
 	}
@@ -178,7 +188,7 @@ func (r *Resolver) Refreshable(name string) bool {
 		return false
 	}
 	switch s.Source {
-	case "login", "client_credentials", "command":
+	case "login", "client_credentials", "command", "token_exchange":
 		return true
 	default:
 		return false
@@ -205,6 +215,13 @@ func (r *Resolver) Material(ctx context.Context, op *catalog.Operation, a catalo
 	key := cacheKey(s, need)
 	if s.Source == "command" {
 		key += "\x00" + endpoint
+	}
+	if s.Source == "token_exchange" {
+		subject := r.subjectToken(ctx, s)
+		if subject == "" {
+			return Material{}, fmt.Errorf("%s subject token is unset", a.Name)
+		}
+		key += "\x00" + subject
 	}
 	if !force {
 		if mat, ok := r.cache.fresh(key, r.now()); ok {
@@ -242,7 +259,7 @@ func (r *Resolver) Material(ctx context.Context, op *catalog.Operation, a catalo
 	})
 }
 
-func (r *Resolver) fromSource(ctx context.Context, src Source, op *catalog.Operation, a catalog.Auth, method, endpoint string, force bool) (Material, error) {
+func (r *Resolver) fromSource(ctx context.Context, src credentials.Provider, op *catalog.Operation, a catalog.Auth, method, endpoint string, force bool) (Material, error) {
 	s := Scheme{Name: a.Name, Source: "source", Audience: "", Scopes: a.Scopes}
 	if cfg, ok := r.schemes[a.Name]; ok {
 		s.Audience = cfg.Audience
@@ -260,20 +277,25 @@ func (r *Resolver) fromSource(ctx context.Context, src Source, op *catalog.Opera
 			return mat, nil
 		}
 	}
-	user := UserToken(ctx)
-	out, err := src.Token(ctx, Input{
+	out, err := src.Resolve(ctx, credentials.Request{
 		OperationID: opID(op),
 		Method:      method,
 		URL:         endpoint,
 		Scheme:      a.Name,
-		UserToken:   user,
+		UserToken:   UserToken(ctx),
 		Scopes:      need,
 		Audience:    s.Audience,
 	})
 	if err != nil {
 		return Material{}, err
 	}
-	mat := Material{Headers: cloneMap(out.Headers), Expires: out.ExpiresAt, Secrets: mapValues(out.Headers)}
+	mat := Material{
+		Headers: cloneMap(out.Headers),
+		Query:   cloneMap(out.Query),
+		Expires: out.ExpiresAt,
+		Secrets: append(mapValues(out.Headers), mapValues(out.Query)...),
+		Sign:    out.Sign,
+	}
 	if !mat.Expires.IsZero() {
 		r.cache.put(key, mat)
 	}
@@ -297,6 +319,11 @@ func (r *Resolver) fetch(ctx context.Context, s Scheme, a catalog.Auth, op *cata
 			return Material{}, fmt.Errorf("%s user token is unset", a.Name)
 		}
 		return r.fetchClient(ctx, s, a, need)
+	case "token_exchange":
+		if userHeaderName(s, a) != "" {
+			return Material{}, fmt.Errorf("%s user token is unset", a.Name)
+		}
+		return r.fetchExchange(ctx, s, a, need)
 	case "command":
 		return r.fetchCommand(ctx, s, op, method, endpoint)
 	default:
@@ -328,7 +355,7 @@ func (r *Resolver) fetchLogin(ctx context.Context, s Scheme, a catalog.Auth, nee
 	}
 	now := r.now()
 	if !force && loginSendable(s, a, stored, need, now) {
-		mat, perr := r.placeLogin(ctx, s, a, stored, stored.ExpiresAt)
+		mat, perr := r.placeLogin(s, a, stored, stored.ExpiresAt)
 		if perr == nil {
 			return mat, nil
 		}
@@ -340,11 +367,11 @@ func (r *Resolver) fetchLogin(ctx context.Context, s Scheme, a catalog.Auth, nee
 		if tokenField(stored, authFieldName(s)) == "" || force || !usable(stored.ExpiresAt, now) {
 			return Material{}, fmt.Errorf("%s has no stored token", a.Name)
 		}
-		return r.placeLogin(ctx, s, a, stored, stored.ExpiresAt)
+		return r.placeLogin(s, a, stored, stored.ExpiresAt)
 	}
 	if err := fillEndpoints(ctx, r.http, &s); err != nil {
 		if !force && usable(stored.ExpiresAt, now) {
-			if mat, perr := r.placeLogin(ctx, s, a, stored, stored.ExpiresAt); perr == nil {
+			if mat, perr := r.placeLogin(s, a, stored, stored.ExpiresAt); perr == nil {
 				return mat, nil
 			}
 		}
@@ -373,7 +400,7 @@ func (r *Resolver) fetchLogin(ctx context.Context, s Scheme, a catalog.Auth, nee
 	tok, err := postForm(ctx, r.http, tokenURL, form, secrets)
 	if err != nil {
 		if !force && usable(stored.ExpiresAt, now) {
-			if mat, perr := r.placeLogin(ctx, s, a, stored, stored.ExpiresAt); perr == nil {
+			if mat, perr := r.placeLogin(s, a, stored, stored.ExpiresAt); perr == nil {
 				return mat, nil
 			}
 		}
@@ -388,7 +415,7 @@ func (r *Resolver) fetchLogin(ctx context.Context, s Scheme, a catalog.Auth, nee
 	if err := writeToken(r.dir, s.Name, next); err != nil {
 		return Material{}, err
 	}
-	return r.placeLogin(ctx, s, a, next, next.ExpiresAt)
+	return r.placeLogin(s, a, next, next.ExpiresAt)
 }
 
 func loginSendable(s Scheme, a catalog.Auth, stored storedToken, need []string, now time.Time) bool {
@@ -408,7 +435,7 @@ func userHeaderName(s Scheme, a catalog.Auth) string {
 	return a.UserHeader
 }
 
-func (r *Resolver) placeLogin(ctx context.Context, s Scheme, a catalog.Auth, stored storedToken, exp time.Time) (Material, error) {
+func (r *Resolver) placeLogin(s Scheme, a catalog.Auth, stored storedToken, exp time.Time) (Material, error) {
 	authTok := tokenField(stored, authFieldName(s))
 	if authTok == "" {
 		return Material{}, fmt.Errorf("%s has no stored token", a.Name)
@@ -427,27 +454,66 @@ func (r *Resolver) placeLogin(ctx context.Context, s Scheme, a catalog.Auth, sto
 	if userTok == "" {
 		return Material{}, fmt.Errorf("%s user token is unset", a.Name)
 	}
-	userExp, err := r.checkUserToken(ctx, s, stored, userTok)
-	if err != nil {
-		return Material{}, fmt.Errorf("%s %w", a.Name, err)
-	}
 	if mat.Headers == nil {
 		mat.Headers = map[string]string{}
 	}
 	mat.Headers[header] = userTok
 	mat.Secrets = append(mat.Secrets, userTok)
-	mat.Expires = earlier(mat.Expires, userExp)
 	return mat, nil
 }
 
-func earlier(a, b time.Time) time.Time {
-	if a.IsZero() {
-		return b
+func (r *Resolver) fetchExchange(ctx context.Context, s Scheme, a catalog.Auth, need []string) (Material, error) {
+	secret := r.env(s.ClientSecretEnv)
+	if secret == "" || s.TokenURL == "" || s.ClientID == "" {
+		return Material{}, fmt.Errorf("%s client secret is unset", a.Name)
 	}
-	if b.IsZero() || !b.Before(a) {
-		return a
+	subject := r.subjectToken(ctx, s)
+	if subject == "" {
+		return Material{}, fmt.Errorf("%s subject token is unset", a.Name)
 	}
-	return b
+	form := url.Values{}
+	form.Set("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange")
+	form.Set("subject_token", subject)
+	tokenType := s.SubjectTokenType
+	if tokenType == "" {
+		tokenType = "urn:ietf:params:oauth:token-type:access_token"
+	}
+	form.Set("subject_token_type", tokenType)
+	form.Set("client_id", s.ClientID)
+	form.Set("client_secret", secret)
+	if s.Audience != "" {
+		form.Set("audience", s.Audience)
+	}
+	if scopes := scopeParam(need); scopes != "" {
+		form.Set("scope", scopes)
+	}
+	tok, err := postForm(ctx, r.http, s.TokenURL, form, []string{secret, subject})
+	if err != nil {
+		return Material{}, err
+	}
+	if _, err := grantedScopes(tok.Scope, need); err != nil {
+		return Material{}, err
+	}
+	return placeToken(a, s.Header, tok.AccessToken, expiryFrom(r.now(), tok.ExpiresIn)), nil
+}
+
+func (r *Resolver) subjectToken(ctx context.Context, s Scheme) string {
+	if s.Subject == "invoke" {
+		return UserToken(ctx)
+	}
+	if s.Subject == "" {
+		return ""
+	}
+	stored, err := readToken(r.dir, s.Subject)
+	if err != nil {
+		return ""
+	}
+	if other, ok := r.schemes[s.Subject]; ok {
+		if v := tokenField(stored, authFieldName(other)); v != "" {
+			return v
+		}
+	}
+	return tokenField(stored, "access_token")
 }
 
 func fieldSecrets(fields map[string]string) []string {
@@ -549,6 +615,7 @@ func cacheKey(s Scheme, scopes []string) string {
 		s.UserHeader,
 		s.AuthToken,
 		s.UserToken,
+		s.Subject,
 	}, "\x00")
 	return strings.Join([]string{id, s.Audience, strings.Join(cp, " ")}, "\x00")
 }
@@ -633,6 +700,7 @@ func cloneMaterial(m Material) Material {
 		Query:   cloneMap(m.Query),
 		Expires: m.Expires,
 		Secrets: append([]string(nil), m.Secrets...),
+		Sign:    m.Sign,
 	}
 }
 

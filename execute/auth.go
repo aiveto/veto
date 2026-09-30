@@ -9,29 +9,30 @@ import (
 	"github.com/aiveto/veto/catalog"
 )
 
-func applyAuth(ctx context.Context, cfg Config, op *catalog.Operation, req *http.Request, force bool) (bool, []string, []string, error) {
+func applyAuth(ctx context.Context, cfg Config, op *catalog.Operation, req *http.Request, force bool) (bool, []string, []string, []func(*http.Request) error, error) {
 	groups := op.Requirements
 	if len(groups) == 0 && len(op.Auth) > 0 {
 		groups = [][]catalog.Auth{op.Auth}
 	}
 	if len(groups) == 0 {
-		return false, nil, nil, nil
+		return false, nil, nil, nil, nil
 	}
 	chosen, err := selectRequirement(ctx, cfg, groups)
 	if err != nil {
-		return false, nil, nil, fmt.Errorf("operation %s: %w", op.ID, err)
+		return false, nil, nil, nil, fmt.Errorf("operation %s: %w", op.ID, err)
 	}
 	chosen = withUserTokens(cfg, chosen)
 	var refresh bool
 	var secrets []string
 	var queryKeys []string
+	var signs []func(*http.Request) error
 	for _, a := range chosen {
 		if suppliedUserAPIKey(chosen, a) {
 			continue
 		}
 		mat, err := material(ctx, cfg, op, a, req.Method, req.URL.String(), force)
 		if err != nil {
-			return false, nil, nil, fmt.Errorf("operation %s: %w", op.ID, err)
+			return false, nil, nil, nil, fmt.Errorf("operation %s: %w", op.ID, err)
 		}
 		for k, v := range mat.Headers {
 			req.Header.Set(k, v)
@@ -45,11 +46,14 @@ func applyAuth(ctx context.Context, cfg Config, op *catalog.Operation, req *http
 			req.URL.RawQuery = q.Encode()
 		}
 		secrets = append(secrets, mat.Secrets...)
+		if mat.Sign != nil {
+			signs = append(signs, mat.Sign)
+		}
 		if cfg.Creds != nil && cfg.Creds.Refreshable(a.Name) {
 			refresh = true
 		}
 	}
-	return refresh, secrets, queryKeys, nil
+	return refresh, secrets, queryKeys, signs, nil
 }
 
 func selectRequirement(ctx context.Context, cfg Config, groups [][]catalog.Auth) ([]catalog.Auth, error) {

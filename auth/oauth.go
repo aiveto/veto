@@ -21,7 +21,6 @@ type (
 		Authorization string
 		Token         string
 		Device        string
-		JWKS          string
 	}
 
 	tokenResponse struct {
@@ -59,7 +58,6 @@ func Discover(ctx context.Context, client *http.Client, issuer string) (Endpoint
 		Authorization string `json:"authorization_endpoint"`
 		Token         string `json:"token_endpoint"`
 		Device        string `json:"device_authorization_endpoint"`
-		JWKS          string `json:"jwks_uri"`
 	}
 	if err := json.Unmarshal(body, &doc); err != nil {
 		return Endpoints{}, fmt.Errorf("discover issuer: invalid document")
@@ -67,7 +65,7 @@ func Discover(ctx context.Context, client *http.Client, issuer string) (Endpoint
 	if doc.Authorization == "" || doc.Token == "" {
 		return Endpoints{}, fmt.Errorf("discover issuer: endpoints missing")
 	}
-	return Endpoints{Authorization: doc.Authorization, Token: doc.Token, Device: doc.Device, JWKS: doc.JWKS}, nil
+	return Endpoints{Authorization: doc.Authorization, Token: doc.Token, Device: doc.Device}, nil
 }
 
 func fillEndpoints(ctx context.Context, client *http.Client, scheme *Scheme) error {
@@ -77,8 +75,7 @@ func fillEndpoints(ctx context.Context, client *http.Client, scheme *Scheme) err
 	needAuth := scheme.AuthorizationURL == ""
 	needToken := scheme.TokenURL == ""
 	needDevice := scheme.DeviceAuthorizationURL == ""
-	needJWKS := scheme.JWKSURI == ""
-	if !needAuth && !needToken && !needDevice && !needJWKS {
+	if !needAuth && !needToken && !needDevice {
 		return nil
 	}
 	ep, err := Discover(ctx, client, scheme.Issuer)
@@ -93,9 +90,6 @@ func fillEndpoints(ctx context.Context, client *http.Client, scheme *Scheme) err
 	}
 	if needDevice {
 		scheme.DeviceAuthorizationURL = ep.Device
-	}
-	if needJWKS {
-		scheme.JWKSURI = ep.JWKS
 	}
 	return nil
 }

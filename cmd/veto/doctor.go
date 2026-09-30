@@ -126,6 +126,18 @@ func sourceBlockers(name string, src config.Source, dir string) []string {
 			return []string{fmt.Sprintf("auth scheme %s has no command", name)}
 		}
 		return nil
+	case "token_exchange":
+		if src.ClientSecretEnv == "" || os.Getenv(src.ClientSecretEnv) == "" {
+			envName := src.ClientSecretEnv
+			if envName == "" {
+				envName = "client secret"
+			}
+			return []string{envName + " is unset"}
+		}
+		if src.Subject != "" && src.Subject != "invoke" && !auth.HasAccessToken(dir, src.Subject) {
+			return []string{fmt.Sprintf("auth scheme %s has no stored token", src.Subject)}
+		}
+		return nil
 	default:
 		return nil
 	}
