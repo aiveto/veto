@@ -4,3 +4,4 @@
 *.test
 *.out
 /generated
+.DS_Store
