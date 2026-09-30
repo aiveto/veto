@@ -25,9 +25,92 @@ auth:
   bearerAuth: ORDER_TOKEN
 ```
 
-Paths are relative to `veto.yaml`. `auth` names the environment variable for a contract security scheme. The token stays in the environment. Unset keys keep the defaults (`model: scripted`, `policy: builtin`, in-process execution).
+Paths are relative to `veto.yaml`. `auth` maps a security scheme to an env var, a login, client credentials, or a command. Secrets stay out of this file. Unset keys keep the defaults (`model: scripted`, `policy: builtin`, in-process execution).
 
 `veto validate --config veto.yaml` loads the contracts and prints the operation count and joins.
+
+## Auth
+
+A string names the environment variable that already holds the token:
+
+```yaml
+auth:
+  bearerAuth: ORDER_TOKEN
+```
+
+`veto auth set --config veto.yaml --scheme bearerAuth` reads a pasted token from stdin and stores it mode `0600`. `token_dir` sets the directory. `VETO_TOKEN_DIR` overrides it, so a cluster can mount that path.
+
+A person signs in once. `issuer` loads `authorization_endpoint` and `token_endpoint` from `.well-known/openid-configuration` when you do not want to copy both URLs.
+
+```yaml
+auth:
+  user:
+    source: login
+    client_id: veto
+    authorization_url: https://idp.example/authorize
+    token_url: https://idp.example/oauth/token
+    scopes: [orders.read]
+```
+
+```bash
+veto auth login --config veto.yaml --scheme user
+veto auth login --config veto.yaml --scheme user --device
+```
+
+The browser opens from login. Register `http://127.0.0.1:53682/callback` at the identity provider, or set `redirect_url`. Invoke reads the refresh token, refreshes it near expiry, and does not open a browser. No stored token fails the call before upstream HTTP.
+
+OpenAPI says what a call requires. `veto.yaml` says how this deployment obtains it. `source: command` is the adapter for a scheme this binary does not speak. `source: token_exchange` trades a subject token for an access token scoped to one audience.
+
+A token response can carry two secrets. `access_token` is sent as `Authorization: Bearer`. The user token defaults to `id_token` and is sent on `user_header`. Set `auth_token` and `user_token` when the JSON fields have other names. Both headers go out when `user_header` is set, or the contract sets `x-user-token-header` on the scheme. A client-credentials token is never placed on that user header. If the user token is required and login did not store it, the call fails before upstream HTTP. The identity provider or the API checks the token. Veto stores the field and sends it.
+
+```yaml
+auth:
+  user:
+    source: login
+    client_id: veto
+    issuer: https://idp.example
+    user_header: X-User-Token
+    user_token: person_token
+```
+
+Workforce and CI use client credentials. The secret stays in the environment. There is no browser.
+
+```yaml
+auth:
+  workforce:
+    source: client_credentials
+    token_url: https://idp.example/oauth/token
+    client_id: veto-job
+    client_secret_env: WORKFORCE_SECRET
+    scopes: [orders.read]
+    audience: https://api.example
+```
+
+An MCP host that already has the user token passes `token` on `capabilities_invoke`. That value is sent only when the scheme says `source: invoke`. Token exchange can use that same token as `subject: invoke`, or name a login scheme. The upstream call sends the exchanged access token. A missing subject fails before the token URL and before upstream HTTP.
+
+```yaml
+auth:
+  upstream:
+    source: token_exchange
+    token_url: https://idp.example/oauth/token
+    client_id: veto
+    client_secret_env: VETO_SECRET
+    audience: https://api.example
+    scopes: [orders.read]
+    subject: invoke
+```
+
+Anything else is a command. Veto writes JSON to its stdin (`operation_id`, `method`, `url`, `scheme`, and `user_token` when this invoke has one) and reads `headers` plus optional `expires_at` from stdout. A non-zero exit, a timeout, or bad JSON fails the invoke before upstream HTTP. Stdin and stdout are not logged.
+
+```yaml
+auth:
+  sig:
+    source: command
+    command: /usr/local/bin/veto-sig
+    timeout: 5s
+```
+
+`apiKey` schemes use the header or query the contract names. An operation with `security: []` sends no credential. Two schemes in one requirement set two headers. Policy runs before any token URL or command.
 
 ## MCP
 
@@ -173,7 +256,7 @@ The first command runs the message and prints the trace. With the default model 
 `veto doctor --config veto.yaml` loads the contracts, relations, and agent file, then reports blockers for:
 
 - a `--pin` that is unknown or discovery-only
-- a security scheme with no `auth` env name, or that variable unset
+- a security scheme that is not configured, or whose env var, client secret, or stored login is missing
 - with `--ping`, a GET that fails for a server URL
 
 It does not evaluate policy, and it does not approve a delete.

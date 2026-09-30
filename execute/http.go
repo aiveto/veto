@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/aiveto/veto/auth"
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/result"
 	"github.com/aiveto/veto/telemetry"
@@ -25,6 +26,7 @@ type (
 		Client     *http.Client
 		RecordBody bool
 		Auth       map[string]string // secret by scheme name; never read from yaml
+		Creds      *auth.Resolver
 		MaxBody    int64
 	}
 
@@ -33,13 +35,14 @@ type (
 		HTTP        *http.Client
 		RecordBody  bool
 		Auth        map[string]string
+		Creds       *auth.Resolver
 		FollowPages int
 		MaxBody     int64
 	}
 )
 
 func (c Client) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, params map[string]string) (result.HTTPResult, error) {
-	cfg := Config{BaseURL: c.BaseURL, Client: c.HTTP, RecordBody: c.RecordBody, Auth: c.Auth, MaxBody: c.MaxBody}
+	cfg := Config{BaseURL: c.BaseURL, Client: c.HTTP, RecordBody: c.RecordBody, Auth: c.Auth, Creds: c.Creds, MaxBody: c.MaxBody}
 	resp, err := InvokeResponse(ctx, cfg, op, params)
 	if err != nil {
 		return result.HTTPResult{}, err
@@ -62,9 +65,7 @@ func (c Client) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, par
 }
 
 func InvokeResponse(ctx context.Context, cfg Config, op *catalog.Operation, params map[string]string) (*http.Response, error) {
-	if cfg.Client == nil {
-		cfg.Client = http.DefaultClient
-	}
+	cfg.Client = auth.WithEnvProxy(cfg.Client)
 	span := telemetry.StartSpan(ctx, "execute.invoke")
 	defer span.End()
 	span.SetAttributes(
@@ -98,21 +99,30 @@ func InvokeResponse(ctx context.Context, cfg Config, op *catalog.Operation, para
 	}
 	endpoint := strings.TrimRight(base, "/") + path
 
-	var body io.Reader
+	var bodyBytes []byte
 	media := ""
 	if p, ok := op.BodyParam(); ok {
 		raw := params[p.Name]
 		if raw != "" {
-			body = bytes.NewReader([]byte(raw))
+			bodyBytes = []byte(raw)
 			media = p.MediaType
 			if media == "" {
 				media = "application/json"
 			}
 		}
 	}
+	var body io.Reader
+	if len(bodyBytes) > 0 {
+		body = bytes.NewReader(bodyBytes)
+	}
 	req, err := http.NewRequestWithContext(ctx, op.Method, endpoint, body)
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
+	}
+	if len(bodyBytes) > 0 {
+		req.GetBody = func() (io.ReadCloser, error) {
+			return io.NopCloser(bytes.NewReader(bodyBytes)), nil
+		}
 	}
 	q := req.URL.Query()
 	for _, p := range op.Params {
@@ -135,18 +145,16 @@ func InvokeResponse(ctx context.Context, cfg Config, op *catalog.Operation, para
 	if media != "" {
 		req.Header.Set("Content-Type", media)
 	}
-	for _, a := range op.Auth {
-		if a.Kind != "bearer" {
-			continue
-		}
-		val := cfg.Auth[a.Name]
-		if val == "" {
-			return nil, fmt.Errorf("operation %s: %s is unset", op.ID, a.Name)
-		}
-		req.Header.Set(a.Header, "Bearer "+val)
-	}
 	if op.Idempotency == "key" {
 		req.Header.Set("Idempotency-Key", uuid.NewString())
+	}
+	refresh, creds, err := obtainAuth(ctx, cfg, op, req, false)
+	if err != nil {
+		return nil, err
+	}
+	secrets, queryKeys, err := applyCredentials(req, creds)
+	if err != nil {
+		return nil, err
 	}
 	if names := paramNames(params); names != "" {
 		span.SetAttributes(telemetry.Attr("params", names))
@@ -154,7 +162,7 @@ func InvokeResponse(ctx context.Context, cfg Config, op *catalog.Operation, para
 
 	resp, err := doRetry(cfg.Client, req, op)
 	if err != nil {
-		return nil, err
+		return nil, scrubTransport(err, secrets, queryKeys)
 	}
 	raw, err := readLimited(resp.Body, cfg.MaxBody)
 	if closeErr := resp.Body.Close(); closeErr != nil && err == nil {
@@ -163,12 +171,68 @@ func InvokeResponse(ctx context.Context, cfg Config, op *catalog.Operation, para
 	if err != nil {
 		return nil, fmt.Errorf("read body: %w", err)
 	}
+	if resp.StatusCode == http.StatusUnauthorized && refresh {
+		refreshed, rerr := retryUnauthorized(ctx, cfg, op, req, secrets, queryKeys)
+		if rerr != nil {
+			return nil, rerr
+		}
+		resp = refreshed.resp
+		raw = refreshed.raw
+	}
 	resp.Body = io.NopCloser(bytes.NewReader(raw))
 	span.SetAttributes(telemetry.Attr("http.status", strconv.Itoa(resp.StatusCode)))
 	if cfg.RecordBody && len(raw) > 0 {
-		span.SetAttributes(telemetry.Attr("http.body", string(raw)))
+		span.SetAttributes(telemetry.Attr("http.body", auth.Redact(string(raw), secrets, queryKeys)))
 	}
 	return resp, nil
+}
+
+type readResponse struct {
+	resp *http.Response
+	raw  []byte
+}
+
+func retryUnauthorized(ctx context.Context, cfg Config, op *catalog.Operation, req *http.Request, secrets, queryKeys []string) (readResponse, error) {
+	_, creds, err := obtainAuth(ctx, cfg, op, req, true)
+	if err != nil {
+		return readResponse{}, err
+	}
+	moreSecrets, moreKeys, err := applyCredentials(req, creds)
+	if err != nil {
+		return readResponse{}, err
+	}
+	secrets = append(secrets, moreSecrets...)
+	queryKeys = append(queryKeys, moreKeys...)
+	if req.GetBody != nil {
+		body, err := req.GetBody()
+		if err != nil {
+			return readResponse{}, fmt.Errorf("retry body: %w", err)
+		}
+		req.Body = body
+	}
+	resp, err := cfg.Client.Do(req)
+	if err != nil {
+		return readResponse{}, scrubTransport(err, secrets, queryKeys)
+	}
+	raw, err := readLimited(resp.Body, cfg.MaxBody)
+	if closeErr := resp.Body.Close(); closeErr != nil && err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return readResponse{}, fmt.Errorf("read body: %w", err)
+	}
+	return readResponse{resp: resp, raw: raw}, nil
+}
+
+func scrubTransport(err error, secrets, queryKeys []string) error {
+	if err == nil {
+		return nil
+	}
+	msg := auth.Redact(err.Error(), secrets, queryKeys)
+	if msg == err.Error() {
+		return err
+	}
+	return fmt.Errorf("%s", msg)
 }
 
 func doRetry(client *http.Client, req *http.Request, op *catalog.Operation) (*http.Response, error) {
