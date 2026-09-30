@@ -62,7 +62,10 @@ func Load(ctx context.Context, path string) (*catalog.Catalog, error) {
 			}
 			operation := mapOperation(method, path, group, serverURL(doc), op)
 			operation.Servers = serverList(doc)
-			operation.Auth = operationAuth(doc, op)
+			operation.Requirements = operationSecurity(doc, op)
+			if len(operation.Requirements) > 0 {
+				operation.Auth = operation.Requirements[0]
+			}
 			cat.Operations = append(cat.Operations, operation)
 			collectUses(operation.ID, op, &cat.Uses, seenUse)
 			raw = append(raw, collectLinks(operation.ID, op)...)

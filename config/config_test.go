@@ -74,6 +74,23 @@ func TestKnownProviderKeysLoad(t *testing.T) {
 	}
 }
 
+func TestAuthSourcesKeepTheEnvShorthand(t *testing.T) {
+	body := "token_dir: tokens\nauth:\n  bearerAuth: ORDER_TOKEN\n  user:\n    source: login\n    client_id: veto\n    issuer: https://idp.example\n    scopes: [orders.read]\n  workforce:\n    source: client_credentials\n    token_url: https://idp.example/token\n    client_id: job\n    client_secret_env: WORKFORCE_SECRET\n    audience: https://api.example\n  sig:\n    source: command\n    command: /usr/local/bin/veto-sig\n    timeout: 5s\n"
+	path := filepath.Join(t.TempDir(), "veto.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(body), 0o644))
+	cfg, err := config.Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, "ORDER_TOKEN", cfg.Auth["bearerAuth"].Env)
+	assert.Equal(t, "env", cfg.Auth["bearerAuth"].Kind())
+	assert.Equal(t, "login", cfg.Auth["user"].Kind())
+	assert.Equal(t, "https://idp.example", cfg.Auth["user"].Issuer)
+	assert.Equal(t, []string{"orders.read"}, cfg.Auth["user"].Scopes)
+	assert.Equal(t, "WORKFORCE_SECRET", cfg.Auth["workforce"].ClientSecretEnv)
+	assert.Equal(t, []string{"/usr/local/bin/veto-sig"}, []string(cfg.Auth["sig"].Command))
+	assert.Equal(t, 5*time.Second, time.Duration(cfg.Auth["sig"].Timeout))
+	assert.True(t, strings.HasSuffix(cfg.TokenDir, "tokens"))
+}
+
 func TestUnusableProviderKeysFail(t *testing.T) {
 	cases := []struct {
 		name string

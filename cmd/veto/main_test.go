@@ -143,7 +143,7 @@ func TestAuthSecretComesFromTheEnv(t *testing.T) {
 	t.Setenv("ORDER_TOKEN", "s3cret")
 	loop, cfg, err := buildLoop(nil, path, "", "", "")
 	require.NoError(t, err)
-	assert.Equal(t, "ORDER_TOKEN", cfg.Auth["bearerAuth"])
+	assert.Equal(t, "ORDER_TOKEN", cfg.Auth["bearerAuth"].Env)
 	exec, ok := loop.Exec.(execute.Client)
 	require.True(t, ok)
 	assert.Equal(t, "s3cret", exec.Auth["bearerAuth"])
@@ -242,6 +242,7 @@ func TestDoctorReportsPinsAuthAndPing(t *testing.T) {
 	conf := filepath.Join(dir, "veto.yaml")
 	text := "auth:\n  bearerAuth: ORDER_TOKEN\ncontracts:\n  - " + spec + "\n"
 	require.NoError(t, os.WriteFile(conf, []byte(text), 0o644))
+	t.Setenv("VETO_TOKEN_DIR", t.TempDir())
 	t.Setenv("ORDER_TOKEN", "")
 	secured, loaded, err := buildLoop(nil, conf, "", "", "")
 	require.NoError(t, err)

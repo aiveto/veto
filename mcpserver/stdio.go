@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/aiveto/veto/auth"
 	"github.com/aiveto/veto/catalog"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -32,6 +33,7 @@ type (
 		OperationID string         `json:"operation_id" jsonschema:"operation id"`
 		Params      map[string]any `json:"params,omitempty" jsonschema:"parameters; strings, or a JSON object for body"`
 		ApprovalID  string         `json:"approval_id,omitempty" jsonschema:"approval id from confirmation"`
+		Token       string         `json:"token,omitempty" jsonschema:"user token for this call when the scheme source is invoke"`
 	}
 )
 
@@ -118,6 +120,7 @@ func invokeCall(ctx context.Context, srv *Server, args invokeArgs) (*mcp.CallToo
 	if err != nil {
 		return toolError(err)
 	}
+	ctx = auth.WithUserToken(ctx, args.Token)
 	res, err := srv.Invoke(ctx, args.OperationID, params, args.ApprovalID)
 	return invokeToolResult(res, err)
 }
