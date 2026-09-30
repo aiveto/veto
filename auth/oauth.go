@@ -1,17 +1,22 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
+
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/clientcredentials"
 )
 
 const expirySkew = 30 * time.Second
@@ -217,17 +222,6 @@ func usable(exp, now time.Time) bool {
 	return now.Before(exp)
 }
 
-func pkce() (verifier, challenge string, err error) {
-	buf := make([]byte, 32)
-	if _, err = rand.Read(buf); err != nil {
-		return "", "", fmt.Errorf("pkce: %w", err)
-	}
-	verifier = base64.RawURLEncoding.EncodeToString(buf)
-	sum := sha256.Sum256([]byte(verifier))
-	challenge = base64.RawURLEncoding.EncodeToString(sum[:])
-	return verifier, challenge, nil
-}
-
 func randomState() (string, error) {
 	buf := make([]byte, 16)
 	if _, err := rand.Read(buf); err != nil {
@@ -238,4 +232,132 @@ func randomState() (string, error) {
 
 func scopeParam(scopes []string) string {
 	return strings.Join(scopes, " ")
+}
+
+func oauthConfig(scheme Scheme, redirect, secret string) *oauth2.Config {
+	return &oauth2.Config{
+		ClientID:     scheme.ClientID,
+		ClientSecret: secret,
+		RedirectURL:  redirect,
+		Scopes:       scheme.Scopes,
+		Endpoint: oauth2.Endpoint{
+			AuthURL:       scheme.AuthorizationURL,
+			DeviceAuthURL: scheme.DeviceAuthorizationURL,
+			TokenURL:      scheme.TokenURL,
+			AuthStyle:     oauth2.AuthStyleInParams,
+		},
+	}
+}
+
+func refreshToken(ctx context.Context, client *http.Client, clientID, secret, tokenURL, refresh string, secrets []string) (tokenResponse, error) {
+	cfg := &oauth2.Config{
+		ClientID:     clientID,
+		ClientSecret: secret,
+		Endpoint: oauth2.Endpoint{
+			TokenURL:  tokenURL,
+			AuthStyle: oauth2.AuthStyleInParams,
+		},
+	}
+	ctx, cap := withOAuthClient(ctx, client)
+	tok, err := cfg.TokenSource(ctx, &oauth2.Token{
+		AccessToken:  "expired",
+		RefreshToken: refresh,
+		Expiry:       time.Unix(1, 0),
+	}).Token()
+	if err != nil {
+		return tokenResponse{}, fmt.Errorf("token endpoint: %s", Redact(err.Error(), secrets, nil))
+	}
+	return capturedToken(tok, cap.take())
+}
+
+func clientCredentialsToken(ctx context.Context, client *http.Client, clientID, secret, tokenURL, audience string, scopes []string) (tokenResponse, error) {
+	cfg := &clientcredentials.Config{
+		ClientID:     clientID,
+		ClientSecret: secret,
+		TokenURL:     tokenURL,
+		Scopes:       scopes,
+		AuthStyle:    oauth2.AuthStyleInParams,
+	}
+	if audience != "" {
+		cfg.EndpointParams = url.Values{"audience": {audience}}
+	}
+	ctx, cap := withOAuthClient(ctx, client)
+	tok, err := cfg.Token(ctx)
+	if err != nil {
+		return tokenResponse{}, fmt.Errorf("token endpoint: %s", Redact(err.Error(), []string{secret}, nil))
+	}
+	return capturedToken(tok, cap.take())
+}
+
+func capturedToken(tok *oauth2.Token, body []byte) (tokenResponse, error) {
+	parsed, err := decodeTokenResponse(body)
+	if err != nil {
+		return tokenResponse{}, err
+	}
+	if tok != nil {
+		if parsed.AccessToken == "" {
+			parsed.AccessToken = tok.AccessToken
+		}
+		if parsed.RefreshToken == "" {
+			parsed.RefreshToken = tok.RefreshToken
+		}
+		if parsed.ExpiresIn == 0 && tok.ExpiresIn > 0 {
+			parsed.ExpiresIn = int(tok.ExpiresIn)
+		}
+	}
+	if parsed.Error != "" || !parsed.hasToken() {
+		return tokenResponse{}, fmt.Errorf("token endpoint rejected the request")
+	}
+	return parsed, nil
+}
+
+type bodyCapture struct {
+	base http.RoundTripper
+	mu   sync.Mutex
+	last []byte
+}
+
+func withOAuthClient(ctx context.Context, base *http.Client) (context.Context, *bodyCapture) {
+	cap := &bodyCapture{}
+	if base == nil {
+		base = &http.Client{}
+	}
+	cap.base = base.Transport
+	client := *base
+	client.Transport = cap
+	return context.WithValue(ctx, oauth2.HTTPClient, &client), cap
+}
+
+func (c *bodyCapture) RoundTrip(req *http.Request) (*http.Response, error) {
+	base := c.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	resp, err := base.RoundTrip(req)
+	if err != nil || resp == nil || resp.Body == nil {
+		return resp, err
+	}
+	raw, rerr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	_ = resp.Body.Close()
+	if rerr != nil {
+		return nil, rerr
+	}
+	c.mu.Lock()
+	c.last = append([]byte(nil), raw...)
+	c.mu.Unlock()
+	// net/http sniffs a JSON body with no Content-Type as text/plain.
+	// x/oauth2 then parses text/plain as a form and misses access_token.
+	media, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	trimmed := bytes.TrimSpace(raw)
+	if (media == "" || media == "text/plain") && len(trimmed) > 0 && (trimmed[0] == '{' || trimmed[0] == '[') {
+		resp.Header.Set("Content-Type", "application/json")
+	}
+	resp.Body = io.NopCloser(bytes.NewReader(raw))
+	return resp, nil
+}
+
+func (c *bodyCapture) take() []byte {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]byte(nil), c.last...)
 }

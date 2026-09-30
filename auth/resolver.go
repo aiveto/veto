@@ -264,7 +264,7 @@ func (r *Resolver) materialScheme(ctx context.Context, a catalog.Auth, in creden
 	method := in.Method
 	key := cacheKey(s, need)
 	if s.Source == "command" {
-		key += "\x00" + endpoint
+		key += "\x00" + method + "\x00" + endpoint + "\x00" + UserToken(ctx)
 	}
 	if s.Source == "token_exchange" {
 		subject := r.subjectToken(ctx, s)
@@ -281,9 +281,6 @@ func (r *Resolver) materialScheme(ctx context.Context, a catalog.Auth, in creden
 		r.cache.delete(key)
 	}
 	flightKey := key
-	if s.Source == "command" {
-		flightKey += "\x00" + method
-	}
 	if force {
 		flightKey += "\x00force"
 	}
@@ -393,18 +390,8 @@ func (r *Resolver) fetchLogin(ctx context.Context, s Scheme, a catalog.Auth, nee
 		clientID = stored.ClientID
 	}
 	secret := r.env(s.ClientSecretEnv)
-	form := url.Values{}
-	form.Set("grant_type", "refresh_token")
-	form.Set("refresh_token", stored.RefreshToken)
-	form.Set("client_id", clientID)
-	if secret != "" {
-		form.Set("client_secret", secret)
-	}
-	if scopes := scopeParam(need); scopes != "" {
-		form.Set("scope", scopes)
-	}
 	secrets := append([]string{secret, stored.RefreshToken, stored.AccessToken}, fieldSecrets(stored.Fields)...)
-	tok, err := postForm(ctx, r.http, tokenURL, form, secrets)
+	tok, err := refreshToken(ctx, r.http, clientID, secret, tokenURL, stored.RefreshToken, secrets)
 	if err != nil {
 		if !force && usable(stored.ExpiresAt, now) {
 			if mat, perr := r.placeLogin(s, a, stored, stored.ExpiresAt); perr == nil {
@@ -541,17 +528,7 @@ func (r *Resolver) fetchClient(ctx context.Context, s Scheme, a catalog.Auth, ne
 	if secret == "" || s.TokenURL == "" || s.ClientID == "" {
 		return Material{}, fmt.Errorf("%s client secret is unset", a.Name)
 	}
-	form := url.Values{}
-	form.Set("grant_type", "client_credentials")
-	form.Set("client_id", s.ClientID)
-	form.Set("client_secret", secret)
-	if scopes := scopeParam(need); scopes != "" {
-		form.Set("scope", scopes)
-	}
-	if s.Audience != "" {
-		form.Set("audience", s.Audience)
-	}
-	tok, err := postForm(ctx, r.http, s.TokenURL, form, []string{secret})
+	tok, err := clientCredentialsToken(ctx, r.http, s.ClientID, secret, s.TokenURL, s.Audience, need)
 	if err != nil {
 		return Material{}, err
 	}
