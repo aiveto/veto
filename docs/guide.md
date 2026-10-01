@@ -481,7 +481,7 @@ jobs:
 
 ## Limits
 
-`veto serve` is stdio MCP. There is no shared listener.
+`veto serve` defaults to stdio. `--http` is one process at `127.0.0.1:7433`.
 
 Approval nonces are local files. `VETO_APPROVAL_SECRET` signs the yes. `VETO_APPROVAL_NONCE_DIR` is the nonce directory on that machine. Two machines that share the signing secret and not the nonce directory can both accept a yes until expiry.
 
@@ -505,7 +505,7 @@ Veto is not an API gateway replacement. It does not sit in front of every client
 
 ## Roadmap
 
-HTTP transport. One approval webhook. Richer policy input. Better discovery.
+Better discovery.
 
 ## What the API still owns
 
