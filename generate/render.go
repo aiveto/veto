@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"go/format"
 	"go/token"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"text/template"
@@ -319,7 +319,7 @@ func Render(module string, cat *catalog.Catalog) (Files, error) {
 
 func views(cat *catalog.Catalog) []opView {
 	ops := append([]catalog.Operation(nil), cat.Operations...)
-	sort.Slice(ops, func(i, j int) bool { return ops[i].ID < ops[j].ID })
+	slices.SortFunc(ops, func(a, b catalog.Operation) int { return strings.Compare(a.ID, b.ID) })
 	usedCmd := map[string]int{}
 	usedGo := map[string]int{"New": 1, "Calls": 1}
 	out := make([]opView, 0, len(ops))

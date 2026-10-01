@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 
@@ -24,11 +25,11 @@ type (
 // When redact is set, only the allowlisted attributes are kept.
 func FromSpans(spans []telemetry.Span, redact bool) View {
 	ordered := append([]telemetry.Span(nil), spans...)
-	sort.Slice(ordered, func(i, j int) bool {
-		if ordered[i].Start.Equal(ordered[j].Start) {
-			return ordered[i].Name < ordered[j].Name
+	slices.SortFunc(ordered, func(a, b telemetry.Span) int {
+		if c := a.Start.Compare(b.Start); c != 0 {
+			return c
 		}
-		return ordered[i].Start.Before(ordered[j].Start)
+		return strings.Compare(a.Name, b.Name)
 	})
 	view := View{Steps: make([]Step, 0, len(ordered))}
 	for _, sp := range ordered {

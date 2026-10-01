@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/aiveto/veto/catalog"
@@ -147,11 +147,11 @@ func draftOperations(doc *openapi3.T) []drafted {
 			out = append(out, drafted{method: method, path: path, group: group, item: item, op: op})
 		}
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].path != out[j].path {
-			return out[i].path < out[j].path
+	slices.SortFunc(out, func(a, b drafted) int {
+		if c := strings.Compare(a.path, b.path); c != 0 {
+			return c
 		}
-		return out[i].method < out[j].method
+		return strings.Compare(a.method, b.method)
 	})
 	return out
 }

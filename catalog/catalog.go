@@ -2,7 +2,9 @@ package catalog
 
 import (
 	"fmt"
+	"slices"
 	"sort"
+	"strings"
 )
 
 const (
@@ -187,7 +189,7 @@ func (c *Catalog) SelectServer(name string) error {
 }
 
 func (c *Catalog) Finalize() {
-	sort.Slice(c.Operations, func(i, j int) bool { return c.Operations[i].ID < c.Operations[j].ID })
+	slices.SortFunc(c.Operations, func(a, b Operation) int { return strings.Compare(a.ID, b.ID) })
 	c.index()
 	c.Graph = BuildGraph(c.Operations, c.Links, c.Uses)
 }
