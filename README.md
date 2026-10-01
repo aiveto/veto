@@ -59,7 +59,14 @@ The tool names are `capabilities_search`, `capabilities_describe`, and `capabili
 
 ## Connect your services
 
-One [veto.yaml](docs/guide.md#one-vetoyaml) names the OpenAPI files and the credential sources. `veto serve --stdio` speaks MCP on stdin. [Authenticated Streamable HTTP](docs/guide.md#remote-mcp) serves the same runtime to a remote client.
+[`veto init`](docs/guide.md#one-vetoyaml) writes `veto.yaml` for the OpenAPI files you name, and a `relations.yaml` stub if you do not have one. If `veto.yaml` is already there, `init` stops.
+
+```bash
+veto init orders.yaml customers.yaml
+veto validate --config veto.yaml
+```
+
+`validate` prints the operation count and the joins. `veto serve --stdio` speaks MCP on stdin. [Authenticated Streamable HTTP](docs/guide.md#remote-mcp) serves the same runtime to a remote client.
 
 Credentials come from the environment, OAuth, a caller-supplied token, token exchange, a command that returns headers, or a Go provider that signs the request. The agent does not perform that login. [Authentication](docs/guide.md#auth).
 
@@ -84,13 +91,13 @@ go run ./cmd/veto eval --config testdata/veto.yaml --case testdata/delete.yaml
 go run ./cmd/veto serve --config testdata/veto.yaml --stdio
 ```
 
-`validate` and `eval` read the contract in this repo. `serve --stdio` is the MCP process. A call needs an API that is still listening, which is what veto-demo keeps up.
+`testdata/veto.yaml` is already written, so these commands start at `validate`. `eval` runs the delete case in this repo. `serve --stdio` is the MCP process. A call needs an API that is still listening, which is what veto-demo keeps up.
 
 ## Scope
 
 **Pre-1.0.** Public APIs may change. Request bodies are not validated against the OpenAPI schema. The loader accepts bearer, API key, and OAuth2. Other schemes need a command or a Go signer.
 
-Approvals and tokens are files on the machine that issued them. Two machines that share the signing secret and not the approval directory can both accept the same yes until it expires.
+Approvals and tokens are files on the machine that issued them. Two machines that share the signing secret and not the nonce directory can both accept the same yes until it expires.
 
 Your host owns the model. Your API still authenticates the caller and enforces its own authorization.
 
