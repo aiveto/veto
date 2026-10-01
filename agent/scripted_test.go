@@ -31,6 +31,27 @@ func TestScriptedRequiresTheMessageInThePack(t *testing.T) {
 	}
 }
 
+func TestScriptedReadsTheWholeOrderID(t *testing.T) {
+	cases := []struct {
+		msg string
+		id  string
+	}{
+		{msg: "delete order 123", id: "123"},
+		{msg: "delete order 10abc", id: "10abc"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.id, func(t *testing.T) {
+			got, err := agent.NewScripted().Complete(t.Context(), agent.Request{
+				UserMessage: tc.msg,
+				Context:     tc.msg,
+			})
+			require.NoError(t, err)
+			assert.Equal(t, "orders.delete", got.OperationID)
+			assert.Equal(t, tc.id, got.Params["id"])
+		})
+	}
+}
+
 func TestWithOperationDoesNotChangeTheOriginal(t *testing.T) {
 	base := agent.NewScripted()
 	next := base.WithOperation("assets.delete")

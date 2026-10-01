@@ -24,11 +24,6 @@ func NewScripted() *Scripted {
 	return &Scripted{
 		patterns: []scriptPattern{
 			{
-				re:          regexp.MustCompile(`(?i)delete\s+order\s+(\d+)`),
-				operationID: "orders.delete",
-				paramNames:  []string{"id"},
-			},
-			{
 				re:          regexp.MustCompile(`(?i)delete\s+order\s+(\w+)`),
 				operationID: "orders.delete",
 				paramNames:  []string{"id"},

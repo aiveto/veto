@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `semantics.yaml` rejects an unknown field, a repeated field, a missing operation, a repeated operation, and an alias that loops. `veto.yaml` rejects a repeated field and an alias that loops.
+- Scripted replay reads the whole id in `delete order`, so `10abc` stays `10abc`.
 - Invoke allows 16 calls in one second in this process, counted per caller. The next call stops before policy, a token URL, and upstream HTTP. That limit stays on.
 - A capability bundle is a directory or a zip of contracts, relations, and check cases. `veto check --bundle` and `veto doctor --bundle` load it the same way as a config that points at those files. Credentials, token URLs, client secrets, and environment base URLs stay in the deployment config. A bundle that contains a client secret, a token URL, or a base URL does not load.
 - `response_fields`, or `fields` on invoke, returns those JSON fields after a successful call, plus a page and `truncated` when the response cap cuts the body. With no fields named, the body is unchanged. The cap stays. Secrets stay off the trace.

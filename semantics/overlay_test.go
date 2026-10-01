@@ -29,3 +29,24 @@ func TestOverlayMissingKeyKeepsDerivedSentence(t *testing.T) {
 	assert.Equal(t, "Fetch one order", missing.Sentence)
 	assert.Equal(t, "Order.customerId identifies customers.get", missing.Relation)
 }
+
+func TestOverlayRejectsABadFile(t *testing.T) {
+	base := NewDerived(&catalog.Catalog{})
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{name: "unknown field", body: "- operation: orders.delete\n  synonims:\n    - scrap\n", want: "synonims"},
+		{name: "duplicate field", body: "- operation: orders.delete\n  operation: orders.get\n", want: `duplicate field "operation"`},
+		{name: "missing operation", body: "- sentence: orphan\n", want: "operation required"},
+		{name: "duplicate operation", body: "- operation: orders.delete\n  sentence: one\n- operation: orders.delete\n  sentence: two\n", want: `duplicate operation "orders.delete"`},
+		{name: "alias cycle", body: "- &a\n  operation: orders.delete\n  sentence: *a\n", want: "alias cycle"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ParseOverlay([]byte(tc.body), base)
+			require.ErrorContains(t, err, tc.want)
+		})
+	}
+}
