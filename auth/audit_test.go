@@ -63,6 +63,36 @@ func TestExtraProviderDoesNotCacheAcrossRequests(t *testing.T) {
 	assert.Equal(t, "b", req.Header.Get("X-Op"))
 }
 
+func TestExtraProviderKeepsCatalogScopesAheadOfSchemeDefaults(t *testing.T) {
+	r := New(Options{
+		Dir: t.TempDir(),
+		Schemes: []Scheme{{
+			Name: "api", Source: "env", Scopes: []string{"scheme.read"}, Audience: "scheme-aud",
+		}},
+	})
+	src := &countingProvider{}
+	r.SetProvider("api", src)
+	p, ok := r.Provider(catalog.Auth{Name: "api", Scopes: []string{"orders.write"}})
+	require.True(t, ok)
+
+	_, err := p.Resolve(t.Context(), credentials.Request{})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"orders.write"}, src.last.Scopes)
+	assert.Equal(t, "scheme-aud", src.last.Audience)
+
+	_, err = p.Resolve(t.Context(), credentials.Request{Scopes: []string{"caller.scope"}, Audience: "caller-aud"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"caller.scope"}, src.last.Scopes)
+	assert.Equal(t, "caller-aud", src.last.Audience)
+
+	empty, ok := r.Provider(catalog.Auth{Name: "api"})
+	require.True(t, ok)
+	_, err = empty.Resolve(t.Context(), credentials.Request{})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"scheme.read"}, src.last.Scopes)
+	assert.Equal(t, "scheme-aud", src.last.Audience)
+}
+
 func TestFlightDoReturnsWhenTheWaiterIsCanceled(t *testing.T) {
 	f := &flight{}
 	started := make(chan struct{})
