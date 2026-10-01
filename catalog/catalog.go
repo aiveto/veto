@@ -59,7 +59,10 @@ type (
 	Operation struct {
 		ID                   string
 		Name                 string
+		Summary              string `json:"-"`
 		Description          string
+		IDFallback           bool   `json:"-"`
+		IDCollision          string `json:"-"`
 		Group                string
 		Kind                 Kind
 		Method               string

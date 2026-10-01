@@ -7,9 +7,12 @@ import (
 	"os"
 	"sort"
 
+	"strings"
+
 	"github.com/aiveto/veto/auth"
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/config"
+	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/mcpserver"
 	"github.com/spf13/cobra"
 )
@@ -28,7 +31,7 @@ func newDoctorCommand() *cobra.Command {
 	cmd := &doctorCmd{}
 	c := &cobra.Command{
 		Use:   "doctor",
-		Short: "Check contracts, relations, auth env names, and pins.",
+		Short: "Check contracts, auth, ids, parameters, summaries, and pins.",
 		Run: func(*cobra.Command, []string) {
 			runDoctor(*cmd)
 		},
@@ -51,28 +54,178 @@ func runDoctor(cmd doctorCmd) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.Timeout)
 	defer cancel()
-	blockers := doctorBlockers(ctx, loop.Catalog, cfg, cmd.pin, cmd.ping)
-	if len(blockers) == 0 {
+	lines, fail := doctorReport(ctx, loop.Catalog, cfg, cmd.pin, cmd.ping)
+	if len(lines) == 0 {
 		fmt.Fprintln(os.Stderr, "ok")
 		return
 	}
-	for _, line := range blockers {
+	for _, line := range lines {
 		fmt.Fprintln(os.Stderr, line)
 	}
-	os.Exit(1)
+	if fail {
+		os.Exit(1)
+	}
 }
 
 func doctorBlockers(ctx context.Context, cat *catalog.Catalog, cfg config.File, pins []string, ping bool) []string {
+	lines, _ := doctorReport(ctx, cat, cfg, pins, ping)
+	return lines
+}
+
+func doctorReport(ctx context.Context, cat *catalog.Catalog, cfg config.File, pins []string, ping bool) ([]string, bool) {
 	var out []string
+	fail := false
 	if err := mcpserver.ValidatePins(cat, pins); err != nil {
 		out = append(out, err.Error())
+		fail = true
 	}
-	out = append(out, authBlockers(cat, cfg.Auth, tokenDir(cfg))...)
+	authLines := authBlockers(cat, cfg.Auth, tokenDir(cfg))
+	if len(authLines) > 0 {
+		out = append(out, authLines...)
+		fail = true
+	}
+	found, bad := catalogFindings(cat, cfg.Auth, tokenDir(cfg))
+	out = append(out, found...)
+	if bad {
+		fail = true
+	}
 	if ping {
-		out = append(out, pingServers(ctx, &http.Client{Timeout: cfg.Timeout}, cat)...)
+		pingLines := pingServers(ctx, &http.Client{Timeout: cfg.Timeout}, cat)
+		if len(pingLines) > 0 {
+			out = append(out, pingLines...)
+			fail = true
+		}
 	}
 	sort.Strings(out)
-	return out
+	return out, fail
+}
+
+func catalogFindings(cat *catalog.Catalog, names config.Sources, dir string) ([]string, bool) {
+	if cat == nil {
+		return nil, false
+	}
+	var out []string
+	fail := false
+	for _, op := range cat.Operations {
+		if line := missingAuth(op, names, dir); line != "" {
+			out = append(out, line)
+			fail = true
+		}
+		if op.IDCollision != "" {
+			out = append(out, fmt.Sprintf("%s: colliding id %s", op.ID, op.IDCollision))
+			fail = true
+		}
+		if op.IDFallback {
+			out = append(out, op.ID+": fallback id")
+		}
+		for _, p := range op.Params {
+			why := execute.Unserializable(p)
+			if why == "" {
+				continue
+			}
+			out = append(out, fmt.Sprintf("%s: parameter %s cannot be serialized: %s", op.ID, p.Name, why))
+			fail = true
+		}
+		if line := summaryLine(op); line != "" {
+			out = append(out, line)
+		}
+		if line := approvalLine(op); line != "" {
+			out = append(out, line)
+		}
+	}
+	return out, fail
+}
+
+func missingAuth(op catalog.Operation, names config.Sources, dir string) string {
+	groups := op.Requirements
+	if len(groups) == 0 && len(op.Auth) > 0 {
+		groups = [][]catalog.Auth{op.Auth}
+	}
+	if len(groups) == 0 {
+		return ""
+	}
+	for _, group := range groups {
+		if groupReady(group, names, dir) {
+			return ""
+		}
+	}
+	var missing []string
+	seen := map[string]bool{}
+	for _, group := range groups {
+		for _, a := range group {
+			if a.Name == "" || seen[a.Name] || schemeReady(a, names, dir) {
+				continue
+			}
+			seen[a.Name] = true
+			missing = append(missing, a.Name)
+		}
+	}
+	sort.Strings(missing)
+	if len(missing) == 0 {
+		return op.ID + ": missing auth"
+	}
+	return op.ID + ": missing auth " + strings.Join(missing, ", ")
+}
+
+func groupReady(group []catalog.Auth, names config.Sources, dir string) bool {
+	if len(group) == 0 {
+		return false
+	}
+	for _, a := range group {
+		if !schemeReady(a, names, dir) {
+			return false
+		}
+	}
+	return true
+}
+
+func schemeReady(a catalog.Auth, names config.Sources, dir string) bool {
+	if a.Kind == "unsupported" || (a.Kind == "apiKey" && a.Header == "" && a.Query == "") {
+		return false
+	}
+	src, ok := names[a.Name]
+	if !ok {
+		return false
+	}
+	return len(sourceBlockers(a.Name, src, dir)) == 0
+}
+
+func summaryLine(op catalog.Operation) string {
+	text := strings.TrimSpace(op.Summary)
+	if text == "" {
+		return op.ID + ": empty summary"
+	}
+	if weakSummary(text, op.ID) {
+		return op.ID + ": weak summary"
+	}
+	return ""
+}
+
+func weakSummary(text, id string) bool {
+	if strings.EqualFold(text, id) {
+		return true
+	}
+	return len(strings.Fields(text)) < 2
+}
+
+func approvalLine(op catalog.Operation) string {
+	if !op.RequiresConfirmation || !writeOp(op) {
+		return ""
+	}
+	return op.ID + ": write requires approval"
+}
+
+func writeOp(op catalog.Operation) bool {
+	switch op.SideEffect {
+	case catalog.SideEffectWrite, catalog.SideEffectDestructive:
+		return true
+	}
+	switch op.Method {
+	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+		return true
+	default:
+		return false
+	}
 }
 
 func authBlockers(cat *catalog.Catalog, names config.Sources, dir string) []string {
