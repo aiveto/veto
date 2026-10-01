@@ -148,6 +148,47 @@ func TestWrapPolicyKeepsBuiltinUnlessItStops(t *testing.T) {
 	}
 }
 
+type deleteFlow struct{}
+
+func (deleteFlow) Complete(context.Context, agent.Request) (agent.Response, error) {
+	return agent.Response{FlowName: "get-then-delete", Params: map[string]string{"id": "9"}}, nil
+}
+
+func TestPausedFlowKeepsTheApprovalID(t *testing.T) {
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
+	require.NoError(t, err)
+	def := &flow.Definition{Name: "get-then-delete", Steps: []flow.Step{
+		{Operation: "orders.get"},
+		{Operation: "orders.delete"},
+	}}
+	var methods []string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		methods = append(methods, r.Method)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+	loop := &agent.Loop{
+		Catalog:   cat,
+		Semantics: semantics.NewDerived(cat),
+		Model:     deleteFlow{},
+		Policy:    policy.Builtin{},
+		State:     policy.NewState(),
+		Exec:      execute.Client{BaseURL: ts.URL, HTTP: ts.Client()},
+		Flows:     map[string]*flow.Definition{def.Name: def},
+		Packs:     runctx.NewBuilder(0),
+	}
+	out, err := loop.Run(context.Background(), "get order 9 then delete it")
+	require.NoError(t, err)
+	assert.Equal(t, "confirmation_required", out.Status)
+	assert.Equal(t, "orders.delete", out.OperationID)
+	assert.NotEmpty(t, out.ApprovalID)
+	pending := loop.State.Pending(out.ApprovalID)
+	require.NotNil(t, pending)
+	assert.Equal(t, "orders.delete", pending.OperationID)
+	assert.Equal(t, "9", pending.Params["id"])
+	assert.Equal(t, []string{http.MethodGet}, methods)
+}
+
 func TestLoopRunsNamedFlow(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)

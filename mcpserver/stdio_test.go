@@ -43,3 +43,24 @@ func TestMissingParamStaysStructuredOnTheToolResult(t *testing.T) {
 		})
 	}
 }
+
+func TestInvokeErrorReturnsTheSanitizedCause(t *testing.T) {
+	const secret = "super-secret"
+	cause := `Get "https://user:` + secret + `@api.example/orders?api_key=` + secret + `": dial tcp: connection refused Authorization: Bearer ` + secret
+	tool, _, err := invokeToolResult(InvokeResult{Status: "error", OperationID: "orders.get"}, errors.New(cause))
+	require.NoError(t, err)
+	require.NotNil(t, tool)
+	assert.True(t, tool.IsError)
+	require.NotEmpty(t, tool.Content)
+	text := tool.Content[0].(*mcp.TextContent).Text
+	assert.Contains(t, text, "connection refused")
+	assert.Contains(t, text, `"error"`)
+	assert.NotContains(t, text, secret)
+
+	stored, _, err := invokeToolResult(InvokeResult{Status: "error", Error: "api_key=" + secret}, nil)
+	require.NoError(t, err)
+	require.NotEmpty(t, stored.Content)
+	storedText := stored.Content[0].(*mcp.TextContent).Text
+	assert.Contains(t, storedText, "api_key=REDACTED")
+	assert.NotContains(t, storedText, secret)
+}

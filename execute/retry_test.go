@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -53,7 +54,9 @@ func TestRetryOnlyWhenTheCallIsIdempotent(t *testing.T) {
 			var hits atomic.Int32
 			var key string
 			var keyChanged bool
+			var times []time.Time
 			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				times = append(times, time.Now())
 				hits.Add(1)
 				got := r.Header.Get("Idempotency-Key")
 				if key == "" {
@@ -74,6 +77,78 @@ func TestRetryOnlyWhenTheCallIsIdempotent(t *testing.T) {
 			} else {
 				assert.Empty(t, key)
 			}
+			if tc.hits > 1 {
+				require.GreaterOrEqual(t, len(times), 2)
+				assert.GreaterOrEqual(t, times[1].Sub(times[0]), 30*time.Millisecond)
+			}
 		})
 	}
+}
+
+func TestRetryHonorsRetryAfter(t *testing.T) {
+	op := &catalog.Operation{
+		ID: "orders.create", Method: http.MethodPost, PathTemplate: "/orders",
+		Idempotency: "key", Retry: "1",
+		Params: []catalog.Param{{Name: "body", In: "body", Required: true}},
+	}
+	cases := []struct {
+		name   string
+		header func() string
+	}{
+		{name: "delay seconds", header: func() string { return "1" }},
+		{name: "http date", header: func() string { return time.Now().Add(2 * time.Second).UTC().Format(http.TimeFormat) }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var hits atomic.Int32
+			var key string
+			var keyChanged bool
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				got := r.Header.Get("Idempotency-Key")
+				if key == "" {
+					key = got
+				} else if got != key {
+					keyChanged = true
+				}
+				if hits.Add(1) == 1 {
+					w.Header().Set("Retry-After", tc.header())
+					w.WriteHeader(http.StatusTooManyRequests)
+					return
+				}
+				w.WriteHeader(http.StatusCreated)
+			}))
+			defer ts.Close()
+			start := time.Now()
+			resp, err := execute.InvokeResponse(context.Background(), execute.Config{BaseURL: ts.URL}, op, map[string]string{"body": `{"name":"a"}`})
+			elapsed := time.Since(start)
+			require.NoError(t, err)
+			require.NoError(t, resp.Body.Close())
+			assert.Equal(t, int32(2), hits.Load())
+			assert.GreaterOrEqual(t, elapsed, 900*time.Millisecond)
+			assert.False(t, keyChanged)
+			assert.NotEmpty(t, key)
+		})
+	}
+}
+
+func TestRetryAfterStopsWhenTheContextIsCanceled(t *testing.T) {
+	op := &catalog.Operation{ID: "orders.get", Method: http.MethodGet, PathTemplate: "/orders", Retry: "2"}
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "2")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer ts.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		time.Sleep(40 * time.Millisecond)
+		cancel()
+	}()
+	start := time.Now()
+	resp, err := execute.InvokeResponse(ctx, execute.Config{BaseURL: ts.URL}, op, nil)
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.Less(t, time.Since(start), 1500*time.Millisecond)
 }

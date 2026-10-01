@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/aiveto/veto/auth"
 	"github.com/aiveto/veto/catalog"
@@ -257,11 +258,86 @@ func doRetry(client *http.Client, req *http.Request, op *catalog.Operation) (*ht
 		if try+1 == attempts || !retryStatus(resp.StatusCode) {
 			return resp, nil
 		}
+		delay := retryDelay(resp, try)
 		if err := resp.Body.Close(); err != nil {
 			return nil, fmt.Errorf("close body: %w", err)
 		}
+		if err := waitRetry(req.Context(), delay); err != nil {
+			return nil, err
+		}
 	}
 	return resp, err
+}
+
+const (
+	retryBase    = 50 * time.Millisecond
+	maxRetryWait = 30 * time.Second
+)
+
+func retryDelay(resp *http.Response, try int) time.Duration {
+	if d, ok := retryAfter(resp); ok {
+		return capRetryWait(d)
+	}
+	if try < 0 {
+		try = 0
+	}
+	if try > 4 {
+		try = 4
+	}
+	return capRetryWait(retryBase << try)
+}
+
+func retryAfter(resp *http.Response) (time.Duration, bool) {
+	if resp == nil {
+		return 0, false
+	}
+	raw := strings.TrimSpace(resp.Header.Get("Retry-After"))
+	if raw == "" {
+		return 0, false
+	}
+	if secs, err := strconv.Atoi(raw); err == nil {
+		if secs < 0 {
+			return 0, true
+		}
+		return time.Duration(secs) * time.Second, true
+	}
+	when, err := http.ParseTime(raw)
+	if err != nil {
+		return 0, false
+	}
+	d := time.Until(when)
+	if d < 0 {
+		return 0, true
+	}
+	return d, true
+}
+
+// A long Retry-After must not stall the call indefinitely.
+func capRetryWait(d time.Duration) time.Duration {
+	if d < 0 {
+		return 0
+	}
+	if d > maxRetryWait {
+		return maxRetryWait
+	}
+	return d
+}
+
+func waitRetry(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func callIsIdempotent(op *catalog.Operation, req *http.Request) bool {
