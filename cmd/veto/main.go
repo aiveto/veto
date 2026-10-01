@@ -911,6 +911,7 @@ func applyProviders(loop *agent.Loop, cfg config.File) error {
 			eng.Principal = cfg.Caller
 		}
 		loop.SetPolicy(eng)
+		loop.SetFloor(base)
 	default:
 		return fmt.Errorf("policy provider %q is not in this slice", cfg.Policy)
 	}

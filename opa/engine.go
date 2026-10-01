@@ -50,15 +50,22 @@ func New(ctx context.Context, file, bundle string, next policy.Hook) (*Engine, e
 }
 
 func (e *Engine) Check(ctx context.Context, op *catalog.Operation) (policy.Decision, error) {
-	decision, _, err := e.evaluate(ctx, op)
-	if err != nil || decision != policy.DecisionAllow {
-		return decision, err
-	}
 	next := e.next
 	if next == nil {
 		next = policy.Builtin{}
 	}
-	return next.Check(ctx, op)
+	floor, err := next.Check(ctx, op)
+	if err != nil || floor == policy.DecisionDeny {
+		return floor, err
+	}
+	decision, _, err := e.evaluate(ctx, op)
+	if err != nil || decision == policy.DecisionDeny {
+		return decision, err
+	}
+	if decision == policy.DecisionConfirmationNeeded || floor == policy.DecisionConfirmationNeeded {
+		return policy.DecisionConfirmationNeeded, nil
+	}
+	return policy.DecisionAllow, nil
 }
 
 func (e *Engine) evaluate(ctx context.Context, op *catalog.Operation) (policy.Decision, string, error) {
