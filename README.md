@@ -70,7 +70,7 @@ go test ./...
 go run ./examples/two-apis
 ```
 
-`examples/two-apis` starts the sample APIs, checks the delete path, and exits. It is not a session you attach to.
+`examples/two-apis` starts the sample APIs, checks the delete path, and exits. It is not a session you attach to. The session that stays up is [veto-demo](https://github.com/aiveto/veto-demo): Harbor's orders, customers, and billing, and `make demo`.
 
 `veto serve` needs an API that is still listening and a credential source for that contract:
 
