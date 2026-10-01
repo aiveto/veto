@@ -42,6 +42,7 @@ type (
 	checkCmd struct {
 		evalCmd
 		against string
+		bundle  string
 	}
 )
 
@@ -55,38 +56,45 @@ func newCheckCommand() (*cobra.Command, error) {
 		},
 	}
 	c.Flags().StringArrayVar(&cmd.contract, "contract", nil, "OpenAPI file. Repeat to register another API. Overrides config.")
-	c.Flags().StringArrayVar(&cmd.cases, "case", nil, "Eval case file or directory. Repeat to add another.")
+	c.Flags().StringArrayVar(&cmd.cases, "case", nil, "Eval case file or directory. Repeat to add another. Defaults to cases in the bundle.")
 	c.Flags().StringVar(&cmd.config, "config", "", "Path to veto.yaml provider keys.")
+	c.Flags().StringVar(&cmd.bundle, "bundle", "", "Directory or zip of contracts, relations, and check cases.")
 	c.Flags().StringVar(&cmd.agent, "agent", "", "Path to agent.yaml. Overrides agent_file.")
 	c.Flags().StringVar(&cmd.relations, "relations", "", "Relations file. Overrides relations_file.")
 	c.Flags().StringVar(&cmd.baseURL, "base-url", "", "Override the server URL on every operation. Empty uses each contract server.")
 	c.Flags().StringVar(&cmd.against, "against", "", "Git ref or snapshot JSON. Fail if a joined operation disappeared, confirmation was dropped without an agent.yaml change, a new destructive operation appeared, or an eval expectation changed.")
-	if err := c.MarkFlagRequired("case"); err != nil {
-		return nil, err
-	}
 	return c, nil
 }
 
 func runCheck(cmd checkCmd) {
-	loop, _, err := buildLoop(cmd.contract, cmd.config, cmd.agent, cmd.relations, cmd.baseURL)
-	if err != nil {
+	if err := runChecked(cmd); err != nil {
+		releaseBundles()
 		fmt.Fprintf(os.Stderr, "check: %v\n", err)
 		os.Exit(1)
+	}
+}
+
+func runChecked(cmd checkCmd) error {
+	loop, cfg, err := buildLoopBundle(cmd.contract, cmd.config, cmd.bundle, cmd.agent, cmd.relations, cmd.baseURL)
+	if err != nil {
+		return err
 	}
 	fmt.Printf("ok: %s (%d operations)\n", loop.Catalog.Title, len(loop.Catalog.Operations))
 	for _, line := range loop.Catalog.Joins() {
 		fmt.Println(line)
 	}
+	if len(cmd.cases) == 0 {
+		cmd.cases = cfg.Cases
+	}
+	if len(cmd.cases) == 0 {
+		return fmt.Errorf("case required")
+	}
 	if cmd.against != "" {
 		if err := diffAgainst(cmd, loop.Catalog); err != nil {
-			fmt.Fprintf(os.Stderr, "check: %v\n", err)
-			os.Exit(1)
+			return err
 		}
 	}
-	if err := runCases(loop, cmd.cases); err != nil {
-		fmt.Fprintf(os.Stderr, "check: %v\n", err)
-		os.Exit(1)
-	}
+	return runCases(loop, cmd.cases)
 }
 
 func diffAgainst(cmd checkCmd, cat *catalog.Catalog) error {
@@ -94,7 +102,7 @@ func diffAgainst(cmd checkCmd, cat *catalog.Catalog) error {
 	if err != nil {
 		return err
 	}
-	_, _, _, agentPath, err := resolve(cmd.config, cmd.contract, cmd.relations, cmd.agent)
+	_, _, _, agentPath, err := resolveBundle(cmd.config, cmd.bundle, cmd.contract, cmd.relations, cmd.agent)
 	if err != nil {
 		return err
 	}

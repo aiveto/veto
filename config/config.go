@@ -31,6 +31,8 @@ type File struct {
 	AgentFile       string            `yaml:"agent_file"`
 	RelationsFile   string            `yaml:"relations_file"`
 	Contracts       []string          `yaml:"contracts"`
+	Bundle          string            `yaml:"bundle"`
+	Cases           []string          `yaml:"cases"`
 	ReplayRedact    string            `yaml:"replay_redact"`
 	TraceFile       string            `yaml:"trace_file"`
 	Timeout         time.Duration     `yaml:"timeout"`
@@ -111,6 +113,14 @@ func Load(path string) (File, error) {
 		if name != "" && !filepath.IsAbs(name) {
 			cfg.Contracts[i] = filepath.Join(dir, name)
 		}
+	}
+	for i, name := range cfg.Cases {
+		if name != "" && !filepath.IsAbs(name) {
+			cfg.Cases[i] = filepath.Join(dir, name)
+		}
+	}
+	if cfg.Bundle != "" && !filepath.IsAbs(cfg.Bundle) {
+		cfg.Bundle = filepath.Join(dir, cfg.Bundle)
 	}
 	if err := cfg.validate(); err != nil {
 		return File{}, err
