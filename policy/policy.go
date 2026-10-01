@@ -313,14 +313,24 @@ func (s *State) ConsumeFor(caller, approvalID, opID string, params map[string]st
 	if rec.Caller != caller || rec.OperationID != opID || !sameParams(rec.Params, params) || expired(rec, s.clock()) {
 		return false, nil
 	}
+	claimed := false
 	if len(s.secret) > 0 {
 		ok, err := s.consumeSigned(caller, approvalID, opID, params, s.clock())
 		if err != nil || !ok {
 			return ok, err
 		}
+	} else if s.nonceDir != "" {
+		ok, err := s.claimLocked(rec.ID)
+		if err != nil || !ok {
+			return ok, err
+		}
+		claimed = true
 	}
 	rec.Status = statusConsumed
 	if err := s.storeLocked(rec); err != nil {
+		if claimed {
+			_ = os.Remove(filepath.Join(s.nonceDir, "confirmations", rec.ID+".claimed"))
+		}
 		return false, err
 	}
 	delete(s.approved, approvalID)
@@ -342,6 +352,9 @@ func expired(rec confirmation, now time.Time) bool {
 }
 
 func (s *State) storeLocked(rec confirmation) error {
+	if err := s.writeLocked(rec); err != nil {
+		return err
+	}
 	if s.pending == nil {
 		s.pending = map[string]confirmation{}
 	}
@@ -352,6 +365,13 @@ func (s *State) storeLocked(rec confirmation) error {
 	if rec.ApprovedID != "" && rec.Status == statusApproved {
 		s.approved[rec.ApprovedID] = rec.ID
 	}
+	if rec.Status == statusConsumed {
+		delete(s.approved, rec.ApprovedID)
+	}
+	return nil
+}
+
+func (s *State) writeLocked(rec confirmation) error {
 	if s.nonceDir == "" {
 		return nil
 	}
@@ -367,14 +387,46 @@ func (s *State) storeLocked(rec confirmation) error {
 		return fmt.Errorf("approval: %w", err)
 	}
 	path := filepath.Join(dir, rec.ID+".json")
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, body, 0o600); err != nil {
+	tmp, err := os.CreateTemp(dir, rec.ID+".*.tmp")
+	if err != nil {
 		return fmt.Errorf("approval: %w", err)
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	tmpName := tmp.Name()
+	_, werr := tmp.Write(body)
+	cerr := tmp.Close()
+	if werr != nil || cerr != nil {
+		_ = os.Remove(tmpName)
+		if werr != nil {
+			return fmt.Errorf("approval: %w", werr)
+		}
+		return fmt.Errorf("approval: %w", cerr)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		_ = os.Remove(tmpName)
 		return fmt.Errorf("approval: %w", err)
 	}
 	return nil
+}
+
+func (s *State) claimLocked(id string) (bool, error) {
+	if !plainID(id) {
+		return false, fmt.Errorf("approval id")
+	}
+	dir := filepath.Join(s.nonceDir, "confirmations")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return false, fmt.Errorf("approval dir: %w", err)
+	}
+	f, err := os.OpenFile(filepath.Join(dir, id+".claimed"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return false, nil
+		}
+		return false, fmt.Errorf("approval: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return false, fmt.Errorf("approval: %w", err)
+	}
+	return true, nil
 }
 
 func (s *State) loadLocked(id string) (confirmation, bool) {
