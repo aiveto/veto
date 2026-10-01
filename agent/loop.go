@@ -10,18 +10,16 @@ import (
 	"github.com/aiveto/veto/flow"
 	"github.com/aiveto/veto/memory"
 	"github.com/aiveto/veto/policy"
-	httpresult "github.com/aiveto/veto/result"
 	"github.com/aiveto/veto/runctx"
+	"github.com/aiveto/veto/runtime"
 	"github.com/aiveto/veto/semantics"
 	"github.com/aiveto/veto/telemetry"
 	"github.com/google/uuid"
 )
 
 type (
-	// The loop does not build the request.
-	Executor interface {
-		InvokeHTTPResult(ctx context.Context, op *catalog.Operation, params map[string]string) (httpresult.HTTPResult, error)
-	}
+	// Executor performs the HTTP call. The loop does not build the request.
+	Executor = runtime.Executor
 
 	Call struct {
 		Status      string
@@ -203,95 +201,36 @@ func (l *Loop) Run(ctx context.Context, userText string) (Outcome, error) {
 	}, nil
 }
 
-func (l *Loop) Invoke(ctx context.Context, operationID string, params map[string]string, approvalID string) (Call, error) {
-	op := l.Catalog.ByID(operationID)
-	if op == nil {
-		return Call{Status: "error"}, fmt.Errorf("unknown operation %q", operationID)
-	}
-	if op.Exposure == catalog.ExposureDiscovery {
-		err := fmt.Errorf("operation %q is discovery-only", operationID)
-		return Call{Status: "error", OperationID: operationID, Code: "not_callable", Error: err.Error()}, err
-	}
-	ctx = policy.WithInput(ctx, policy.Input{Params: params})
-	decision, err := l.decide(ctx, op)
-	if err != nil {
-		return Call{Status: "error"}, err
-	}
-	if decision == policy.DecisionConfirmationNeeded {
-		span := telemetry.StartSpan(ctx, "policy.confirmation")
-		defer span.End()
-		span.SetAttributes(telemetry.Attr("operation.id", operationID))
-		if approvalID == "" {
-			id, err := l.State.RequestConfirmation(operationID, params)
-			if err != nil {
-				return Call{Status: "error", OperationID: operationID}, err
-			}
-			span.SetAttributes(telemetry.Attr("approval.id", id))
-			return Call{
-				Status:      "confirmation_required",
-				ApprovalID:  id,
-				OperationID: operationID,
-			}, nil
-		}
-		ok, err := l.State.ConsumeConfirmation(approvalID, operationID, params)
-		if err != nil {
-			return Call{Status: "error"}, err
-		}
-		if !ok {
-			return Call{Status: "error"}, fmt.Errorf("invalid approval")
-		}
-		span.SetAttributes(telemetry.Attr("approval.id", approvalID))
-		decision = policy.DecisionAllow
-	}
-	if decision != policy.DecisionAllow {
-		return Call{Status: "denied", OperationID: operationID}, nil
-	}
-	if l.Exec == nil {
-		return Call{Status: "error"}, fmt.Errorf("missing executor")
-	}
-	result, err := l.Exec.InvokeHTTPResult(ctx, op, params)
-	if err != nil {
-		call := Call{Status: "error", OperationID: operationID}
-		if _, ok := errors.AsType[httpresult.ParamError](err); ok {
-			call.Code = "missing_param"
-		}
-		return call, err
-	}
-	status := result.Code
-	if status == "" {
-		status = "ok"
-	}
-	return Call{
-		Status:      status,
-		OperationID: operationID,
-		HTTPStatus:  result.Status,
-		Body:        result.Body,
-		Code:        result.Code,
-		Retryable:   result.Retryable,
-	}, nil
-}
-
-func (l *Loop) decide(ctx context.Context, op *catalog.Operation) (policy.Decision, error) {
+// Runtime is the invoke sequence this loop uses. Policy and state are the loop's current values.
+func (l *Loop) Runtime() runtime.Runtime {
 	if l.base == nil {
 		l.base = policy.Builtin{}
 	}
-	decision, err := policy.Check(ctx, l.Policy, op)
-	if err != nil {
-		return decision, err
+	return runtime.Runtime{
+		Catalog: l.Catalog,
+		Policy:  l.Policy,
+		Base:    l.base,
+		State:   l.State,
+		Exec:    l.Exec,
 	}
-	floor, ferr := policy.Check(ctx, l.base, op)
-	if ferr != nil {
-		return floor, ferr
-	}
-	if floor == policy.DecisionDeny {
-		decision = policy.DecisionDeny
-	} else if floor == policy.DecisionConfirmationNeeded && decision != policy.DecisionDeny {
-		decision = policy.DecisionConfirmationNeeded
-	}
-	if op != nil && op.RequiresConfirmation && decision != policy.DecisionDeny {
-		return policy.DecisionConfirmationNeeded, nil
-	}
-	return decision, nil
+}
+
+func (l *Loop) Invoke(ctx context.Context, operationID string, params map[string]string, approvalID string) (Call, error) {
+	out, err := l.Runtime().Invoke(ctx, runtime.Request{
+		Operation: operationID,
+		Arguments: runtime.FromStrings(params),
+		Approval:  approvalID,
+	})
+	return Call{
+		Status:      out.Status,
+		ApprovalID:  out.ApprovalID,
+		OperationID: out.OperationID,
+		HTTPStatus:  out.HTTPStatus,
+		Body:        out.Body,
+		Code:        out.Code,
+		Retryable:   out.Retryable,
+		Error:       out.Error,
+	}, err
 }
 
 func (l *Loop) runFlow(ctx context.Context, resp Response) (Call, error) {

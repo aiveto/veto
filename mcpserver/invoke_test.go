@@ -31,10 +31,11 @@ func TestInvokeDeleteRequiresApprovalBeforeHTTP(t *testing.T) {
 	sem := semantics.NewDerived(cat)
 	loop, err := agent.New(cat, sem, execute.Client{BaseURL: ts.URL})
 	require.NoError(t, err)
+	calls := loop.Runtime()
 	srv := &mcpserver.Server{
 		Catalog:   cat,
 		Semantics: sem,
-		Agent:     loop,
+		Calls:     &calls,
 	}
 	ctx := context.Background()
 	first, err := srv.Invoke(ctx, "orders.delete", map[string]string{"id": "123"}, "")
@@ -72,10 +73,11 @@ func TestInvokeJSONCarriesCodeAndRetryable(t *testing.T) {
 	sem := semantics.NewDerived(cat)
 	loop, err := agent.New(cat, sem, execute.Client{BaseURL: ts.URL})
 	require.NoError(t, err)
+	calls := loop.Runtime()
 	srv := &mcpserver.Server{
 		Catalog:   cat,
 		Semantics: sem,
-		Agent:     loop,
+		Calls:     &calls,
 	}
 	missing, err := srv.Invoke(context.Background(), "orders.get", nil, "")
 	assert.Error(t, err)
@@ -108,7 +110,8 @@ func TestInvokeDiscoveryOnlyDoesNotCallHTTP(t *testing.T) {
 	sem := semantics.NewDerived(cat)
 	loop, err := agent.New(cat, sem, execute.Client{BaseURL: ts.URL})
 	require.NoError(t, err)
-	srv := &mcpserver.Server{Catalog: cat, Semantics: sem, Agent: loop}
+	calls := loop.Runtime()
+	srv := &mcpserver.Server{Catalog: cat, Semantics: sem, Calls: &calls}
 	got, err := srv.Invoke(context.Background(), "orders.get", map[string]string{"id": "1"}, "")
 	assert.ErrorContains(t, err, "discovery-only")
 	assert.Equal(t, "not_callable", got.Code)

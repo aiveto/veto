@@ -1,7 +1,6 @@
 package mcpserver
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/aiveto/veto/auth"
 	"github.com/aiveto/veto/catalog"
+	"github.com/aiveto/veto/runtime"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -118,45 +118,13 @@ func register(server *mcp.Server, srv *Server, opt Options) {
 }
 
 func invokeCall(ctx context.Context, srv *Server, args invokeArgs) (*mcp.CallToolResult, any, error) {
-	params, err := stringParams(args.Params)
-	if err != nil {
-		return toolError(err)
-	}
 	ctx = auth.WithUserToken(ctx, args.Token)
-	res, err := srv.Invoke(ctx, args.OperationID, params, args.ApprovalID)
+	res, err := srv.Call(ctx, runtime.Request{
+		Operation: args.OperationID,
+		Arguments: args.Params,
+		Approval:  args.ApprovalID,
+	})
 	return invokeToolResult(res, err)
-}
-
-func stringParams(in map[string]any) (map[string]string, error) {
-	if len(in) == 0 {
-		return nil, nil
-	}
-	out := make(map[string]string, len(in))
-	for k, v := range in {
-		switch val := v.(type) {
-		case nil:
-			out[k] = ""
-		case string:
-			out[k] = val
-		default:
-			text, err := jsonText(val)
-			if err != nil {
-				return nil, fmt.Errorf("param %s: %w", k, err)
-			}
-			out[k] = text
-		}
-	}
-	return out, nil
-}
-
-func jsonText(v any) (string, error) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(v); err != nil {
-		return "", err
-	}
-	return strings.TrimSuffix(buf.String(), "\n"), nil
 }
 
 func invokeToolResult(res InvokeResult, callErr error) (*mcp.CallToolResult, any, error) {

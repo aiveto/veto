@@ -102,6 +102,8 @@ auth:
 
 Anything else is a command. Veto writes JSON to its stdin (`operation_id`, `method`, `url`, `scheme`, and `user_token` when this invoke has one) and reads `headers` plus optional `expires_at` from stdout. A non-zero exit, a timeout, or bad JSON fails the invoke before upstream HTTP. Stdin and stdout are not logged.
 
+The command receives the method and the URL. It does not receive the body, so it cannot sign one. `Credential.Sign` sees the finished request, after the body and the URL are set.
+
 ```yaml
 auth:
   sig:

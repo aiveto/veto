@@ -1,0 +1,186 @@
+// Package runtime is the invoke sequence shared by the CLI, MCP, and the library.
+package runtime
+
+import (
+	"context"
+	"errors"
+	"fmt"
+
+	"github.com/aiveto/veto/catalog"
+	"github.com/aiveto/veto/execute"
+	"github.com/aiveto/veto/policy"
+	"github.com/aiveto/veto/result"
+	"github.com/aiveto/veto/telemetry"
+)
+
+type (
+	// Executor performs the HTTP call. It does not apply policy.
+	Executor interface {
+		InvokeHTTPResult(ctx context.Context, op *catalog.Operation, params map[string]string) (result.HTTPResult, error)
+	}
+
+	// Request is one invoke. Caller is the caller or tenant. Arguments stay typed until HTTP serialization.
+	Request struct {
+		Operation   string
+		Arguments   map[string]any
+		Caller      string
+		Approval    string
+		Idempotency string
+	}
+
+	// Result is the shaped outcome of one invoke.
+	Result struct {
+		Status      string
+		ApprovalID  string
+		OperationID string
+		HTTPStatus  int
+		Body        string
+		Code        string
+		Retryable   bool
+		Error       string
+	}
+
+	// Runtime resolves, validates, checks policy, verifies approval, executes, shapes, and records.
+	Runtime struct {
+		Catalog *catalog.Catalog
+		Policy  policy.Hook
+		Base    policy.Hook
+		State   *policy.State
+		Exec    Executor
+	}
+)
+
+// Invoke runs one operation. MCP uses this directly. It does not run the agent loop.
+func (rt Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
+	op := rt.operation(req.Operation)
+	if op == nil {
+		return rt.record(ctx, Result{Status: "error"}), fmt.Errorf("unknown operation %q", req.Operation)
+	}
+	if op.Exposure == catalog.ExposureDiscovery {
+		err := fmt.Errorf("operation %q is discovery-only", req.Operation)
+		return rt.record(ctx, Result{
+			Status:      "error",
+			OperationID: req.Operation,
+			Code:        "not_callable",
+			Error:       err.Error(),
+		}), err
+	}
+
+	args, err := wire(req.Arguments)
+	if err != nil {
+		return rt.record(ctx, Result{Status: "error", OperationID: op.ID}), err
+	}
+	if err := execute.CheckParams(op, args); err != nil {
+		res := Result{Status: "error", OperationID: op.ID}
+		if _, ok := errors.AsType[result.ParamError](err); ok {
+			res.Code = "missing_param"
+		}
+		return rt.record(ctx, res), err
+	}
+
+	ctx = policy.WithInput(ctx, policy.Input{
+		Params:    args,
+		Arguments: req.Arguments,
+		Caller:    req.Caller,
+	})
+	decision, err := rt.decide(ctx, op)
+	if err != nil {
+		return rt.record(ctx, Result{Status: "error"}), err
+	}
+	if decision == policy.DecisionConfirmationNeeded {
+		span := telemetry.StartSpan(ctx, "policy.confirmation")
+		defer span.End()
+		span.SetAttributes(telemetry.Attr("operation.id", req.Operation))
+		if req.Approval == "" {
+			id, err := rt.State.RequestConfirmation(req.Operation, args)
+			if err != nil {
+				return rt.record(ctx, Result{Status: "error", OperationID: req.Operation}), err
+			}
+			span.SetAttributes(telemetry.Attr("approval.id", id))
+			return rt.record(ctx, Result{
+				Status:      "confirmation_required",
+				ApprovalID:  id,
+				OperationID: req.Operation,
+			}), nil
+		}
+		ok, err := rt.State.ConsumeConfirmation(req.Approval, req.Operation, args)
+		if err != nil {
+			return rt.record(ctx, Result{Status: "error"}), err
+		}
+		if !ok {
+			return rt.record(ctx, Result{Status: "error"}), fmt.Errorf("invalid approval")
+		}
+		span.SetAttributes(telemetry.Attr("approval.id", req.Approval))
+		decision = policy.DecisionAllow
+	}
+	if decision != policy.DecisionAllow {
+		return rt.record(ctx, Result{Status: "denied", OperationID: req.Operation}), nil
+	}
+	if rt.Exec == nil {
+		return rt.record(ctx, Result{Status: "error"}), fmt.Errorf("missing executor")
+	}
+	ctx = execute.WithIdempotency(ctx, req.Idempotency)
+	call, err := rt.Exec.InvokeHTTPResult(ctx, op, args)
+	if err != nil {
+		res := Result{Status: "error", OperationID: req.Operation}
+		if _, ok := errors.AsType[result.ParamError](err); ok {
+			res.Code = "missing_param"
+		}
+		return rt.record(ctx, res), err
+	}
+	status := call.Code
+	if status == "" {
+		status = "ok"
+	}
+	return rt.record(ctx, Result{
+		Status:      status,
+		OperationID: req.Operation,
+		HTTPStatus:  call.Status,
+		Body:        call.Body,
+		Code:        call.Code,
+		Retryable:   call.Retryable,
+	}), nil
+}
+
+func (rt Runtime) operation(id string) *catalog.Operation {
+	if rt.Catalog == nil {
+		return nil
+	}
+	return rt.Catalog.ByID(id)
+}
+
+func (rt Runtime) decide(ctx context.Context, op *catalog.Operation) (policy.Decision, error) {
+	base := rt.Base
+	if base == nil {
+		base = policy.Builtin{}
+	}
+	decision, err := policy.Check(ctx, rt.Policy, op)
+	if err != nil {
+		return decision, err
+	}
+	floor, ferr := policy.Check(ctx, base, op)
+	if ferr != nil {
+		return floor, ferr
+	}
+	if floor == policy.DecisionDeny {
+		decision = policy.DecisionDeny
+	} else if floor == policy.DecisionConfirmationNeeded && decision != policy.DecisionDeny {
+		decision = policy.DecisionConfirmationNeeded
+	}
+	if op != nil && op.RequiresConfirmation && decision != policy.DecisionDeny {
+		return policy.DecisionConfirmationNeeded, nil
+	}
+	return decision, nil
+}
+
+func (rt Runtime) record(ctx context.Context, res Result) Result {
+	span := telemetry.StartSpan(ctx, "runtime.outcome")
+	defer span.End()
+	if res.OperationID != "" {
+		span.SetAttributes(telemetry.Attr("operation.id", res.OperationID))
+	}
+	if res.Status != "" {
+		span.SetAttributes(telemetry.Attr("decision", res.Status))
+	}
+	return res
+}
