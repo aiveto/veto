@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/aiveto/veto/auth"
@@ -161,6 +163,13 @@ func invokeToolResult(res InvokeResult, callErr error) (*mcp.CallToolResult, any
 	if callErr != nil && res.Status == "" {
 		return toolError(callErr)
 	}
+	if res.Status == "error" {
+		cause := res.Error
+		if cause == "" && callErr != nil {
+			cause = callErr.Error()
+		}
+		res.Error = sanitizeCause(cause)
+	}
 	b, err := json.Marshal(res)
 	if err != nil {
 		return toolError(err)
@@ -170,6 +179,63 @@ func invokeToolResult(res InvokeResult, callErr error) (*mcp.CallToolResult, any
 		result.IsError = res.Status != "" && res.Status != "ok" && res.Status != "confirmation_required"
 	}
 	return result, nil, err
+}
+
+var (
+	authHeader   = regexp.MustCompile(`(?i)\b(authorization)\s*:\s*(?:bearer|basic)?\s*\S+`)
+	authScheme   = regexp.MustCompile(`(?i)\b(bearer|basic)\s+\S+`)
+	httpURL      = regexp.MustCompile(`https?://[^\s"'<>]+`)
+	userinfo     = regexp.MustCompile(`(?i)(https?://)[^/\s@"']+@`)
+	secretAssign = regexp.MustCompile(`(?i)\b(access_token|refresh_token|client_secret|api[_-]?key|password|authorization|secret|token)=([^\s&"',;]+)`)
+)
+
+func sanitizeCause(msg string) string {
+	if msg == "" {
+		return ""
+	}
+	msg = authHeader.ReplaceAllString(msg, "$1: REDACTED")
+	msg = authScheme.ReplaceAllString(msg, "$1 REDACTED")
+	msg = httpURL.ReplaceAllStringFunc(msg, redactURL)
+	msg = userinfo.ReplaceAllString(msg, "${1}REDACTED@")
+	return secretAssign.ReplaceAllString(msg, "$1=REDACTED")
+}
+
+func redactURL(raw string) string {
+	end := len(raw)
+	for end > 0 && strings.ContainsRune(".,);", rune(raw[end-1])) {
+		end--
+	}
+	core, tail := raw[:end], raw[end:]
+	u, err := url.Parse(core)
+	if err != nil || u.Host == "" {
+		return raw
+	}
+	changed := false
+	if u.User != nil {
+		u.User = url.User("REDACTED")
+		changed = true
+	}
+	q := u.Query()
+	for k := range q {
+		if sensitiveQuery(k) {
+			q.Set(k, "REDACTED")
+			changed = true
+		}
+	}
+	if !changed {
+		return raw
+	}
+	u.RawQuery = q.Encode()
+	return u.String() + tail
+}
+
+func sensitiveQuery(name string) bool {
+	switch strings.ToLower(strings.ReplaceAll(name, "-", "_")) {
+	case "access_token", "api_key", "apikey", "authorization", "client_secret", "password", "refresh_token", "secret", "token":
+		return true
+	default:
+		return false
+	}
 }
 
 func textResult(s string) (*mcp.CallToolResult, any, error) {

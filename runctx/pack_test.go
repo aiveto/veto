@@ -8,6 +8,7 @@ import (
 
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/openapi"
+	"github.com/aiveto/veto/policy"
 	"github.com/aiveto/veto/runctx"
 	"github.com/aiveto/veto/semantics"
 	"github.com/stretchr/testify/assert"
@@ -84,6 +85,34 @@ func TestTruncateDropsWholeOperations(t *testing.T) {
 	assert.True(t, pack.Truncated)
 	assert.Equal(t, parts[0], pack.Index)
 	assert.True(t, strings.HasPrefix(pack.Index, "alpha.read") || strings.HasPrefix(pack.Index, "beta.read"))
+}
+
+func TestPackBoundsTurnsDetailAndPending(t *testing.T) {
+	desc := strings.Repeat("describe-", 40)
+	turn := strings.Repeat("turn-text-", 40)
+	param := strings.Repeat("9", 400)
+	cat := &catalog.Catalog{Operations: []catalog.Operation{{
+		ID: "orders.get", Method: "GET", PathTemplate: "/orders/{id}", Description: desc, Name: "get",
+	}}}
+	cat.Finalize()
+	sem := semantics.NewDerived(cat)
+	turns := []runctx.Turn{{Role: "user", Content: turn}}
+	pending := &policy.PendingConfirmation{
+		ID:          "pend-1",
+		OperationID: "orders.delete",
+		Params:      map[string]string{"id": param, "note": strings.Repeat("n", 400)},
+	}
+	bare := runctx.NewBuilder(1<<20).Build(nil, nil, nil, nil, nil)
+	pack := runctx.NewBuilder(bare.Bytes+64).Build(cat, turns, cat.ByID("orders.get"), sem, pending)
+	assert.True(t, pack.Truncated)
+	assert.LessOrEqual(t, pack.Bytes, bare.Bytes+64)
+	assert.NotContains(t, pack.Index, desc)
+	assert.NotContains(t, pack.DescribedDetail, desc)
+	assert.NotContains(t, pack.Serialize(), turn)
+	assert.NotContains(t, pack.Serialize(), param)
+	assert.Equal(t, turn, turns[0].Content)
+	assert.Equal(t, param, pending.Params["id"])
+	assert.Contains(t, pack.Serialize(), "capabilities_invoke")
 }
 
 func TestPackKeepsSearchHitsAndDropsTheRest(t *testing.T) {

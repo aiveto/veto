@@ -299,6 +299,7 @@ func (l *Loop) runFlow(ctx context.Context, resp Response) (Call, error) {
 	if def == nil {
 		return Call{}, fmt.Errorf("unknown flow %q", resp.FlowName)
 	}
+	var paused Call
 	runner := flow.Runner{Invoke: func(ctx context.Context, operationID string, params map[string]string, approvalID string) (string, string, error) {
 		if len(params) == 0 {
 			params = resp.Params
@@ -307,10 +308,17 @@ func (l *Loop) runFlow(ctx context.Context, resp Response) (Call, error) {
 		if err != nil {
 			return "", "", err
 		}
+		if call.Status == "confirmation_required" {
+			paused = call
+		}
 		return call.Status, call.Body, nil
 	}}
 	results, err := runner.Run(ctx, def, resp.Params)
 	if stopped, ok := errors.AsType[flow.Stopped](err); ok {
+		if paused.ApprovalID != "" && (stopped.Operation == "" || stopped.Operation == paused.OperationID) {
+			paused.Status = stopped.Status
+			return paused, nil
+		}
 		return Call{Status: stopped.Status, OperationID: stopped.Operation}, nil
 	}
 	if err != nil {
