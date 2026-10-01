@@ -130,7 +130,7 @@ func InvokeResponse(ctx context.Context, cfg Config, op *catalog.Operation, para
 			continue
 		}
 		if v := params[p.Name]; v != "" {
-			q.Set(p.Name, v)
+			writeQuery(q, p, v)
 		}
 	}
 	req.URL.RawQuery = q.Encode()

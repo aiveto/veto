@@ -141,8 +141,33 @@ func newRoot() (*cobra.Command, error) {
 		newDoctorCommand(),
 		checkCmd,
 		newAuthCommand(),
+		newApproveCommand(),
 	)
 	return root, nil
+}
+
+func newApproveCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "approve <id>",
+		Short: "Record approval for a pending confirmation.",
+		Args:  cobra.ExactArgs(1),
+		Run: func(_ *cobra.Command, args []string) {
+			approved, err := approveID(args[0])
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "approve: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Println(approved)
+		},
+	}
+}
+
+func approveID(id string) (string, error) {
+	state := policy.NewState()
+	if err := policy.ApplyEnv(state); err != nil {
+		return "", err
+	}
+	return state.Approve(id)
 }
 
 func newValidateCommand() *cobra.Command {
@@ -668,13 +693,8 @@ func buildLoop(contracts []string, configPath, agentPath, relationsPath, baseURL
 	if err != nil {
 		return nil, config.File{}, err
 	}
-	if secret := os.Getenv("VETO_APPROVAL_SECRET"); secret != "" {
-		if dir := os.Getenv("VETO_APPROVAL_NONCE_DIR"); dir != "" {
-			loop.State.SetNonceDir(dir)
-		}
-		if err := loop.State.SetSigner([]byte(secret), 0); err != nil {
-			return nil, config.File{}, err
-		}
+	if err := policy.ApplyEnv(loop.State); err != nil {
+		return nil, config.File{}, err
 	}
 	loop.Flows = flows
 	if err := applyProviders(loop, cfg); err != nil {
@@ -700,7 +720,7 @@ func applyProviders(loop *agent.Loop, cfg config.File) error {
 	base := policy.Builtin{Caller: callerName(cfg.Caller), Allow: allowSet(cfg.Permissions)}
 	switch cfg.Policy {
 	case "builtin":
-		loop.Policy = base
+		loop.SetPolicy(base)
 	case "opa":
 		eng, err := opa.New(context.Background(), cfg.PolicyFile, cfg.PolicyBundle, base)
 		if err != nil {
@@ -710,7 +730,7 @@ func applyProviders(loop *agent.Loop, cfg config.File) error {
 		if cfg.Caller != "" {
 			eng.Principal = cfg.Caller
 		}
-		loop.Policy = eng
+		loop.SetPolicy(eng)
 	default:
 		return fmt.Errorf("policy provider %q is not in this slice", cfg.Policy)
 	}

@@ -142,7 +142,7 @@ Cursor and Claude Desktop both take this server entry. Use a config path the `ve
 }
 ```
 
-`operation_id` is the catalog id. `params` is an object. Path, query, and header values are strings, keyed by parameter name. `body` is the request body: a string is sent as written, and a JSON object is encoded as JSON and sent. There is no schema compiler in that step. `approval_id` is empty on the first call. A `confirmation_required` result carries an id; send that id with the same operation and params to run the call.
+`operation_id` is the catalog id. `params` is an object. Path, query, and header values are strings, keyed by parameter name. `body` is the request body: a string is sent as written, and a JSON object is encoded as JSON and sent. There is no schema compiler in that step. `approval_id` is empty on the first call. A `confirmation_required` result carries a pending id. That id does not run the call. `veto approve <id>` records the approval and prints an approved id. A later invoke with that approved id runs once.
 
 ## The version header
 
@@ -249,7 +249,7 @@ veto replay --config veto.yaml --message "delete order 123"
 veto replay --from trace.json
 ```
 
-The first command runs the message and prints the trace. With the default model that sentence is `orders.delete`, then `decision=confirmation_required`, then an approval id. The user message is not on the trace. HTTP method and status show up when a call is sent. Set `trace_file: trace.json` in `veto.yaml` to save the trace, then `--from` prints that file. `--keep-sensitive` records response bodies. Leave it off to keep them out.
+The first command runs the message and prints the trace. With the default model that sentence is `orders.delete`, then `decision=confirmation_required`, then a pending id. `veto approve` records the yes. With `VETO_APPROVAL_SECRET` the approved id is a signed token, and a consumed nonce is kept on this machine. The user message is not on the trace. HTTP method and status show up when a call is sent. Set `trace_file: trace.json` in `veto.yaml` to save the trace, then `--from` prints that file. `--keep-sensitive` records response bodies. Leave it off to keep them out.
 
 ## Doctor
 

@@ -49,7 +49,7 @@ func New(baseURL string, httpClient *http.Client) (*Client, error) {
 				BaseURL: {{quote .BaseURL}},
 				Params: []catalog.Param{
 {{- range .Params}}
-					{Name: {{quote .Name}}, In: {{quote .In}}, Required: {{.Required}}, Description: {{quote .Description}}, Schema: {{quote .Schema}}, MediaType: {{quote .MediaType}}, Default: {{quote .Default}}},
+					{Name: {{quote .Name}}, In: {{quote .In}}, Required: {{.Required}}, Description: {{quote .Description}}, Schema: {{quote .Schema}}, MediaType: {{quote .MediaType}}, Default: {{quote .Default}}, Style: {{quote .Style}}, Explode: {{.Explode}}},
 {{- end}}
 				},
 			},
@@ -197,7 +197,12 @@ func run{{.GoName}}(args []string) {
 			fmt.Fprintln(os.Stderr, "confirmation required")
 			os.Exit(2)
 		}
-		call, err = c.{{.GoName}}(context.Background(){{range .Params}}, *{{.GoName}}{{end}}, call.ApprovalID)
+		approved, aerr := c.Loop.State.Approve(call.ApprovalID)
+		if aerr != nil {
+			fmt.Fprintln(os.Stderr, aerr)
+			os.Exit(1)
+		}
+		call, err = c.{{.GoName}}(context.Background(){{range .Params}}, *{{.GoName}}{{end}}, approved)
 	}
 {{- end}}
 	finish(call.Status, call.HTTPStatus, err)
@@ -265,6 +270,8 @@ type (
 		Schema      string
 		MediaType   string
 		Default     string
+		Style       string
+		Explode     bool
 	}
 )
 
@@ -309,6 +316,8 @@ func views(cat *catalog.Catalog) []opView {
 				Schema:      p.Schema,
 				MediaType:   p.MediaType,
 				Default:     p.Default,
+				Style:       p.Style,
+				Explode:     p.Explode,
 			})
 		}
 		out = append(out, opView{

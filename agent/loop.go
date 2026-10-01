@@ -74,6 +74,7 @@ type (
 		Semantics Notes
 		Model     Completer
 		Policy    policy.Hook
+		base      policy.Hook
 		State     *policy.State
 		Exec      Executor
 		Memory    Memory
@@ -94,6 +95,7 @@ func New(cat *catalog.Catalog, sem Notes, exec Executor) (*Loop, error) {
 		Semantics: sem,
 		Model:     NewScripted(),
 		Policy:    policy.Builtin{},
+		base:      policy.Builtin{},
 		State:     policy.NewState(),
 		Exec:      exec,
 		Memory:    memory.NewLocalMap(),
@@ -102,8 +104,23 @@ func New(cat *catalog.Catalog, sem Notes, exec Executor) (*Loop, error) {
 	}, nil
 }
 
+func (l *Loop) SetPolicy(hook policy.Hook) {
+	if hook == nil {
+		hook = policy.Builtin{}
+	}
+	l.base = hook
+	l.Policy = hook
+}
+
 func (l *Loop) WrapPolicy(around policy.Around) {
-	l.Policy = policy.Wrap(around)
+	next := l.Policy
+	if next == nil {
+		next = policy.Builtin{}
+	}
+	if l.base == nil {
+		l.base = next
+	}
+	l.Policy = policy.Wrap(next, around)
 }
 
 func (l *Loop) Run(ctx context.Context, userText string) (Outcome, error) {
@@ -196,7 +213,7 @@ func (l *Loop) Invoke(ctx context.Context, operationID string, params map[string
 		return Call{Status: "error", OperationID: operationID, Code: "not_callable", Error: err.Error()}, err
 	}
 	ctx = policy.WithInput(ctx, policy.Input{Params: params})
-	decision, err := policy.Check(ctx, l.Policy, op)
+	decision, err := l.decide(ctx, op)
 	if err != nil {
 		return Call{Status: "error"}, err
 	}
@@ -205,7 +222,10 @@ func (l *Loop) Invoke(ctx context.Context, operationID string, params map[string
 		defer span.End()
 		span.SetAttributes(telemetry.Attr("operation.id", operationID))
 		if approvalID == "" {
-			id := l.State.RequestConfirmation(operationID, params)
+			id, err := l.State.RequestConfirmation(operationID, params)
+			if err != nil {
+				return Call{Status: "error", OperationID: operationID}, err
+			}
 			span.SetAttributes(telemetry.Attr("approval.id", id))
 			return Call{
 				Status:      "confirmation_required",
@@ -249,6 +269,29 @@ func (l *Loop) Invoke(ctx context.Context, operationID string, params map[string
 		Code:        result.Code,
 		Retryable:   result.Retryable,
 	}, nil
+}
+
+func (l *Loop) decide(ctx context.Context, op *catalog.Operation) (policy.Decision, error) {
+	if l.base == nil {
+		l.base = policy.Builtin{}
+	}
+	decision, err := policy.Check(ctx, l.Policy, op)
+	if err != nil {
+		return decision, err
+	}
+	floor, ferr := policy.Check(ctx, l.base, op)
+	if ferr != nil {
+		return floor, ferr
+	}
+	if floor == policy.DecisionDeny {
+		decision = policy.DecisionDeny
+	} else if floor == policy.DecisionConfirmationNeeded && decision != policy.DecisionDeny {
+		decision = policy.DecisionConfirmationNeeded
+	}
+	if op != nil && op.RequiresConfirmation && decision != policy.DecisionDeny {
+		return policy.DecisionConfirmationNeeded, nil
+	}
+	return decision, nil
 }
 
 func (l *Loop) runFlow(ctx context.Context, resp Response) (Call, error) {

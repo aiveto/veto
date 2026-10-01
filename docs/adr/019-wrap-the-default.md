@@ -14,7 +14,7 @@ A custom check has to call `Builtin` unless it stops. `model_base_url` belongs o
 
 ## Decision
 
-`policy.Wrap` returns a hook whose next is `Builtin`. `Loop.WrapPolicy` installs it. `buildLoop` constructs `local`, `builtin`, `scripted`, and `openai` from the keys. Empty `model_base_url` is `https://api.openai.com/v1`.
+`Loop.WrapPolicy` wraps the policy already configured. An empty next is `Builtin`. Confirmation and a permission denial stay in force when an extension allows the call. `buildLoop` constructs `local`, `builtin`, `scripted`, and `openai` from the keys. Empty `model_base_url` is `https://api.openai.com/v1`.
 
 ## What we refused
 

@@ -35,7 +35,7 @@ func TestWrapCallsBuiltinUnlessItStops(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := Wrap(tc.around).Check(context.Background(), del)
+			got, err := Wrap(nil, tc.around).Check(context.Background(), del)
 			if tc.err != "" {
 				require.ErrorContains(t, err, tc.err)
 				return
@@ -48,4 +48,14 @@ func TestWrapCallsBuiltinUnlessItStops(t *testing.T) {
 	got, err := zero.Check(context.Background(), del)
 	require.NoError(t, err)
 	assert.Equal(t, DecisionConfirmationNeeded, got)
+}
+
+func TestWrapKeepsAPermissionDenial(t *testing.T) {
+	op := &catalog.Operation{ID: "orders.get", Permissions: []string{"orders.read"}}
+	next := Builtin{Allow: map[string]bool{}}
+	got, err := Wrap(next, func(context.Context, *catalog.Operation) (Decision, bool, error) {
+		return DecisionAllow, true, nil
+	}).Check(context.Background(), op)
+	require.NoError(t, err)
+	assert.Equal(t, DecisionDeny, got)
 }
