@@ -6,7 +6,7 @@ Point `veto` at OpenAPI files you already have. The agent gets three tools. Dest
 go install github.com/aiveto/veto/cmd/veto@latest
 ```
 
-That installs the `veto` command from `github.com/aiveto/veto/cmd/veto`. The module's `go` line is `1.26.0`. From a checkout of this repo, `go run ./cmd/veto` is the same binary.
+That installs the `veto` command from `github.com/aiveto/veto/cmd/veto`. From a checkout of this repo, `go run ./cmd/veto` is the same binary.
 
 ## One veto.yaml
 
@@ -217,7 +217,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.26.0"
+          go-version-file: go.mod
       - run: go install github.com/aiveto/veto/cmd/veto@latest
       - run: veto check --config veto.yaml --case cases --against ${{ github.event.pull_request.base.sha }}
 ```
@@ -269,6 +269,120 @@ veto generate --config veto.yaml --out ./client --module example.com/client
 
 The generated client calls through the same gate.
 
+## Orders and customers
+
+`examples/two-apis` is two contracts. Each file keeps its own server URL.
+
+```yaml
+contracts:
+  - orders.yaml
+  - customers.yaml
+```
+
+A person logs in once. Invoke exchanges that token for the bearer the contracts name.
+
+```yaml
+contracts:
+  - orders.yaml
+  - customers.yaml
+auth:
+  user:
+    source: login
+    client_id: veto
+    issuer: https://idp.example
+    scopes: [orders.read]
+  bearerAuth:
+    source: token_exchange
+    token_url: https://idp.example/oauth/token
+    client_id: veto
+    client_secret_env: VETO_SECRET
+    audience: https://orders.example
+    scopes: [orders.read]
+    subject: user
+```
+
+```bash
+veto auth login --config veto.yaml --scheme user
+```
+
+OPA can require confirmation for the write `orders.delete`. Builtin confirmation still applies when Rego allows the call.
+
+```yaml
+policy: opa
+policy_file: policy.rego
+```
+
+```rego
+package veto
+
+import rego.v1
+
+default decision := "allow"
+default reason := ""
+
+decision := "confirmation" if {
+	input.operation == "orders.delete"
+}
+```
+
+A command can supply `bearerAuth`. Veto writes JSON to its stdin and reads headers from stdout.
+
+```yaml
+auth:
+  bearerAuth:
+    source: command
+    command: /usr/local/bin/veto-sig
+    timeout: 5s
+```
+
+`veto check` on a pull request, for that same `veto.yaml`:
+
+```yaml
+name: veto
+on:
+  pull_request:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go install github.com/aiveto/veto/cmd/veto@latest
+      - run: veto check --config veto.yaml --case cases --against ${{ github.event.pull_request.base.sha }}
+```
+
+## Limits
+
+`veto serve` is stdio MCP. There is no shared listener.
+
+Approval nonces are local files. `VETO_APPROVAL_SECRET` signs the yes. `VETO_APPROVAL_NONCE_DIR` is the nonce directory on that machine. Two machines that share the signing secret and not the nonce directory can both accept a yes until expiry.
+
+Token files are local. `token_dir` and `VETO_TOKEN_DIR` name that directory. They are not a remote session store.
+
+```text
+agent host
+    |  stdio MCP
+    v
+  veto
+    |  your API's HTTP
+    v
+ your API
+```
+
+Veto is not backend auth. The API still authenticates the caller and enforces its own authorization.
+
+Veto is not an agent framework. The host owns the model.
+
+Veto is not an API gateway replacement. It does not sit in front of every client.
+
+## Roadmap
+
+HTTP transport. One approval webhook. Richer policy input. Better discovery.
+
 ## What the API still owns
 
-The service still authenticates the caller, stores the data, and enforces its own authorization and quotas. Veto names the env var and holds a destructive call until confirmation is stored. It does not replace the API, and it is not an agent framework.
+The service still authenticates the caller, stores the data, and enforces its own authorization and quotas. Veto names the env var and holds a destructive call until confirmation is stored.

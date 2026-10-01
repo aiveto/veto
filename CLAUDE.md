@@ -53,11 +53,11 @@ No `util`, `common`, `pkg`, or empty directories. A new package needs a caller i
 3. DELETE, or an id containing "delete", requires confirmation unless agent.yaml sets confirmation false for that operation. agent.yaml can require confirmation on any operation. Without approval, invoke does not call HTTP.
 4. Context pack holds rules, the search hits and their neighbors, the conversation given to it, the operation just described, and pending confirmation. It does not list every operation and it does not embed the raw spec. Truncate the index first.
 5. Semantics come from the summary, tags, path noun, and a small synonym map (delete/remove/retire, get/fetch/read). A declared relation becomes a sentence on the note, such as `Order.customerId identifies customers.get`. A yaml overlay overrides one id and does not drop that sentence. Apache Ossie 0.1.1 is the later file format behind `semantics.Provider`. Do not import `github.com/apache/ossie/cli`. Do not depend on Ossie 0.2 drafts.
-6. Jev is a decision API, not a framework. No Jev client in the module. A later decision provider may call it. It does not approve a delete.
-7. Memory, model, semantics, and policy have one default each. `scripted` is the model default. `model: openai` is optional and reads `OPENAI_API_KEY`. Temporal, subagents, and a vector store are not packages.
+6. No external decision client is in the module. A decision check does not approve a delete.
+7. Memory, model, semantics, and policy have one default each. `scripted` is the model default. `model: openai` is optional and reads `OPENAI_API_KEY`. Subagents and a vector store are not packages.
 8. Evals use the scripted model and the real policy path. The shipped case is "delete order 123": confirmation required, delete operation named.
 9. Protobuf is not implemented.
-10. `veto.yaml` lists the contracts, relations, semantics, agent metadata, and provider keys. Repeat `--contract` only to override that list. A relation file joins a schema field to an operation. A field name alone does not. Each contract keeps its server URL. Temporal, Jev, and Ossie stay behind the provider keys. They are not imported.
+10. `veto.yaml` lists the contracts, relations, semantics, agent metadata, and provider keys. Repeat `--contract` only to override that list. A relation file joins a schema field to an operation. A field name alone does not. Each contract keeps its server URL. Ossie is not imported.
 
 ## Docs, comments, tests
 
@@ -114,4 +114,4 @@ A signed decision is locked only with a short file in `docs/adr/` that holds tho
 
 ## Not yet
 
-Ossie 0.1.1 reader. Protobuf loader. Jev. Temporal. Subagents.
+Ossie 0.1.1 reader. Protobuf loader. Subagents.

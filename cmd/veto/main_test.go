@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -85,7 +86,11 @@ func TestBuildLoopConstructsDefaultsAndOpenAIHost(t *testing.T) {
 	require.NoError(t, err)
 	dir := t.TempDir()
 	fileCfg := filepath.Join(dir, "file.yaml")
-	fileText := "memory: file\nmemory_file: turns.log\ncontracts:\n  - " + contract + "\n"
+	fileText := fmt.Sprintf(`memory: file
+memory_file: turns.log
+contracts:
+  - %s
+`, contract)
 	require.NoError(t, os.WriteFile(fileCfg, []byte(fileText), 0o644))
 	fileLoop, _, err := buildLoop(nil, fileCfg, "", "", "")
 	require.NoError(t, err)
@@ -102,7 +107,9 @@ func TestBuildLoopConstructsDefaultsAndOpenAIHost(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(dir, tc.name+".yaml")
-			text := tc.yaml + "contracts:\n  - " + contract + "\n"
+			text := fmt.Sprintf(`%scontracts:
+  - %s
+`, tc.yaml, contract)
 			require.NoError(t, os.WriteFile(path, []byte(text), 0o644))
 			loop, _, err := buildLoop(nil, path, "", "", "")
 			require.NoError(t, err)
@@ -118,7 +125,9 @@ func TestPackPrintsTheDeleteCall(t *testing.T) {
 	require.NoError(t, err)
 	dir := t.TempDir()
 	path := filepath.Join(dir, "veto.yaml")
-	require.NoError(t, os.WriteFile(path, []byte("contracts:\n  - "+contract+"\n"), 0o644))
+	require.NoError(t, os.WriteFile(path, []byte(fmt.Sprintf(`contracts:
+  - %s
+`, contract)), 0o644))
 	loop, _, err := buildLoop(nil, path, "", "", "")
 	require.NoError(t, err)
 	text, err := packOutput(loop, "delete order 123", false)
@@ -138,7 +147,11 @@ func TestAuthSecretComesFromTheEnv(t *testing.T) {
 	require.NoError(t, err)
 	dir := t.TempDir()
 	path := filepath.Join(dir, "veto.yaml")
-	text := "auth:\n  bearerAuth: ORDER_TOKEN\ncontracts:\n  - " + contract + "\n"
+	text := fmt.Sprintf(`auth:
+  bearerAuth: ORDER_TOKEN
+contracts:
+  - %s
+`, contract)
 	require.NoError(t, os.WriteFile(path, []byte(text), 0o644))
 	t.Setenv("ORDER_TOKEN", "s3cret")
 	loop, cfg, err := buildLoop(nil, path, "", "", "")
@@ -200,13 +213,14 @@ func TestExternalPolicyFailsClosed(t *testing.T) {
 		want string
 	}{
 		{name: "opa", body: "policy: opa\n", want: "opa"},
-		{name: "temporal", body: "execution: temporal\n", want: "not in this slice"},
-		{name: "jev", body: "decision: jev\n", want: "not in this slice"},
+		{name: "unknown policy", body: "policy: other\n", want: "not in this slice"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "veto.yaml")
-			require.NoError(t, os.WriteFile(path, []byte(tc.body+"contracts:\n  - "+contract+"\n"), 0o644))
+			require.NoError(t, os.WriteFile(path, []byte(fmt.Sprintf(`%scontracts:
+  - %s
+`, tc.body, contract)), 0o644))
 			_, _, err := buildLoop(nil, path, "", "", "")
 			assert.ErrorContains(t, err, tc.want)
 		})
@@ -240,7 +254,11 @@ func TestDoctorReportsPinsAuthAndPing(t *testing.T) {
 	body := strings.ReplaceAll(securedSpec, "http://example.test", up.URL)
 	require.NoError(t, os.WriteFile(spec, []byte(body), 0o644))
 	conf := filepath.Join(dir, "veto.yaml")
-	text := "auth:\n  bearerAuth: ORDER_TOKEN\ncontracts:\n  - " + spec + "\n"
+	text := fmt.Sprintf(`auth:
+  bearerAuth: ORDER_TOKEN
+contracts:
+  - %s
+`, spec)
 	require.NoError(t, os.WriteFile(conf, []byte(text), 0o644))
 	t.Setenv("VETO_TOKEN_DIR", t.TempDir())
 	t.Setenv("ORDER_TOKEN", "")
@@ -259,7 +277,9 @@ func TestDoctorReportsPinsAuthAndPing(t *testing.T) {
 	down := strings.ReplaceAll(securedSpec, "http://example.test", "http://127.0.0.1:1")
 	require.NoError(t, os.WriteFile(downSpec, []byte(down), 0o644))
 	downConf := filepath.Join(dir, "down.yaml.conf")
-	require.NoError(t, os.WriteFile(downConf, []byte("contracts:\n  - "+downSpec+"\n"), 0o644))
+	require.NoError(t, os.WriteFile(downConf, []byte(fmt.Sprintf(`contracts:
+  - %s
+`, downSpec)), 0o644))
 	downLoop, downCfg, err := buildLoop(nil, downConf, "", "", "")
 	require.NoError(t, err)
 	blocked := doctorBlockers(context.Background(), downLoop.Catalog, downCfg, nil, true)

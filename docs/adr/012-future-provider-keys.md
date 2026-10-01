@@ -2,7 +2,7 @@
 
 ## Context
 
-ADR-001 names decision providers (e.g. Jev), semantic catalogs (e.g. OSSIE), and durable execution (e.g. Temporal) as optional integrations.
+ADR-001 names decision providers, semantic catalogs (e.g. OSSIE), and durable execution as optional integrations.
 
 ## Staff engineer
 
@@ -14,7 +14,7 @@ First-class packages for each vendor speed up demos for those ecosystems.
 
 ## Decision
 
-Document provider keys in config for model, memory, semantics, decision, policy, telemetry, execution, and subagents. Defaults stay in-tree; Jev, OSSIE, Temporal, and subagents are not imported in this slice.
+Document provider keys in config for model, memory, semantics, decision, policy, telemetry, execution, and subagents. Defaults stay in-tree; OSSIE and subagents are not imported in this slice.
 
 ## What we refused
 

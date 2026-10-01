@@ -1,4 +1,4 @@
-# ADR 004: No Eino, LangChain, Temporal, or vector DB imports
+# ADR 004: No Eino, LangChain, or vector DB imports
 
 ## Context
 
@@ -14,7 +14,7 @@ Reusing Eino callbacks and graph primitives could speed up a runtime loop.
 
 ## Decision
 
-Do not import Eino, LangChain, Temporal, or a vector database. Take explicit steps, span-like callbacks, and interrupt-as-confirmation from those designs in our own code.
+Do not import Eino, LangChain, or a vector database. Take explicit steps, span-like callbacks, and interrupt-as-confirmation from those designs in our own code.
 
 ## What we refused
 
