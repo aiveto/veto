@@ -47,7 +47,12 @@ func New(baseURL string, httpClient *http.Client) (*Client, error) {
 				SideEffect: {{.SideConst}},
 				RequiresConfirmation: {{.Confirm}},
 				Permissions: {{list .Permissions}},
+				Idempotency: {{quote .Idempotency}},
+				Retry: {{quote .Retry}},
+				Exposure: {{.ExposureLit}},
 				BaseURL: {{quote .BaseURL}},
+				Auth: {{.AuthLit}},
+				Requirements: {{.ReqLit}},
 				Params: []catalog.Param{
 {{- range .Params}}
 					{Name: {{quote .Name}}, In: {{quote .In}}, Required: {{.Required}}, Description: {{quote .Description}}, Schema: {{quote .Schema}}, MediaType: {{quote .MediaType}}, Default: {{quote .Default}}, Style: {{quote .Style}}, Explode: {{.Explode}}},
@@ -263,7 +268,12 @@ type (
 		SideConst   string
 		Confirm     bool
 		Permissions []string
+		Idempotency string
+		Retry       string
+		ExposureLit string
 		BaseURL     string
+		AuthLit     string
+		ReqLit      string
 		Params      []paramView
 	}
 
@@ -337,7 +347,12 @@ func views(cat *catalog.Catalog) []opView {
 			SideConst:   sideConst(op.SideEffect),
 			Confirm:     op.RequiresConfirmation,
 			Permissions: op.Permissions,
+			Idempotency: op.Idempotency,
+			Retry:       op.Retry,
+			ExposureLit: exposureLit(op.Exposure),
 			BaseURL:     op.BaseURL,
+			AuthLit:     authSliceLit(op.Auth),
+			ReqLit:      reqLit(op.Requirements),
 			Params:      params,
 		})
 	}
@@ -399,6 +414,52 @@ func export(s string) string {
 	r := []rune(s)
 	r[0] = unicode.ToUpper(r[0])
 	return string(r)
+}
+
+func exposureLit(s string) string {
+	switch s {
+	case catalog.ExposureDirect:
+		return "catalog.ExposureDirect"
+	case catalog.ExposureGrouped:
+		return "catalog.ExposureGrouped"
+	case catalog.ExposureDiscovery:
+		return "catalog.ExposureDiscovery"
+	default:
+		return strconv.Quote(s)
+	}
+}
+
+func authSliceLit(list []catalog.Auth) string {
+	if len(list) == 0 {
+		return "nil"
+	}
+	parts := make([]string, len(list))
+	for i, a := range list {
+		parts[i] = authLit(a)
+	}
+	return "[]catalog.Auth{" + strings.Join(parts, ", ") + "}"
+}
+
+func reqLit(groups [][]catalog.Auth) string {
+	if len(groups) == 0 {
+		return "nil"
+	}
+	parts := make([]string, len(groups))
+	for i, group := range groups {
+		parts[i] = authSliceLit(group)
+	}
+	return "[][]catalog.Auth{" + strings.Join(parts, ", ") + "}"
+}
+
+func authLit(a catalog.Auth) string {
+	return fmt.Sprintf("catalog.Auth{Name: %s, Header: %s, Query: %s, Kind: %s, Scopes: %s, UserHeader: %s}",
+		strconv.Quote(a.Name),
+		strconv.Quote(a.Header),
+		strconv.Quote(a.Query),
+		strconv.Quote(a.Kind),
+		quoteList(a.Scopes),
+		strconv.Quote(a.UserHeader),
+	)
 }
 
 func sideConst(s catalog.SideEffect) string {
