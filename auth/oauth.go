@@ -51,9 +51,12 @@ func Discover(ctx context.Context, client *http.Client, issuer string) (Endpoint
 	if err != nil {
 		return Endpoints{}, fmt.Errorf("discover issuer: request failed")
 	}
-	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	closeErr := resp.Body.Close()
 	if err != nil {
+		return Endpoints{}, fmt.Errorf("discover issuer: request failed")
+	}
+	if closeErr != nil {
 		return Endpoints{}, fmt.Errorf("discover issuer: request failed")
 	}
 	if resp.StatusCode != http.StatusOK {
@@ -113,9 +116,12 @@ func postForm(ctx context.Context, client *http.Client, endpoint string, form ur
 	if err != nil {
 		return tokenResponse{}, fmt.Errorf("token endpoint: %s", Redact(err.Error(), secrets, nil))
 	}
-	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	closeErr := resp.Body.Close()
 	if err != nil {
+		return tokenResponse{}, fmt.Errorf("token endpoint: request failed")
+	}
+	if closeErr != nil {
 		return tokenResponse{}, fmt.Errorf("token endpoint: request failed")
 	}
 	if resp.StatusCode != http.StatusOK {
@@ -338,9 +344,12 @@ func (c *bodyCapture) RoundTrip(req *http.Request) (*http.Response, error) {
 		return resp, err
 	}
 	raw, rerr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	_ = resp.Body.Close()
+	closeErr := resp.Body.Close()
 	if rerr != nil {
 		return nil, rerr
+	}
+	if closeErr != nil {
+		return nil, closeErr
 	}
 	c.mu.Lock()
 	c.last = append([]byte(nil), raw...)

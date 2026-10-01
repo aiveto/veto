@@ -49,7 +49,7 @@ func TestProjectedResponseKeepsNamedFieldsAndMarksTheCap(t *testing.T) {
 
 	rec, err := telemetry.Record()
 	require.NoError(t, err)
-	defer rec.Stop(context.Background())
+	defer func() { require.NoError(t, rec.Stop(context.Background())) }()
 
 	rt := runtime.Runtime{
 		Catalog: cat,
@@ -81,10 +81,10 @@ func TestProjectedResponseKeepsNamedFieldsAndMarksTheCap(t *testing.T) {
 	assert.NotContains(t, text, secret)
 	assert.NotContains(t, text, "BLOBDATA")
 
-	rec.Stop(context.Background())
+	require.NoError(t, rec.Stop(context.Background()))
 	rec2, err := telemetry.Record()
 	require.NoError(t, err)
-	defer rec2.Stop(context.Background())
+	defer func() { require.NoError(t, rec2.Stop(context.Background())) }()
 	plain := runtime.Runtime{
 		Catalog: cat,
 		State:   policy.NewState(),
@@ -95,7 +95,9 @@ func TestProjectedResponseKeepsNamedFieldsAndMarksTheCap(t *testing.T) {
 	assert.NotContains(t, spanText(t, rec2), secret)
 
 	small := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, `[{"id":"1","name":"ada","access_token":"%s"},{"id":"2","name":"grace","access_token":"%s"}]`, secret, secret)
+		if _, err := fmt.Fprintf(w, `[{"id":"1","name":"ada","access_token":"%s"},{"id":"2","name":"grace","access_token":"%s"}]`, secret, secret); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 	}))
 	defer small.Close()
 	configured := runtime.Runtime{

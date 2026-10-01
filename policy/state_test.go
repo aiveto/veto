@@ -194,7 +194,7 @@ func TestUnsignedApprovalIsOneUseAcrossProcesses(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			cmd := exec.Command(os.Args[0], "-test.run=^TestUnsignedApprovalIsOneUseAcrossProcesses$", "-test.count=1")
+			cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestUnsignedApprovalIsOneUseAcrossProcesses$", "-test.count=1")
 			cmd.Env = append(os.Environ(), "VETO_CLAIM_CHILD=1", "VETO_CLAIM_DIR="+dir, "VETO_CLAIM_ID="+approved)
 			err := cmd.Run()
 			if err == nil {

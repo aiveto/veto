@@ -96,7 +96,11 @@ type (
 )
 
 func main() {
-	defer bundle.Release()
+	defer func() {
+		if err := bundle.Release(); err != nil {
+			fmt.Fprintf(os.Stderr, "bundle: %v\n", err)
+		}
+	}()
 	root, err := newRoot()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "veto: %v\n", err)
@@ -446,7 +450,11 @@ func runServe(cmd serveCmd, c *cobra.Command) {
 		fmt.Fprintf(os.Stderr, "serve: %v\n", err)
 		os.Exit(1)
 	}
-	defer stop(context.Background())
+	defer func() {
+		if err := stop(context.Background()); err != nil {
+			fmt.Fprintf(os.Stderr, "serve: %v\n", err)
+		}
+	}()
 	if err := mcpserver.ValidatePins(loop.Catalog, cmd.pin); err != nil {
 		fmt.Fprintf(os.Stderr, "serve: %v\n", err)
 		os.Exit(1)
@@ -505,7 +513,11 @@ func runEval(cmd evalCmd) {
 		fmt.Fprintf(os.Stderr, "eval: %v\n", err)
 		os.Exit(1)
 	}
-	defer stop(context.Background())
+	defer func() {
+		if err := stop(context.Background()); err != nil {
+			fmt.Fprintf(os.Stderr, "eval: %v\n", err)
+		}
+	}()
 	if err := runCases(loop, cmd.cases); err != nil {
 		fmt.Fprintf(os.Stderr, "eval failed: %v\n", err)
 		os.Exit(1)
@@ -577,7 +589,11 @@ func runReplay(cmd replayCmd) {
 		fmt.Fprintf(os.Stderr, "replay: %v\n", err)
 		os.Exit(1)
 	}
-	defer rec.Stop(context.Background())
+	defer func() {
+		if stopErr := rec.Stop(context.Background()); stopErr != nil {
+			fmt.Fprintf(os.Stderr, "replay: %v\n", stopErr)
+		}
+	}()
 	loop, cfg, err := buildLoop(cmd.contract, cmd.config, cmd.agent, cmd.relations, cmd.baseURL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "replay: %v\n", err)
@@ -808,7 +824,9 @@ func overlayBundle(deploy, shared config.File) config.File {
 }
 
 func releaseBundles() {
-	bundle.Release()
+	if err := bundle.Release(); err != nil {
+		fmt.Fprintf(os.Stderr, "bundle: %v\n", err)
+	}
 }
 
 func buildLoop(contracts []string, configPath, agentPath, relationsPath, baseURL string) (*agent.Loop, config.File, error) {

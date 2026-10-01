@@ -38,7 +38,7 @@ func main() {
 }
 
 func run(ctx context.Context) error {
-	cat, err := loadCatalog()
+	cat, err := loadCatalog(ctx)
 	if err != nil {
 		return err
 	}
@@ -51,7 +51,11 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer rec.Stop(ctx)
+	defer func() {
+		if stopErr := rec.Stop(ctx); stopErr != nil {
+			fmt.Fprintf(os.Stderr, "example: %v\n", stopErr)
+		}
+	}()
 
 	orders := serve(ordersHandler)
 	customers := serve(customersHandler)
@@ -102,12 +106,11 @@ func (s *served) Close() {
 	}
 }
 
-func loadCatalog() (*catalog.Catalog, error) {
+func loadCatalog(ctx context.Context) (*catalog.Catalog, error) {
 	dir, err := exampleDir()
 	if err != nil {
 		return nil, err
 	}
-	ctx := context.Background()
 	orders, err := openapi.Load(ctx, filepath.Join(dir, "orders.yaml"))
 	if err != nil {
 		return nil, err

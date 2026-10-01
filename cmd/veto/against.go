@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -166,7 +167,7 @@ func baselineFromGit(cmd checkCmd) (baseline, error) {
 	return baselineFromPaths(root, cmd.against, cmd.contract, cmd.relations, cmd.agent, cmd.cases)
 }
 
-func baselineFromConfig(root, ref, configPath string, casePaths []string) (baseline, error) {
+func baselineFromConfig(root, ref, configPath string, casePaths []string) (base baseline, err error) {
 	cfgRel, err := repoRel(root, configPath)
 	if err != nil {
 		return baseline{}, err
@@ -179,7 +180,11 @@ func baselineFromConfig(root, ref, configPath string, casePaths []string) (basel
 	if err != nil {
 		return baseline{}, err
 	}
-	defer os.RemoveAll(tmp)
+	defer func() {
+		if rerr := os.RemoveAll(tmp); rerr != nil {
+			err = errors.Join(err, fmt.Errorf("remove temp: %w", rerr))
+		}
+	}()
 	if err := writeRepoFile(tmp, cfgRel, raw); err != nil {
 		return baseline{}, err
 	}
@@ -233,12 +238,16 @@ func baselineFromConfig(root, ref, configPath string, casePaths []string) (basel
 	return baseline{Operations: catalog.Facts(cat), Cases: cases, Confirmations: conf}, nil
 }
 
-func baselineFromPaths(root, ref string, contracts []string, relations, agentPath string, casePaths []string) (baseline, error) {
+func baselineFromPaths(root, ref string, contracts []string, relations, agentPath string, casePaths []string) (base baseline, err error) {
 	tmp, err := os.MkdirTemp("", "veto-against-")
 	if err != nil {
 		return baseline{}, err
 	}
-	defer os.RemoveAll(tmp)
+	defer func() {
+		if rerr := os.RemoveAll(tmp); rerr != nil {
+			err = errors.Join(err, fmt.Errorf("remove temp: %w", rerr))
+		}
+	}()
 	var contractPaths []string
 	for i, abs := range contracts {
 		data, _, err := showIfPresent(root, ref, abs)
@@ -310,7 +319,7 @@ func loadConfigAt(configPath string) (configFile, error) {
 	return configFile{Contracts: cfg.Contracts, RelationsFile: cfg.RelationsFile, AgentFile: cfg.AgentFile}, nil
 }
 
-func casesAtRef(root, ref string, paths []string) ([]eval.CaseExpect, error) {
+func casesAtRef(root, ref string, paths []string) (out []eval.CaseExpect, err error) {
 	if len(paths) == 0 {
 		return nil, nil
 	}
@@ -318,7 +327,11 @@ func casesAtRef(root, ref string, paths []string) ([]eval.CaseExpect, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer os.RemoveAll(tmp)
+	defer func() {
+		if rerr := os.RemoveAll(tmp); rerr != nil {
+			err = errors.Join(err, fmt.Errorf("remove temp: %w", rerr))
+		}
+	}()
 	var files []string
 	for _, p := range paths {
 		abs, err := filepath.Abs(p)
@@ -437,7 +450,7 @@ func repoRel(root, abs string) (string, error) {
 }
 
 func gitShow(root, ref, rel string) ([]byte, error) {
-	cmd := exec.Command("git", "-C", root, "show", ref+":"+rel)
+	cmd := exec.CommandContext(context.Background(), "git", "-C", root, "show", ref+":"+rel)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -456,7 +469,7 @@ func gitShow(root, ref, rel string) ([]byte, error) {
 }
 
 func gitList(root, ref, rel string) ([]string, error) {
-	cmd := exec.Command("git", "-C", root, "ls-tree", "-r", "--name-only", ref, "--", rel)
+	cmd := exec.CommandContext(context.Background(), "git", "-C", root, "ls-tree", "-r", "--name-only", ref, "--", rel)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -474,7 +487,7 @@ func gitList(root, ref, rel string) ([]string, error) {
 }
 
 func gitOutput(dir string, args ...string) ([]byte, error) {
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	cmd := exec.CommandContext(context.Background(), "git", append([]string{"-C", dir}, args...)...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

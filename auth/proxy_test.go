@@ -25,7 +25,7 @@ func TestCustomTransportHonorsHTTPSProxy(t *testing.T) {
 	require.True(t, ok)
 	assert.NotNil(t, tr.Proxy)
 	assert.Nil(t, base.Proxy)
-	req, err := http.NewRequest(http.MethodGet, "https://api.example/orders", nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://api.example/orders", nil)
 	require.NoError(t, err)
 	got, err := tr.Proxy(req)
 	require.NoError(t, err)
@@ -40,9 +40,12 @@ func TestRoundTripperWithoutProxyStillRuns(t *testing.T) {
 		return nil, errString("stopped")
 	})
 	client := auth.WithEnvProxy(&http.Client{Transport: next})
-	req, err := http.NewRequest(http.MethodGet, "https://127.0.0.1/orders", nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://127.0.0.1/orders", nil)
 	require.NoError(t, err)
-	_, err = client.Transport.RoundTrip(req)
+	resp, err := client.Transport.RoundTrip(req)
+	if resp != nil && resp.Body != nil {
+		assert.NoError(t, resp.Body.Close())
+	}
 	assert.Error(t, err)
 	assert.True(t, called)
 }

@@ -20,7 +20,7 @@ func TestReplayShowsConfirmationAndOmitsTheMessage(t *testing.T) {
 	require.NoError(t, err)
 	rec, err := telemetry.Record()
 	require.NoError(t, err)
-	defer rec.Stop(context.Background())
+	defer func() { require.NoError(t, rec.Stop(context.Background())) }()
 
 	loop, err := agent.New(cat, nil, execute.Client{BaseURL: "http://127.0.0.1:9"})
 	require.NoError(t, err)

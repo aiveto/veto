@@ -2,6 +2,7 @@ package bundle
 
 import (
 	"archive/zip"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -31,33 +32,39 @@ var (
 )
 
 // Close removes an extracted archive. A directory bundle stays where it is.
-func (l *Loaded) Close() {
+func (l *Loaded) Close() error {
 	if l == nil {
-		return
+		return nil
 	}
 	mu.Lock()
 	if l.closed {
 		mu.Unlock()
-		return
+		return nil
 	}
 	l.closed = true
 	temp := l.temp
 	held = dropHeld(held, l)
 	mu.Unlock()
-	if temp != "" {
-		os.RemoveAll(temp)
+	if temp == "" {
+		return nil
 	}
+	if err := os.RemoveAll(temp); err != nil {
+		return fmt.Errorf("remove bundle: %w", err)
+	}
+	return nil
 }
 
 // Release removes every extracted archive still held.
-func Release() {
+func Release() error {
 	mu.Lock()
 	all := append([]*Loaded(nil), held...)
 	held = nil
 	mu.Unlock()
+	var err error
 	for _, l := range all {
-		l.Close()
+		err = errors.Join(err, l.Close())
 	}
+	return err
 }
 
 func hold(l *Loaded) {
@@ -95,7 +102,9 @@ func load(bundlePath string) (*Loaded, error) {
 	}
 	fail := func(err error) (*Loaded, error) {
 		if temp != "" {
-			os.RemoveAll(temp)
+			if rerr := os.RemoveAll(temp); rerr != nil {
+				err = errors.Join(err, fmt.Errorf("remove bundle temp: %w", rerr))
+			}
 		}
 		return nil, err
 	}
@@ -160,56 +169,70 @@ func isZip(bundlePath string) bool {
 	if err != nil {
 		return false
 	}
-	defer f.Close()
 	var magic [4]byte
-	if _, err := io.ReadFull(f, magic[:]); err != nil {
+	_, readErr := io.ReadFull(f, magic[:])
+	closeErr := f.Close()
+	if readErr != nil || closeErr != nil {
 		return false
 	}
 	return magic[0] == 'P' && magic[1] == 'K'
 }
 
-func extractZip(src string) (string, error) {
+func extractZip(src string) (dest string, err error) {
 	r, err := zip.OpenReader(src)
 	if err != nil {
 		return "", fmt.Errorf("read bundle: %w", err)
 	}
-	defer r.Close()
+	defer func() {
+		cerr := r.Close()
+		if err != nil || cerr == nil {
+			return
+		}
+		err = fmt.Errorf("read bundle: %w", cerr)
+		if dest == "" {
+			return
+		}
+		if rerr := os.RemoveAll(dest); rerr != nil {
+			err = errors.Join(err, fmt.Errorf("remove bundle temp: %w", rerr))
+		}
+	}()
 	if len(r.File) > 4096 {
 		return "", fmt.Errorf("bundle archive is too large")
 	}
-	dest, err := os.MkdirTemp("", "veto-bundle-")
+	dest, err = os.MkdirTemp("", "veto-bundle-")
 	if err != nil {
 		return "", err
+	}
+	fail := func(cause error) (string, error) {
+		if rerr := os.RemoveAll(dest); rerr != nil {
+			cause = errors.Join(cause, fmt.Errorf("remove bundle temp: %w", rerr))
+		}
+		return "", cause
 	}
 	var total int64
 	for _, f := range r.File {
 		target, skip, err := zipTarget(dest, f.Name)
 		if err != nil {
-			os.RemoveAll(dest)
-			return "", err
+			return fail(err)
 		}
 		if skip {
 			continue
 		}
 		if f.FileInfo().IsDir() || strings.HasSuffix(f.Name, "/") {
 			if err := os.MkdirAll(target, 0o755); err != nil {
-				os.RemoveAll(dest)
-				return "", err
+				return fail(err)
 			}
 			continue
 		}
 		if f.Mode()&os.ModeSymlink != 0 {
-			os.RemoveAll(dest)
-			return "", fmt.Errorf("bundle archive contains a symlink")
+			return fail(fmt.Errorf("bundle archive contains a symlink"))
 		}
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-			os.RemoveAll(dest)
-			return "", err
+			return fail(err)
 		}
 		n, err := writeZipFile(f, target, total)
 		if err != nil {
-			os.RemoveAll(dest)
-			return "", err
+			return fail(err)
 		}
 		total += n
 	}
@@ -234,7 +257,7 @@ func zipTarget(dest, name string) (string, bool, error) {
 	return target, false, nil
 }
 
-func writeZipFile(f *zip.File, target string, total int64) (int64, error) {
+func writeZipFile(f *zip.File, target string, total int64) (n int64, err error) {
 	if int64(f.UncompressedSize64) > maxBundleBytes || total+int64(f.UncompressedSize64) > maxBundleBytes {
 		return 0, fmt.Errorf("bundle archive is too large")
 	}
@@ -242,7 +265,11 @@ func writeZipFile(f *zip.File, target string, total int64) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer rc.Close()
+	defer func() {
+		if cerr := rc.Close(); err == nil && cerr != nil {
+			err = cerr
+		}
+	}()
 	out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
 		return 0, err

@@ -228,25 +228,25 @@ func decodeObject(dec *json.Decoder) (map[string]any, bool, error) {
 	for dec.More() {
 		keyTok, err := dec.Token()
 		if err != nil {
-			return obj, true, nil
+			return keptPartial(obj)
 		}
 		key, ok := keyTok.(string)
 		if !ok {
-			return obj, true, nil
+			return keptPartial(obj)
 		}
 		var raw json.RawMessage
 		if err := dec.Decode(&raw); err != nil {
-			return obj, true, nil
+			return keptPartial(obj)
 		}
 		val, err := decodeRaw(raw)
 		if err != nil {
-			return obj, true, nil
+			return keptPartial(obj)
 		}
 		obj[key] = val
 	}
 	tok, err = dec.Token()
 	if err != nil || tok != json.Delim('}') {
-		return obj, true, nil
+		return keptPartial(obj)
 	}
 	return obj, false, nil
 }
@@ -260,19 +260,23 @@ func decodeArray(dec *json.Decoder) ([]any, bool, error) {
 	for dec.More() {
 		var raw json.RawMessage
 		if err := dec.Decode(&raw); err != nil {
-			return items, true, nil
+			return keptPartial(items)
 		}
 		val, err := decodeRaw(raw)
 		if err != nil {
-			return items, true, nil
+			return keptPartial(items)
 		}
 		items = append(items, val)
 	}
 	tok, err = dec.Token()
 	if err != nil || tok != json.Delim(']') {
-		return items, true, nil
+		return keptPartial(items)
 	}
 	return items, false, nil
+}
+
+func keptPartial[T any](v T) (T, bool, error) {
+	return v, true, nil
 }
 
 func decodeRaw(raw []byte) (any, error) {

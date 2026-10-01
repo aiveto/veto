@@ -83,7 +83,7 @@ func TestHTTPTwoCallersDoNotShareApprovalsOrTokens(t *testing.T) {
 
 	rec, err := telemetry.Record()
 	require.NoError(t, err)
-	defer rec.Stop(context.Background())
+	defer func() { require.NoError(t, rec.Stop(context.Background())) }()
 
 	invokeBody := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"capabilities_invoke","arguments":{"operation_id":"orders.delete","params":{"id":"123"}}}}`
 	status, body := postMCP(t, endpoint, invokeBody, "")
@@ -292,7 +292,7 @@ func decodeInvoke(t *testing.T, text string) mcpserver.InvokeResult {
 
 func postMCP(t *testing.T, endpoint, body, caller string, session ...string) (int, string) {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodPost, endpoint, strings.NewReader(body))
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, endpoint, strings.NewReader(body))
 	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
@@ -304,9 +304,10 @@ func postMCP(t *testing.T, endpoint, body, caller string, session ...string) (in
 	}
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
+	closeErr := resp.Body.Close()
 	require.NoError(t, err)
+	require.NoError(t, closeErr)
 	return resp.StatusCode, string(raw)
 }
 

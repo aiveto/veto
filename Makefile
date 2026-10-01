@@ -7,7 +7,7 @@ help: ## Print each target with a one-line description
 
 lint: ## Fail on gofmt or golangci-lint findings
 	@out=$$(gofmt -l .); if [ -n "$$out" ]; then printf '%s\n' "$$out"; exit 1; fi
-	golangci-lint run
+	"$$(go env GOPATH)/bin/golangci-lint" run
 
 vet: ## Run go vet ./...
 	go vet ./...

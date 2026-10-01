@@ -73,7 +73,7 @@ func TestApprovalsListFollowsTheUserToken(t *testing.T) {
 		Device: true,
 		HTTP:   idp.Client(),
 		Out:    io.Discard,
-		Open:   func(string) error { t.Fatal("browser opened"); return nil },
+		Open:   func(context.Context, string) error { t.Fatal("browser opened"); return nil },
 	})
 	require.NoError(t, err)
 	raw, err := readTokenFile(t, dir, "appAuth")
@@ -105,7 +105,7 @@ func TestApprovalsListFollowsTheUserToken(t *testing.T) {
 
 	rec, err := telemetry.Record()
 	require.NoError(t, err)
-	defer rec.Stop(context.Background())
+	defer func() { require.NoError(t, rec.Stop(context.Background())) }()
 	res, err := (execute.Client{
 		BaseURL: up.URL,
 		Creds: auth.New(auth.Options{Schemes: []auth.Scheme{{

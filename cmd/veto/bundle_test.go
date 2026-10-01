@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,7 +16,7 @@ import (
 )
 
 func TestBundleCheckRunsOrdersAndCustomers(t *testing.T) {
-	t.Cleanup(bundle.Release)
+	t.Cleanup(func() { require.NoError(t, bundle.Release()) })
 	dir := ordersCustomersBundle(t)
 	cfgPath, err := filepath.Abs("../../testdata/veto.yaml")
 	require.NoError(t, err)
@@ -33,7 +34,7 @@ func TestBundleCheckRunsOrdersAndCustomers(t *testing.T) {
 }
 
 func TestBundleKeepsDeploymentAuth(t *testing.T) {
-	t.Cleanup(bundle.Release)
+	t.Cleanup(func() { require.NoError(t, bundle.Release()) })
 	dir := ordersCustomersBundle(t)
 	cfgPath := filepath.Join(t.TempDir(), "veto.yaml")
 	body := fmt.Sprintf(`bundle: %s
@@ -128,13 +129,10 @@ func zipTree(dest, root string) error {
 		return err
 	})
 	if err != nil {
-		w.Close()
-		f.Close()
-		return err
+		return errors.Join(err, w.Close(), f.Close())
 	}
 	if err := w.Close(); err != nil {
-		f.Close()
-		return err
+		return errors.Join(err, f.Close())
 	}
 	return f.Close()
 }

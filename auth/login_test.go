@@ -67,9 +67,9 @@ func TestIssuerDiscoveryAndDeviceLogin(t *testing.T) {
 				RedirectURL: "http://127.0.0.1:0/callback",
 				HTTP:        srv.Client(),
 				Out:         io.Discard,
-				Open: func(raw string) error {
+				Open: func(ctx context.Context, raw string) error {
 					opened = append(opened, raw)
-					return driveCallback(raw)
+					return driveCallback(ctx, raw)
 				},
 			})
 			require.NoError(t, err)
@@ -89,7 +89,7 @@ func TestIssuerDiscoveryAndDeviceLogin(t *testing.T) {
 	}
 }
 
-func driveCallback(raw string) error {
+func driveCallback(ctx context.Context, raw string) error {
 	u, err := url.Parse(raw)
 	if err != nil {
 		return err
@@ -104,7 +104,11 @@ func driveCallback(raw string) error {
 	cb.RawQuery = q.Encode()
 	var resp *http.Response
 	for range 20 {
-		resp, err = http.Get(cb.String())
+		req, reqErr := http.NewRequestWithContext(ctx, http.MethodGet, cb.String(), nil)
+		if reqErr != nil {
+			return reqErr
+		}
+		resp, err = http.DefaultClient.Do(req)
 		if err == nil {
 			break
 		}
@@ -113,7 +117,10 @@ func driveCallback(raw string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
-	_, _ = io.ReadAll(resp.Body)
-	return nil
+	_, readErr := io.ReadAll(resp.Body)
+	closeErr := resp.Body.Close()
+	if readErr != nil {
+		return readErr
+	}
+	return closeErr
 }
