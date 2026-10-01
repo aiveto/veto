@@ -61,8 +61,11 @@ type (
 		now      func() time.Time
 	}
 
+	// Input is the call under policy. Caller is the caller or tenant.
 	Input struct {
-		Params map[string]string
+		Params    map[string]string
+		Arguments map[string]any
+		Caller    string
 	}
 
 	Hook interface {

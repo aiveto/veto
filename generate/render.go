@@ -23,14 +23,15 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/aiveto/veto/agent"
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/execute"
+	"github.com/aiveto/veto/policy"
+	"github.com/aiveto/veto/runtime"
 )
 
-// Client is the Go client for one contract. Calls go through agent.Invoke.
+// Client is the Go client for one contract. Calls go through the invoke runtime.
 type Client struct {
-	Loop *agent.Loop
+	Calls runtime.Runtime
 }
 
 // New builds a client whose calls pass the policy gate.
@@ -57,20 +58,25 @@ func New(baseURL string, httpClient *http.Client) (*Client, error) {
 		},
 	}
 	cat.Finalize()
-	loop, err := agent.New(cat, nil, execute.Client{BaseURL: baseURL, HTTP: httpClient})
-	if err != nil {
-		return nil, err
-	}
-	return &Client{Loop: loop}, nil
+	return &Client{Calls: runtime.Runtime{
+		Catalog: cat,
+		Policy:  policy.Builtin{},
+		State:   policy.NewState(),
+		Exec:    execute.Client{BaseURL: baseURL, HTTP: httpClient},
+	}}, nil
 }
 
 {{range .Ops}}
-func (c *Client) {{.GoName}}(ctx context.Context{{range .Params}}, {{.GoName}} string{{end}}, approvalID string) (agent.Call, error) {
-	return c.Loop.Invoke(ctx, {{quote .ID}}, map[string]string{
+func (c *Client) {{.GoName}}(ctx context.Context{{range .Params}}, {{.GoName}} string{{end}}, approvalID string) (runtime.Result, error) {
+	return c.Calls.Invoke(ctx, runtime.Request{
+		Operation: {{quote .ID}},
+		Arguments: map[string]any{
 {{- range .Params}}
-		{{quote .Name}}: {{.GoName}},
+			{{quote .Name}}: {{.GoName}},
 {{- end}}
-	}, approvalID)
+		},
+		Approval: approvalID,
+	})
 }
 {{end}}
 `
@@ -197,7 +203,7 @@ func run{{.GoName}}(args []string) {
 			fmt.Fprintln(os.Stderr, "confirmation required")
 			os.Exit(2)
 		}
-		approved, aerr := c.Loop.State.Approve(call.ApprovalID)
+		approved, aerr := c.Calls.State.Approve(call.ApprovalID)
 		if aerr != nil {
 			fmt.Fprintln(os.Stderr, aerr)
 			os.Exit(1)
@@ -218,14 +224,14 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/aiveto/veto/agent"
+	"github.com/aiveto/veto/runtime"
 	"{{.Module}}/sdk"
 )
 
 // Call sends one operation id through the Go client and the policy gate.
-func Call(ctx context.Context, c *sdk.Client, operationID string, params map[string]string, approvalID string) (agent.Call, error) {
-	if c == nil || c.Loop == nil {
-		return agent.Call{}, fmt.Errorf("nil sdk client")
+func Call(ctx context.Context, c *sdk.Client, operationID string, params map[string]string, approvalID string) (runtime.Result, error) {
+	if c == nil || c.Calls.Catalog == nil {
+		return runtime.Result{}, fmt.Errorf("nil sdk client")
 	}
 	switch operationID {
 {{- range .Ops}}
@@ -233,7 +239,7 @@ func Call(ctx context.Context, c *sdk.Client, operationID string, params map[str
 		return c.{{.GoName}}(ctx{{range .Params}}, params[{{quote .Name}}]{{end}}, approvalID)
 {{- end}}
 	default:
-		return agent.Call{}, fmt.Errorf("unknown operation %q", operationID)
+		return runtime.Result{}, fmt.Errorf("unknown operation %q", operationID)
 	}
 }
 `

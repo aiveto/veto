@@ -146,7 +146,9 @@ func InvokeResponse(ctx context.Context, cfg Config, op *catalog.Operation, para
 	if media != "" {
 		req.Header.Set("Content-Type", media)
 	}
-	if op.Idempotency == "key" {
+	if key := IdempotencyFrom(ctx); key != "" {
+		req.Header.Set("Idempotency-Key", key)
+	} else if op.Idempotency == "key" {
 		req.Header.Set("Idempotency-Key", uuid.NewString())
 	}
 	refresh, creds, err := obtainAuth(ctx, cfg, op, req, false)
@@ -393,6 +395,33 @@ func classify(status int) (string, bool) {
 	default:
 		return "rejected", false
 	}
+}
+
+type idempotencyKey struct{}
+
+// WithIdempotency carries the caller's idempotency key onto the HTTP request.
+func WithIdempotency(ctx context.Context, key string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if key == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, idempotencyKey{}, key)
+}
+
+// IdempotencyFrom returns the key set by WithIdempotency.
+func IdempotencyFrom(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	key, _ := ctx.Value(idempotencyKey{}).(string)
+	return key
+}
+
+// CheckParams reports a missing required parameter before HTTP.
+func CheckParams(op *catalog.Operation, params map[string]string) error {
+	return requireParams(op, params)
 }
 
 func headerValue(p catalog.Param, params map[string]string) string {

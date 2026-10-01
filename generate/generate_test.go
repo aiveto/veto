@@ -45,7 +45,7 @@ func TestGeneratedCLIHelpAndConfirm(t *testing.T) {
 	require.NoError(t, generate.Write(dir, module, cat))
 	sdk, err := os.ReadFile(filepath.Join(dir, "sdk", "client.go"))
 	require.NoError(t, err)
-	assert.Contains(t, string(sdk), "Loop.Invoke")
+	assert.Contains(t, string(sdk), "Calls.Invoke")
 	assert.NotContains(t, string(sdk), "execute.Invoke")
 	assert.NotContains(t, string(sdk), "http.NewRequest")
 	assert.NotContains(t, string(sdk), "return agent.Call{}")
