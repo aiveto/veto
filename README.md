@@ -61,7 +61,7 @@ The tool names are `capabilities_search`, `capabilities_describe`, and `capabili
 
 One [veto.yaml](docs/guide.md#one-vetoyaml) names the OpenAPI files and the credential sources. `veto serve --stdio` speaks MCP on stdin. [Authenticated Streamable HTTP](docs/guide.md#remote-mcp) serves the same runtime to a remote client.
 
-Credentials come from the environment, OAuth, a caller-supplied token, token exchange, a command that prints headers, or a Go provider that signs the request. [Authentication](docs/guide.md#auth).
+Credentials come from the environment, OAuth, a caller-supplied token, token exchange, a command that prints headers, or a Go provider that signs the request. The agent does not perform that login. [Authentication](docs/guide.md#auth).
 
 ## Check it
 

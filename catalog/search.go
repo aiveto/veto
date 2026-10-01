@@ -1,7 +1,8 @@
 package catalog
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 	"strings"
 )
 
@@ -37,11 +38,11 @@ func SearchPage(cat *Catalog, query string, synonyms map[string][]string, offset
 		}
 		hits = append(hits, scored{op: op, score: s})
 	}
-	sort.Slice(hits, func(i, j int) bool {
-		if hits[i].score != hits[j].score {
-			return hits[i].score > hits[j].score
+	slices.SortFunc(hits, func(a, b scored) int {
+		if c := cmp.Compare(b.score, a.score); c != 0 {
+			return c
 		}
-		return hits[i].op.ID < hits[j].op.ID
+		return strings.Compare(a.op.ID, b.op.ID)
 	})
 	return pageHits(cat, hits, offset, limit)
 }

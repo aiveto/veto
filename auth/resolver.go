@@ -638,9 +638,7 @@ func cloneMap(in map[string]string) map[string]string {
 	if len(in) == 0 {
 		return nil
 	}
-	out := make(map[string]string, len(in))
-	maps.Copy(out, in)
-	return out
+	return maps.Clone(in)
 }
 
 func mapValues(in map[string]string) []string {

@@ -2,6 +2,7 @@ package openapi
 
 import (
 	"encoding/json"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -46,7 +47,7 @@ func requestMedia(content openapi3.Content) (string, *openapi3.MediaType) {
 	if len(pairs) == 0 {
 		return "", nil
 	}
-	sort.Slice(pairs, func(i, j int) bool { return pairs[i].key < pairs[j].key })
+	slices.SortFunc(pairs, func(a, b pair) int { return strings.Compare(a.key, b.key) })
 	for _, p := range pairs {
 		if p.key == jsonMedia {
 			return p.key, p.mt
