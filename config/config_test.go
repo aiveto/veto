@@ -102,9 +102,9 @@ func TestUnusableProviderKeysFail(t *testing.T) {
 	}{
 		{name: "memory file without a path", body: "memory: file\n", want: "memory_file"},
 		{name: "subagents", body: "subagents: on\n", want: "subagents"},
-		{name: "spicedb", body: "policy: spicedb\n", want: "not implemented"},
-		{name: "temporal", body: "execution: temporal\n", want: "not implemented"},
-		{name: "jev", body: "decision: jev\n", want: "not implemented"},
+		{name: "unknown policy", body: "policy: other\n", want: "not in this slice"},
+		{name: "unknown execution", body: "execution: other\n", want: "not in this slice"},
+		{name: "unknown decision", body: "decision: other\n", want: "not in this slice"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
