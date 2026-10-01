@@ -6,7 +6,7 @@ Point `veto` at OpenAPI files you already have. The agent gets three tools. Dest
 go install github.com/aiveto/veto/cmd/veto@latest
 ```
 
-That installs the `veto` command from `github.com/aiveto/veto/cmd/veto`. The module requires Go 1.27.1. From a checkout of this repo, `go run ./cmd/veto` is the same binary.
+That installs the `veto` command from `github.com/aiveto/veto/cmd/veto`. From a checkout of this repo, `go run ./cmd/veto` is the same binary.
 
 ## One veto.yaml
 
@@ -217,7 +217,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.27.1"
+          go-version-file: go.mod
       - run: go install github.com/aiveto/veto/cmd/veto@latest
       - run: veto check --config veto.yaml --case cases --against ${{ github.event.pull_request.base.sha }}
 ```
@@ -350,7 +350,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.27.1"
+          go-version-file: go.mod
       - run: go install github.com/aiveto/veto/cmd/veto@latest
       - run: veto check --config veto.yaml --case cases --against ${{ github.event.pull_request.base.sha }}
 ```
