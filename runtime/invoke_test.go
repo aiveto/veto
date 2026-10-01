@@ -168,10 +168,8 @@ func TestConcurrentFirstInvokeSharesTheGate(t *testing.T) {
 	start := make(chan struct{})
 	errCh := make(chan error, n)
 	var wg sync.WaitGroup
-	wg.Add(n)
 	for range n {
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			ready.Done()
 			<-start
 			_, err := rt.Invoke(context.Background(), runtime.Request{
@@ -179,7 +177,7 @@ func TestConcurrentFirstInvokeSharesTheGate(t *testing.T) {
 				Arguments: runtime.FromStrings(map[string]string{"id": "1"}),
 			})
 			errCh <- err
-		}()
+		})
 	}
 	ready.Wait()
 	close(start)

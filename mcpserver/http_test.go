@@ -71,9 +71,7 @@ func TestHTTPTwoCallersDoNotShareApprovalsOrTokens(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	bound, err := mcpserver.Listen(ctx, "127.0.0.1:0", handler)
+	bound, err := mcpserver.Listen(t.Context(), "127.0.0.1:0", handler)
 	require.NoError(t, err)
 	_, port, err := net.SplitHostPort(bound)
 	require.NoError(t, err)
