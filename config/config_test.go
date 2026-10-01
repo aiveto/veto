@@ -127,6 +127,20 @@ func TestCallersNameEnvVars(t *testing.T) {
 	assert.Equal(t, "GRACE_CALLER_TOKEN", cfg.Callers["grace"])
 }
 
+func TestResponseFieldsLoad(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "veto.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("response_fields: [id, name]\nresponse_limit: 20\n"), 0o644))
+	cfg, err := config.Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"id", "name"}, cfg.ResponseFields)
+	assert.Equal(t, 20, cfg.ResponseLimit)
+
+	path = filepath.Join(t.TempDir(), "veto.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("response_limit: -1\n"), 0o644))
+	_, err = config.Load(path)
+	assert.ErrorContains(t, err, "response_limit")
+}
+
 func TestUnusableProviderKeysFail(t *testing.T) {
 	cases := []struct {
 		name string

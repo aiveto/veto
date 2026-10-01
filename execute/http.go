@@ -29,6 +29,8 @@ type (
 		Auth       map[string]string // secret by scheme name; never read from yaml
 		Creds      *auth.Resolver
 		MaxBody    int64
+		Project    Projection
+		View       *View
 	}
 
 	Client struct {
@@ -39,13 +41,19 @@ type (
 		Creds       *auth.Resolver
 		FollowPages int
 		MaxBody     int64
+		Fields      []string
+		Limit       int
 	}
 )
 
 func (c Client) UpstreamBase() string { return c.BaseURL }
 
 func (c Client) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, params map[string]string) (result.HTTPResult, error) {
-	cfg := Config{BaseURL: c.BaseURL, Client: c.HTTP, RecordBody: c.RecordBody, Auth: c.Auth, Creds: c.Creds, MaxBody: c.MaxBody}
+	var view View
+	cfg := Config{
+		BaseURL: c.BaseURL, Client: c.HTTP, RecordBody: c.RecordBody, Auth: c.Auth, Creds: c.Creds, MaxBody: c.MaxBody,
+		Project: c.projection(ctx), View: &view,
+	}
 	resp, err := InvokeResponse(ctx, cfg, op, params)
 	if err != nil {
 		return result.HTTPResult{}, err
@@ -56,6 +64,11 @@ func (c Client) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, par
 	}
 	code, retryable := classify(resp.StatusCode)
 	out := result.HTTPResult{Status: resp.StatusCode, Body: body, Code: code, Retryable: retryable}
+	if view.Applied {
+		out.Truncated = view.Truncated
+		out.Page = view.Page
+		return out, nil
+	}
 	if c.FollowPages <= 1 || len(op.Page) == 0 {
 		return out, nil
 	}
@@ -106,12 +119,9 @@ func InvokeResponse(ctx context.Context, cfg Config, op *catalog.Operation, para
 	if err != nil {
 		return nil, scrubTransport(err, secrets, queryKeys)
 	}
-	raw, err := readLimited(resp.Body, cfg.MaxBody)
-	if closeErr := resp.Body.Close(); closeErr != nil && err == nil {
-		err = closeErr
-	}
+	raw, cut, err := consumeBody(resp, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("read body: %w", err)
+		return nil, err
 	}
 	if resp.StatusCode == http.StatusUnauthorized && refresh {
 		refreshed, rerr := retryUnauthorized(ctx, cfg, op, req, secrets, queryKeys)
@@ -120,11 +130,20 @@ func InvokeResponse(ctx context.Context, cfg Config, op *catalog.Operation, para
 		}
 		resp = refreshed.resp
 		raw = refreshed.raw
+		cut = refreshed.cut
 	}
-	resp.Body = io.NopCloser(bytes.NewReader(raw))
+	body, view, err := shapeBody(resp.StatusCode, raw, cut, cfg)
+	if err != nil {
+		return nil, err
+	}
+	resp.Body = io.NopCloser(bytes.NewReader(body))
+	if cfg.View != nil {
+		*cfg.View = view
+	}
 	span.SetAttributes(telemetry.Attr("http.status", strconv.Itoa(resp.StatusCode)))
-	if cfg.RecordBody && len(raw) > 0 {
-		span.SetAttributes(telemetry.Attr("http.body", auth.Redact(string(raw), secrets, queryKeys)))
+	if cfg.RecordBody && len(body) > 0 {
+		recorded := redactBody(auth.Redact(string(body), secrets, queryKeys))
+		span.SetAttributes(telemetry.Attr("http.body", recorded))
 	}
 	return resp, nil
 }
@@ -132,6 +151,7 @@ func InvokeResponse(ctx context.Context, cfg Config, op *catalog.Operation, para
 type readResponse struct {
 	resp *http.Response
 	raw  []byte
+	cut  bool
 }
 
 func retryUnauthorized(ctx context.Context, cfg Config, op *catalog.Operation, req *http.Request, secrets, queryKeys []string) (readResponse, error) {
@@ -156,14 +176,11 @@ func retryUnauthorized(ctx context.Context, cfg Config, op *catalog.Operation, r
 	if err != nil {
 		return readResponse{}, scrubTransport(err, secrets, queryKeys)
 	}
-	raw, err := readLimited(resp.Body, cfg.MaxBody)
-	if closeErr := resp.Body.Close(); closeErr != nil && err == nil {
-		err = closeErr
-	}
+	raw, cut, err := consumeBody(resp, cfg)
 	if err != nil {
-		return readResponse{}, fmt.Errorf("read body: %w", err)
+		return readResponse{}, err
 	}
-	return readResponse{resp: resp, raw: raw}, nil
+	return readResponse{resp: resp, raw: raw, cut: cut}, nil
 }
 
 func scrubTransport(err error, secrets, queryKeys []string) error {
@@ -509,19 +526,35 @@ func readBody(resp *http.Response, max int64) (string, error) {
 	return string(b), nil
 }
 
-func readLimited(r io.Reader, max int64) ([]byte, error) {
-	if r == nil {
-		return nil, nil
-	}
+func bodyLimit(max int64) int64 {
 	if max <= 0 {
-		max = DefaultMaxResponseBytes
+		return DefaultMaxResponseBytes
 	}
+	return max
+}
+
+func readCapped(r io.Reader, max int64) ([]byte, bool, error) {
+	if r == nil {
+		return nil, false, nil
+	}
+	max = bodyLimit(max)
 	b, err := io.ReadAll(io.LimitReader(r, max+1))
+	if err != nil {
+		return nil, false, err
+	}
+	if int64(len(b)) > max {
+		return b[:max], true, nil
+	}
+	return b, false, nil
+}
+
+func readLimited(r io.Reader, max int64) ([]byte, error) {
+	b, cut, err := readCapped(r, max)
 	if err != nil {
 		return nil, err
 	}
-	if int64(len(b)) > max {
-		return nil, fmt.Errorf("response exceeds %d bytes", max)
+	if cut {
+		return nil, fmt.Errorf("response exceeds %d bytes", bodyLimit(max))
 	}
 	return b, nil
 }
