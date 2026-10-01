@@ -3,6 +3,7 @@ package execute
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -496,20 +497,40 @@ func headerValue(p catalog.Param, params map[string]string) string {
 }
 
 func requireParams(op *catalog.Operation, params map[string]string) error {
+	if op == nil {
+		return fmt.Errorf("missing operation")
+	}
 	for _, p := range op.Params {
-		required := p.Required || p.In == "path"
-		if !required {
-			continue
+		if why := Unserializable(p); why != "" {
+			return fmt.Errorf("operation %s: parameter %s cannot be serialized: %s", op.ID, p.Name, why)
 		}
+		required := p.Required || p.In == "path"
 		v := strings.TrimSpace(params[p.Name])
 		if v == "" && p.In == "header" {
 			v = strings.TrimSpace(p.Default)
 		}
-		if v == "" {
+		if required && v == "" {
 			return result.ParamError{Operation: op.ID, Name: p.Name}
+		}
+		if p.In == "body" && v != "" && schemaType(p.Schema) == "object" && !jsonObject(v) {
+			return fmt.Errorf("operation %s: %s must be a JSON object", op.ID, p.Name)
 		}
 	}
 	return nil
+}
+
+func jsonObject(raw string) bool {
+	dec := json.NewDecoder(strings.NewReader(raw))
+	var value any
+	if err := dec.Decode(&value); err != nil {
+		return false
+	}
+	if _, ok := value.(map[string]any); !ok {
+		return false
+	}
+	var extra any
+	err := dec.Decode(&extra)
+	return err == io.EOF
 }
 
 func paramNames(params map[string]string) string {
