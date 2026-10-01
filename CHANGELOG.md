@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `veto serve --http` serves the same three tools over Streamable HTTP. Requests send `Veto-Caller`. That credential is who is calling veto. Traces omit it. Callers do not share approval ids or tokens.
 - The container runs `veto --help`. A pushed tag builds the CLI for linux, darwin, and windows on amd64 and arm64. `docs/guide.md` covers `go install` and the orders and customers files in `testdata`.
 - `veto doctor` reports missing auth, colliding and fallback ids, parameters it cannot serialize, empty or weak summaries, and writes that require approval. It exits non-zero when a finding would make a call wrong. `veto preview`, and `preview` on `capabilities_invoke`, stop before a token URL and upstream HTTP.
 - Upstream auth honors `apiKey` and `oauth2` as well as HTTP bearer. `veto auth login` stores a refresh token. Workforce calls use client credentials. A command can return headers. Policy runs before any token fetch.

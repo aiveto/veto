@@ -97,7 +97,7 @@ func redactJSON(value *any) {
 
 func sensitiveName(name string) bool {
 	switch strings.ToLower(strings.ReplaceAll(name, "-", "_")) {
-	case "access_token", "api_key", "apikey", "api_token", "authorization", "client_secret", "cookie", "id_token", "password", "refresh_token", "secret", "token", "x_api_key", "x_api_token", "x_token":
+	case "access_token", "api_key", "apikey", "api_token", "authorization", "client_secret", "cookie", "id_token", "password", "refresh_token", "secret", "token", "veto_caller", "x_api_key", "x_api_token", "x_token":
 		return true
 	default:
 		return false

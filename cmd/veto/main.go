@@ -47,6 +47,8 @@ type (
 		agent      string
 		relations  string
 		stdio      bool
+		http       bool
+		addr       string
 		pin        []string
 		directPins bool
 		grouped    bool
@@ -275,9 +277,9 @@ func newServeCommand() *cobra.Command {
 	cmd := &serveCmd{stdio: true}
 	c := &cobra.Command{
 		Use:   "serve",
-		Short: "Serve MCP over stdio from the contract catalog.",
-		Run: func(*cobra.Command, []string) {
-			runServe(*cmd)
+		Short: "Serve MCP from the contract catalog.",
+		Run: func(c *cobra.Command, _ []string) {
+			runServe(*cmd, c)
 		},
 	}
 	c.Flags().StringArrayVar(&cmd.contract, "contract", nil, "OpenAPI file. Repeat to register another API. Overrides config.")
@@ -285,6 +287,8 @@ func newServeCommand() *cobra.Command {
 	c.Flags().StringVar(&cmd.agent, "agent", "", "Path to agent.yaml. Overrides agent_file.")
 	c.Flags().StringVar(&cmd.relations, "relations", "", "Relations file. Overrides relations_file.")
 	c.Flags().BoolVar(&cmd.stdio, "stdio", true, "Listen on stdio for MCP.")
+	c.Flags().BoolVar(&cmd.http, "http", false, "Listen for MCP on Streamable HTTP. Requires the Veto-Caller header.")
+	c.Flags().StringVar(&cmd.addr, "addr", mcpserver.DefaultAddr, "Listen address for --http.")
 	c.Flags().StringArrayVar(&cmd.pin, "pin", nil, "Pin operation ids.")
 	c.Flags().BoolVar(&cmd.directPins, "direct-pins", false, "Register direct MCP tools for pinned ids only.")
 	c.Flags().BoolVar(&cmd.grouped, "grouped", false, "Register one MCP tool per resource.")
@@ -421,7 +425,15 @@ func runGenerate(cmd generateCmd) {
 	fmt.Printf("ok: %s\n", cmd.out)
 }
 
-func runServe(cmd serveCmd) {
+func runServe(cmd serveCmd, c *cobra.Command) {
+	stdio := cmd.stdio
+	if cmd.http && c != nil && !c.Flags().Changed("stdio") {
+		stdio = false
+	}
+	if !cmd.http && !stdio {
+		fmt.Fprintf(os.Stderr, "serve: stdio or http required\n")
+		os.Exit(1)
+	}
 	loop, cfg, err := buildLoop(cmd.contract, cmd.config, cmd.agent, cmd.relations, cmd.baseURL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "serve: %v\n", err)
@@ -437,10 +449,6 @@ func runServe(cmd serveCmd) {
 		fmt.Fprintf(os.Stderr, "serve: %v\n", err)
 		os.Exit(1)
 	}
-	if !cmd.stdio {
-		fmt.Fprintf(os.Stderr, "only --stdio is supported\n")
-		os.Exit(1)
-	}
 	calls := loop.Runtime()
 	srv := &mcpserver.Server{
 		Catalog:   loop.Catalog,
@@ -448,6 +456,36 @@ func runServe(cmd serveCmd) {
 		Calls:     &calls,
 	}
 	opt := mcpserver.Options{Pins: cmd.pin, DirectPins: cmd.directPins, Grouped: cmd.grouped}
+	if cmd.http {
+		ids, err := mcpserver.Identities(cfg.Callers, os.Getenv)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "serve: %v\n", err)
+			os.Exit(1)
+		}
+		handler, err := mcpserver.Handler(srv, opt, ids)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "serve: %v\n", err)
+			os.Exit(1)
+		}
+		addr := cmd.addr
+		if addr == "" {
+			addr = mcpserver.DefaultAddr
+		}
+		fmt.Fprintf(os.Stderr, "mcp http://%s\n", addr)
+		if !stdio {
+			if err := mcpserver.Serve(context.Background(), addr, handler); err != nil {
+				fmt.Fprintf(os.Stderr, "serve: %v\n", err)
+				os.Exit(1)
+			}
+			return
+		}
+		go func() {
+			if err := mcpserver.Serve(context.Background(), addr, handler); err != nil {
+				fmt.Fprintf(os.Stderr, "serve: %v\n", err)
+				os.Exit(1)
+			}
+		}()
+	}
 	if err := mcpserver.RunStdio(context.Background(), srv, opt); err != nil {
 		fmt.Fprintf(os.Stderr, "serve: %v\n", err)
 		os.Exit(1)

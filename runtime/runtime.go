@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/aiveto/veto/auth"
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/policy"
@@ -72,6 +73,10 @@ type (
 
 // Invoke runs one operation. MCP uses this directly. It does not run the agent loop.
 func (rt Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx = auth.WithCaller(ctx, req.Caller)
 	op := rt.operation(req.Operation)
 	if op == nil {
 		return rt.record(ctx, Result{Status: "error"}), fmt.Errorf("unknown operation %q", req.Operation)
@@ -112,7 +117,7 @@ func (rt Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 		defer span.End()
 		span.SetAttributes(telemetry.Attr("operation.id", req.Operation))
 		if req.Approval == "" {
-			id, err := rt.State.RequestConfirmation(req.Operation, args)
+			id, err := rt.State.RequestFor(req.Caller, req.Operation, args)
 			if err != nil {
 				return rt.record(ctx, Result{Status: "error", OperationID: req.Operation}), err
 			}
@@ -123,7 +128,7 @@ func (rt Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 				OperationID: req.Operation,
 			}), nil
 		}
-		ok, err := rt.State.ConsumeConfirmation(req.Approval, req.Operation, args)
+		ok, err := rt.State.ConsumeFor(req.Caller, req.Approval, req.Operation, args)
 		if err != nil {
 			return rt.record(ctx, Result{Status: "error"}), err
 		}
@@ -167,6 +172,7 @@ func (rt Runtime) Preview(ctx context.Context, req Request) (Preview, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	ctx = auth.WithCaller(ctx, req.Caller)
 	op := rt.operation(req.Operation)
 	if op == nil {
 		return Preview{Errors: []string{fmt.Sprintf("unknown operation %q", req.Operation)}}, nil
