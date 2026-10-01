@@ -111,15 +111,17 @@ func load(bundlePath string) (*Loaded, error) {
 	if err != nil {
 		return fail(fmt.Errorf("read bundle: %w", err))
 	}
-	// config.Load drops keys it does not know, including client_secret.
 	if err := rejectSecrets(data); err != nil {
 		return fail(err)
 	}
-	cfg, err := config.Load(manifest)
+	doc, err := parseManifest(data)
 	if err != nil {
 		return fail(err)
 	}
-	stripDeployment(&cfg)
+	cfg, err := materialize(located, doc)
+	if err != nil {
+		return fail(err)
+	}
 	if err := scanExtra(located, manifest, cfg.Contracts); err != nil {
 		return fail(err)
 	}
@@ -297,12 +299,179 @@ func findManifest(root string) (string, error) {
 	return "", fmt.Errorf("bundle manifest not found")
 }
 
-func stripDeployment(cfg *config.File) {
-	cfg.Auth = nil
-	cfg.TokenDir = ""
-	cfg.Server = ""
-	cfg.Callers = nil
-	cfg.Bundle = ""
+type manifest struct {
+	Contracts     []string `yaml:"contracts"`
+	RelationsFile string   `yaml:"relations_file"`
+	Cases         []string `yaml:"cases"`
+}
+
+func parseManifest(data []byte) (manifest, error) {
+	var node yaml.Node
+	if err := yaml.Unmarshal(data, &node); err != nil {
+		return manifest{}, fmt.Errorf("parse bundle: %w", err)
+	}
+	if err := manifestFields(&node); err != nil {
+		return manifest{}, err
+	}
+	var doc manifest
+	if err := node.Decode(&doc); err != nil {
+		return manifest{}, fmt.Errorf("parse bundle: %w", err)
+	}
+	return doc, nil
+}
+
+func manifestFields(n *yaml.Node) error {
+	if n == nil {
+		return nil
+	}
+	if n.Kind == yaml.DocumentNode {
+		if len(n.Content) == 0 {
+			return nil
+		}
+		n = n.Content[0]
+	}
+	if n.Kind == yaml.ScalarNode && n.Tag == "!!null" {
+		return nil
+	}
+	if n.Kind != yaml.MappingNode {
+		return fmt.Errorf("bundle manifest must be a mapping")
+	}
+	known := map[string]bool{"contracts": true, "relations_file": true, "cases": true}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		key := n.Content[i].Value
+		if !known[key] {
+			return fmt.Errorf("unsupported bundle field %q", key)
+		}
+	}
+	return nil
+}
+
+func materialize(root string, doc manifest) (config.File, error) {
+	cfg := config.Defaults()
+	var err error
+	cfg.Contracts, err = confineAll(root, doc.Contracts)
+	if err != nil {
+		return config.File{}, err
+	}
+	cfg.RelationsFile, err = confineOne(root, doc.RelationsFile)
+	if err != nil {
+		return config.File{}, err
+	}
+	cfg.Cases, err = confineAll(root, doc.Cases)
+	if err != nil {
+		return config.File{}, err
+	}
+	return cfg, nil
+}
+
+func confineAll(root string, refs []string) ([]string, error) {
+	if len(refs) == 0 {
+		return nil, nil
+	}
+	out := make([]string, len(refs))
+	for i, ref := range refs {
+		abs, err := confine(root, ref)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = abs
+	}
+	return out, nil
+}
+
+func confineOne(root, ref string) (string, error) {
+	if strings.TrimSpace(ref) == "" {
+		return "", nil
+	}
+	return confine(root, ref)
+}
+
+func confine(root, ref string) (string, error) {
+	if strings.TrimSpace(ref) == "" {
+		return "", fmt.Errorf("bundle path is empty")
+	}
+	if filepath.IsAbs(ref) {
+		return "", fmt.Errorf("bundle path %q escapes the bundle", ref)
+	}
+	rel := filepath.Clean(ref)
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("bundle path %q escapes the bundle", ref)
+	}
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	if resolved, err := filepath.EvalSymlinks(rootAbs); err == nil {
+		rootAbs = resolved
+	}
+	cur := rootAbs
+	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+		if part == "" || part == "." {
+			continue
+		}
+		next := filepath.Join(cur, part)
+		info, err := os.Lstat(next)
+		if err != nil {
+			if os.IsNotExist(err) {
+				cur = next
+				continue
+			}
+			return "", err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			resolved, err := filepath.EvalSymlinks(next)
+			if err != nil {
+				return "", err
+			}
+			if !inside(rootAbs, resolved) {
+				return "", fmt.Errorf("bundle path %q escapes the bundle", ref)
+			}
+			cur = resolved
+			continue
+		}
+		cur = next
+	}
+	if !inside(rootAbs, cur) {
+		return "", fmt.Errorf("bundle path %q escapes the bundle", ref)
+	}
+	info, err := os.Lstat(cur)
+	if err == nil && info.IsDir() {
+		if err := walkLinks(rootAbs, cur); err != nil {
+			return "", err
+		}
+	}
+	return cur, nil
+}
+
+func walkLinks(root, dir string) error {
+	return filepath.WalkDir(dir, func(p string, _ os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		info, err := os.Lstat(p)
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink == 0 {
+			return nil
+		}
+		resolved, err := filepath.EvalSymlinks(p)
+		if err != nil {
+			return err
+		}
+		if !inside(root, resolved) {
+			return fmt.Errorf("bundle path %q escapes the bundle", p)
+		}
+		return nil
+	})
+}
+
+func inside(root, path string) bool {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 func scanExtra(root, manifest string, contracts []string) error {
