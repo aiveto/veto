@@ -224,7 +224,8 @@ func defaultNonceDir(secret []byte) (string, error) {
 }
 
 // RequestConfirmation records a pending call. The id it returns does not authorize HTTP.
-func (s *State) RequestConfirmation(opID string, params map[string]string) string {
+// A store error means the file was not written, so there is no pending id to approve.
+func (s *State) RequestConfirmation(opID string, params map[string]string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	id := uuid.NewString()
@@ -237,8 +238,11 @@ func (s *State) RequestConfirmation(opID string, params map[string]string) strin
 	if len(s.secret) > 0 {
 		rec.Expiry = s.deadline().Unix()
 	}
-	_ = s.storeLocked(rec)
-	return id
+	if err := s.storeLocked(rec); err != nil {
+		delete(s.pending, id)
+		return "", err
+	}
+	return id, nil
 }
 
 // Approve records a separate decision. The returned id is what a later invoke accepts once.

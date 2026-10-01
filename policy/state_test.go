@@ -1,6 +1,8 @@
 package policy
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -12,7 +14,8 @@ import (
 func TestConfirmationKeepsItsOwnParams(t *testing.T) {
 	s := NewState()
 	params := map[string]string{"id": "1"}
-	id := s.RequestConfirmation("orders.delete", params)
+	id, err := s.RequestConfirmation("orders.delete", params)
+	require.NoError(t, err)
 	params["id"] = "changed"
 	got := s.Pending(id)
 	require.NotNil(t, got)
@@ -32,7 +35,8 @@ func TestSignedApprovalIsIssuedByApprove(t *testing.T) {
 	dir := t.TempDir()
 	now := func() time.Time { return time.Unix(1_000, 0) }
 	issued := withSigner(t, dir, []byte("secret"), now)
-	pending := issued.RequestConfirmation("orders.delete", params)
+	pending, err := issued.RequestConfirmation("orders.delete", params)
+	require.NoError(t, err)
 	require.NotNil(t, issued.Pending(pending))
 	assert.False(t, strings.HasPrefix(pending, "v1."))
 	approved, err := issued.Approve(pending)
@@ -48,12 +52,14 @@ func TestSignedApprovalIsIssuedByApprove(t *testing.T) {
 	restarted := withSigner(t, dir, []byte("secret"), now)
 	assert.False(t, consumed(t, restarted, approved, "orders.delete", map[string]string{"id": "1"}))
 	other.now = func() time.Time { return time.Unix(1_000, 0).Add(time.Minute) }
-	fresh := issued.RequestConfirmation("orders.delete", map[string]string{"id": "1"})
+	fresh, err := issued.RequestConfirmation("orders.delete", map[string]string{"id": "1"})
+	require.NoError(t, err)
 	freshID, err := issued.Approve(fresh)
 	require.NoError(t, err)
 	assert.False(t, consumed(t, other, freshID, "orders.delete", map[string]string{"id": "1"}))
 	wrong := withSigner(t, dir, []byte("other"), now)
-	again := issued.RequestConfirmation("orders.delete", map[string]string{"id": "1"})
+	again, err := issued.RequestConfirmation("orders.delete", map[string]string{"id": "1"})
+	require.NoError(t, err)
 	token, err := issued.Approve(again)
 	require.NoError(t, err)
 	assert.False(t, consumed(t, wrong, token, "orders.delete", map[string]string{"id": "1"}))
@@ -63,7 +69,8 @@ func TestApproveOnAnotherStateIsTheOnlyWayToRun(t *testing.T) {
 	dir := t.TempDir()
 	caller := NewState()
 	caller.SetNonceDir(dir)
-	pending := caller.RequestConfirmation("orders.delete", map[string]string{"id": "9"})
+	pending, err := caller.RequestConfirmation("orders.delete", map[string]string{"id": "9"})
+	require.NoError(t, err)
 	assert.False(t, consumed(t, caller, pending, "orders.delete", map[string]string{"id": "9"}))
 	approver := NewState()
 	approver.SetNonceDir(dir)
@@ -73,6 +80,19 @@ func TestApproveOnAnotherStateIsTheOnlyWayToRun(t *testing.T) {
 	assert.False(t, consumed(t, caller, pending, "orders.delete", map[string]string{"id": "9"}))
 	assert.True(t, consumed(t, caller, approved, "orders.delete", map[string]string{"id": "9"}))
 	assert.False(t, consumed(t, caller, approved, "orders.delete", map[string]string{"id": "9"}))
+}
+
+func TestRequestConfirmationReturnsTheStoreError(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "confirmations"), []byte("not-a-dir"), 0o600))
+	s := NewState()
+	s.SetNonceDir(dir)
+	id, err := s.RequestConfirmation("orders.delete", map[string]string{"id": "1"})
+	require.Error(t, err)
+	assert.Empty(t, id)
+	assert.Nil(t, s.Pending(id))
+	_, approveErr := s.Approve(id)
+	require.Error(t, approveErr)
 }
 
 func TestDefaultNonceDirFollowsTheSecret(t *testing.T) {

@@ -95,6 +95,7 @@ func New(cat *catalog.Catalog, sem Notes, exec Executor) (*Loop, error) {
 		Semantics: sem,
 		Model:     NewScripted(),
 		Policy:    policy.Builtin{},
+		base:      policy.Builtin{},
 		State:     policy.NewState(),
 		Exec:      exec,
 		Memory:    memory.NewLocalMap(),
@@ -221,7 +222,10 @@ func (l *Loop) Invoke(ctx context.Context, operationID string, params map[string
 		defer span.End()
 		span.SetAttributes(telemetry.Attr("operation.id", operationID))
 		if approvalID == "" {
-			id := l.State.RequestConfirmation(operationID, params)
+			id, err := l.State.RequestConfirmation(operationID, params)
+			if err != nil {
+				return Call{Status: "error", OperationID: operationID}, err
+			}
 			span.SetAttributes(telemetry.Attr("approval.id", id))
 			return Call{
 				Status:      "confirmation_required",
@@ -268,20 +272,21 @@ func (l *Loop) Invoke(ctx context.Context, operationID string, params map[string
 }
 
 func (l *Loop) decide(ctx context.Context, op *catalog.Operation) (policy.Decision, error) {
+	if l.base == nil {
+		l.base = policy.Builtin{}
+	}
 	decision, err := policy.Check(ctx, l.Policy, op)
 	if err != nil {
 		return decision, err
 	}
-	if l.base != nil {
-		floor, ferr := policy.Check(ctx, l.base, op)
-		if ferr != nil {
-			return floor, ferr
-		}
-		if floor == policy.DecisionDeny {
-			decision = policy.DecisionDeny
-		} else if floor == policy.DecisionConfirmationNeeded && decision != policy.DecisionDeny {
-			decision = policy.DecisionConfirmationNeeded
-		}
+	floor, ferr := policy.Check(ctx, l.base, op)
+	if ferr != nil {
+		return floor, ferr
+	}
+	if floor == policy.DecisionDeny {
+		decision = policy.DecisionDeny
+	} else if floor == policy.DecisionConfirmationNeeded && decision != policy.DecisionDeny {
+		decision = policy.DecisionConfirmationNeeded
 	}
 	if op != nil && op.RequiresConfirmation && decision != policy.DecisionDeny {
 		return policy.DecisionConfirmationNeeded, nil
