@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -35,7 +36,10 @@ func TestBundleKeepsDeploymentAuth(t *testing.T) {
 	t.Cleanup(bundle.Release)
 	dir := ordersCustomersBundle(t)
 	cfgPath := filepath.Join(t.TempDir(), "veto.yaml")
-	body := "bundle: " + strconv.Quote(dir) + "\nauth:\n  bearerAuth: ORDER_TOKEN\n"
+	body := fmt.Sprintf(`bundle: %s
+auth:
+  bearerAuth: ORDER_TOKEN
+`, strconv.Quote(dir))
 	require.NoError(t, os.WriteFile(cfgPath, []byte(body), 0o644))
 	cfg, contracts, relations, _, err := resolve(cfgPath, nil, "", "")
 	require.NoError(t, err)
@@ -71,17 +75,17 @@ func ordersCustomersBundle(t *testing.T) string {
 		require.NoError(t, os.MkdirAll(filepath.Dir(dest), 0o755))
 		require.NoError(t, os.WriteFile(dest, data, 0o644))
 	}
-	manifest := "" +
-		"semantics: file\n" +
-		"semantics_file: semantics.yaml\n" +
-		"flow_file: flow.yaml\n" +
-		"agent_file: agent.yaml\n" +
-		"relations_file: relations.yaml\n" +
-		"contracts:\n" +
-		"  - orders.yaml\n" +
-		"  - customers.yaml\n" +
-		"cases:\n" +
-		"  - cases\n"
+	manifest := `semantics: file
+semantics_file: semantics.yaml
+flow_file: flow.yaml
+agent_file: agent.yaml
+relations_file: relations.yaml
+contracts:
+  - orders.yaml
+  - customers.yaml
+cases:
+  - cases
+`
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "bundle.yaml"), []byte(manifest), 0o644))
 	return dir
 }
