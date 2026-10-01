@@ -94,6 +94,15 @@ func TestAuthSourcesKeepTheEnvShorthand(t *testing.T) {
 	assert.True(t, strings.HasSuffix(cfg.TokenDir, "tokens"))
 }
 
+func TestCallersNameEnvVars(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "veto.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("callers:\n  ada: ADA_CALLER_TOKEN\n  grace: GRACE_CALLER_TOKEN\n"), 0o644))
+	cfg, err := config.Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, "ADA_CALLER_TOKEN", cfg.Callers["ada"])
+	assert.Equal(t, "GRACE_CALLER_TOKEN", cfg.Callers["grace"])
+}
+
 func TestUnusableProviderKeysFail(t *testing.T) {
 	cases := []struct {
 		name string

@@ -14,7 +14,7 @@ Prefer the official `github.com/modelcontextprotocol/go-sdk` for protocol compat
 
 ## Decision
 
-Use `github.com/modelcontextprotocol/go-sdk` for the MCP server. It supports stdio tools via `mcp.StdioTransport` and `mcp.AddTool`.
+Use `github.com/modelcontextprotocol/go-sdk` for the MCP server. It supports stdio tools via `mcp.StdioTransport` and `mcp.AddTool`. `veto serve --http` uses the same SDK's Streamable HTTP handler. Stdio remains the default.
 
 ## What we refused
 

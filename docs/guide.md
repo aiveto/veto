@@ -164,6 +164,32 @@ Cursor and Claude Desktop both take this server entry. Use a config path the `ve
 
 `operation_id` is the catalog id. `params` is an object. Path, query, and header values are strings, keyed by parameter name. `body` is the request body: a string is sent as written, and a JSON object is encoded as JSON and sent. There is no schema compiler in that step. `approval_id` is empty on the first call. A `confirmation_required` result carries a pending id. That id does not run the call. `veto approve <id>` records the approval and prints an approved id. A later invoke with that approved id runs once.
 
+## Remote MCP
+
+Stdio stays the default. `--http` serves the same three tools over Streamable HTTP.
+
+```bash
+veto serve --config veto.yaml --http --addr 127.0.0.1:7433
+```
+
+`127.0.0.1:7433` is the address when `--addr` is omitted. Every request sends the caller credential in the `Veto-Caller` header:
+
+```text
+Veto-Caller: <credential>
+```
+
+That header is who is calling veto. The upstream API token stays in `auth` or in the invoke `token` argument. Traces do not record the caller credential.
+
+Name each caller in `veto.yaml`. The value is the environment variable that holds the credential.
+
+```yaml
+callers:
+  ada: ADA_CALLER_TOKEN
+  grace: GRACE_CALLER_TOKEN
+```
+
+One caller cannot use another caller's approval id or token. Invoke still runs policy before any upstream HTTP. `preview` sends no upstream HTTP. A pending approval id is not approval.
+
 ## The version header
 
 The `Content-Type` on the wire is the contract media type. `examples/two-apis/version.yaml`:

@@ -10,35 +10,36 @@ import (
 )
 
 type File struct {
-	Model         string        `yaml:"model"`
-	ModelName     string        `yaml:"model_name"`
-	ModelBaseURL  string        `yaml:"model_base_url"`
-	Memory        string        `yaml:"memory"`
-	Semantics     string        `yaml:"semantics"`
-	SemanticsFile string        `yaml:"semantics_file"`
-	Decision      string        `yaml:"decision"`
-	Policy        string        `yaml:"policy"`
-	PolicyFile    string        `yaml:"policy_file"`
-	PolicyBundle  string        `yaml:"policy_bundle"`
-	Environment   string        `yaml:"environment"`
-	Telemetry     string        `yaml:"telemetry"`
-	TraceExport   string        `yaml:"trace_export"`
-	Execution     string        `yaml:"execution"`
-	Subagents     string        `yaml:"subagents"`
-	FlowFile      string        `yaml:"flow_file"`
-	AgentFile     string        `yaml:"agent_file"`
-	RelationsFile string        `yaml:"relations_file"`
-	Contracts     []string      `yaml:"contracts"`
-	ReplayRedact  string        `yaml:"replay_redact"`
-	TraceFile     string        `yaml:"trace_file"`
-	Timeout       time.Duration `yaml:"timeout"`
-	Auth          Sources       `yaml:"auth"`
-	TokenDir      string        `yaml:"token_dir"`
-	Server        string        `yaml:"server"`
-	Page          string        `yaml:"page"`
-	Caller        string        `yaml:"caller"`
-	Permissions   []string      `yaml:"permissions"`
-	MemoryFile    string        `yaml:"memory_file"`
+	Model         string            `yaml:"model"`
+	ModelName     string            `yaml:"model_name"`
+	ModelBaseURL  string            `yaml:"model_base_url"`
+	Memory        string            `yaml:"memory"`
+	Semantics     string            `yaml:"semantics"`
+	SemanticsFile string            `yaml:"semantics_file"`
+	Decision      string            `yaml:"decision"`
+	Policy        string            `yaml:"policy"`
+	PolicyFile    string            `yaml:"policy_file"`
+	PolicyBundle  string            `yaml:"policy_bundle"`
+	Environment   string            `yaml:"environment"`
+	Telemetry     string            `yaml:"telemetry"`
+	TraceExport   string            `yaml:"trace_export"`
+	Execution     string            `yaml:"execution"`
+	Subagents     string            `yaml:"subagents"`
+	FlowFile      string            `yaml:"flow_file"`
+	AgentFile     string            `yaml:"agent_file"`
+	RelationsFile string            `yaml:"relations_file"`
+	Contracts     []string          `yaml:"contracts"`
+	ReplayRedact  string            `yaml:"replay_redact"`
+	TraceFile     string            `yaml:"trace_file"`
+	Timeout       time.Duration     `yaml:"timeout"`
+	Auth          Sources           `yaml:"auth"`
+	TokenDir      string            `yaml:"token_dir"`
+	Server        string            `yaml:"server"`
+	Page          string            `yaml:"page"`
+	Caller        string            `yaml:"caller"`
+	Callers       map[string]string `yaml:"callers"`
+	Permissions   []string          `yaml:"permissions"`
+	MemoryFile    string            `yaml:"memory_file"`
 }
 
 func Defaults() File {
@@ -185,6 +186,11 @@ func (f File) validate() error {
 	for name, src := range f.Auth {
 		if err := src.validate(name); err != nil {
 			return err
+		}
+	}
+	for id, env := range f.Callers {
+		if id == "" || env == "" {
+			return fmt.Errorf("caller credential required")
 		}
 	}
 	return nil

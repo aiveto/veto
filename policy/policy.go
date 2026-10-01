@@ -48,6 +48,7 @@ type (
 		Status      string            `json:"status"`
 		Expiry      int64             `json:"expiry,omitempty"`
 		ApprovedID  string            `json:"approved_id,omitempty"`
+		Caller      string            `json:"caller,omitempty"`
 	}
 
 	// Consumed nonces are files in the signer directory. Two machines that share the secret and not that directory can each accept the token until expiry.
@@ -229,6 +230,12 @@ func defaultNonceDir(secret []byte) (string, error) {
 // RequestConfirmation records a pending call. The id it returns does not authorize HTTP.
 // A store error means the file was not written, so there is no pending id to approve.
 func (s *State) RequestConfirmation(opID string, params map[string]string) (string, error) {
+	return s.RequestFor("", opID, params)
+}
+
+// RequestFor records a pending call for one caller. The id it returns does not authorize HTTP.
+// A store error means the file was not written, so there is no pending id to approve.
+func (s *State) RequestFor(caller, opID string, params map[string]string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	id := uuid.NewString()
@@ -237,6 +244,7 @@ func (s *State) RequestConfirmation(opID string, params map[string]string) (stri
 		OperationID: opID,
 		Params:      cloneParams(params),
 		Status:      statusPending,
+		Caller:      caller,
 	}
 	if len(s.secret) > 0 {
 		rec.Expiry = s.deadline().Unix()
@@ -268,7 +276,7 @@ func (s *State) Approve(id string) (string, error) {
 		if rec.Expiry != 0 {
 			exp = time.Unix(rec.Expiry, 0)
 		}
-		approved = signApproval(s.secret, rec.OperationID, rec.Params, exp)
+		approved = signApproval(s.secret, rec.Caller, rec.OperationID, rec.Params, exp)
 	}
 	rec.Status = statusApproved
 	rec.ApprovedID = approved
@@ -291,17 +299,22 @@ func InputFrom(ctx context.Context) Input {
 }
 
 func (s *State) ConsumeConfirmation(approvalID, opID string, params map[string]string) (bool, error) {
+	return s.ConsumeFor("", approvalID, opID, params)
+}
+
+// ConsumeFor accepts an approved id once, and only for the caller that received it.
+func (s *State) ConsumeFor(caller, approvalID, opID string, params map[string]string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	rec, ok := s.findApprovedLocked(approvalID)
 	if !ok || rec.Status != statusApproved || rec.ApprovedID != approvalID {
 		return false, nil
 	}
-	if rec.OperationID != opID || !sameParams(rec.Params, params) || expired(rec, s.clock()) {
+	if rec.Caller != caller || rec.OperationID != opID || !sameParams(rec.Params, params) || expired(rec, s.clock()) {
 		return false, nil
 	}
 	if len(s.secret) > 0 {
-		ok, err := s.consumeSigned(approvalID, opID, params, s.clock())
+		ok, err := s.consumeSigned(caller, approvalID, opID, params, s.clock())
 		if err != nil || !ok {
 			return ok, err
 		}
@@ -496,16 +509,16 @@ func Check(ctx context.Context, hook Hook, op *catalog.Operation) (Decision, err
 	return hook.Check(ctx, op)
 }
 
-func signApproval(secret []byte, opID string, params map[string]string, exp time.Time) string {
+func signApproval(secret []byte, caller, opID string, params map[string]string, exp time.Time) string {
 	unix := exp.Unix()
 	nonce := uuid.NewString()
 	mac := hmac.New(sha256.New, secret)
-	_, _ = mac.Write([]byte(approvalPayload(opID, params, unix, nonce)))
+	_, _ = mac.Write([]byte(approvalPayload(caller, opID, params, unix, nonce)))
 	sum := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 	return fmt.Sprintf("v1.%d.%s.%s", unix, nonce, sum)
 }
 
-func (s *State) consumeSigned(token, opID string, params map[string]string, now time.Time) (bool, error) {
+func (s *State) consumeSigned(caller, token, opID string, params map[string]string, now time.Time) (bool, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 4 || parts[0] != "v1" || !plainNonce(parts[2]) {
 		return false, nil
@@ -519,7 +532,7 @@ func (s *State) consumeSigned(token, opID string, params map[string]string, now 
 		return false, nil
 	}
 	mac := hmac.New(sha256.New, s.secret)
-	_, _ = mac.Write([]byte(approvalPayload(opID, params, unix, parts[2])))
+	_, _ = mac.Write([]byte(approvalPayload(caller, opID, params, unix, parts[2])))
 	if !hmac.Equal(got, mac.Sum(nil)) {
 		return false, nil
 	}
@@ -556,7 +569,7 @@ func plainNonce(nonce string) bool {
 	return true
 }
 
-func approvalPayload(opID string, params map[string]string, exp int64, nonce string) string {
+func approvalPayload(caller, opID string, params map[string]string, exp int64, nonce string) string {
 	keys := make([]string, 0, len(params))
 	for k := range params {
 		keys = append(keys, k)
@@ -564,6 +577,8 @@ func approvalPayload(opID string, params map[string]string, exp int64, nonce str
 	sort.Strings(keys)
 	var b strings.Builder
 	b.WriteString(opID)
+	b.WriteByte('\n')
+	b.WriteString(caller)
 	b.WriteByte('\n')
 	b.WriteString(strconv.FormatInt(exp, 10))
 	b.WriteByte('\n')

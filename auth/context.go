@@ -2,7 +2,10 @@ package auth
 
 import "context"
 
-type userTokenKey struct{}
+type (
+	userTokenKey struct{}
+	callerKey    struct{}
+)
 
 // WithUserToken attaches the token the MCP host passed on this invoke.
 // Login and client credentials ignore it. An invoke source sends it.
@@ -19,6 +22,25 @@ func UserToken(ctx context.Context) string {
 		return ""
 	}
 	v, _ := ctx.Value(userTokenKey{}).(string)
+	return v
+}
+
+// WithCaller records who is calling veto. The value is an identity, not a credential.
+func WithCaller(ctx context.Context, id string) context.Context {
+	if id == "" {
+		return ctx
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, callerKey{}, id)
+}
+
+func Caller(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	v, _ := ctx.Value(callerKey{}).(string)
 	return v
 }
 

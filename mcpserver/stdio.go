@@ -11,6 +11,7 @@ import (
 	"github.com/aiveto/veto/auth"
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/runtime"
+	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -41,10 +42,13 @@ type (
 )
 
 func RunStdio(ctx context.Context, srv *Server, opt Options) error {
-	impl := &mcp.Implementation{Name: "veto", Version: "0.1.0"}
-	server := mcp.NewServer(impl, nil)
+	return newMCP(srv, opt).Run(ctx, &mcp.StdioTransport{})
+}
+
+func newMCP(srv *Server, opt Options) *mcp.Server {
+	server := mcp.NewServer(&mcp.Implementation{Name: "veto", Version: "0.1.0"}, nil)
 	register(server, srv, opt)
-	return server.Run(ctx, &mcp.StdioTransport{})
+	return server
 }
 
 func register(server *mcp.Server, srv *Server, opt Options) {
@@ -81,7 +85,7 @@ func register(server *mcp.Server, srv *Server, opt Options) {
 		Name:        "capabilities_invoke",
 		Description: "Invoke an operation through policy and HTTP. params values are strings. params.body may be a JSON object and is sent as the request body. confirmation_required includes a pending id. That id does not run the call. veto approve records the approval and prints the id a later invoke accepts once. preview stops before a token URL and before upstream HTTP.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args invokeArgs) (*mcp.CallToolResult, any, error) {
-		return invokeCall(ctx, srv, args)
+		return invokeCall(ctx, req, srv, args)
 	})
 
 	if opt.Grouped {
@@ -95,7 +99,7 @@ func register(server *mcp.Server, srv *Server, opt Options) {
 				if op == nil || op.Group != group {
 					return toolError(fmt.Errorf("operation %q is not in group %s", args.OperationID, group))
 				}
-				return invokeCall(ctx, srv, args)
+				return invokeCall(ctx, req, srv, args)
 			})
 		}
 	}
@@ -112,27 +116,41 @@ func register(server *mcp.Server, srv *Server, opt Options) {
 				Description: op.Description,
 			}, func(ctx context.Context, req *mcp.CallToolRequest, args invokeArgs) (*mcp.CallToolResult, any, error) {
 				args.OperationID = pinnedID
-				return invokeCall(ctx, srv, args)
+				return invokeCall(ctx, req, srv, args)
 			})
 		}
 	}
 }
 
-func invokeCall(ctx context.Context, srv *Server, args invokeArgs) (*mcp.CallToolResult, any, error) {
+func invokeCall(ctx context.Context, req *mcp.CallToolRequest, srv *Server, args invokeArgs) (*mcp.CallToolResult, any, error) {
+	caller := callerID(ctx, req)
 	if args.Preview {
 		out, err := srv.Preview(ctx, runtime.Request{
 			Operation: args.OperationID,
 			Arguments: args.Params,
+			Caller:    caller,
 		})
 		return previewToolResult(out, err)
 	}
 	ctx = auth.WithUserToken(ctx, args.Token)
+	ctx = auth.WithCaller(ctx, caller)
 	res, err := srv.Call(ctx, runtime.Request{
 		Operation: args.OperationID,
 		Arguments: args.Params,
 		Approval:  args.ApprovalID,
+		Caller:    caller,
 	})
 	return invokeToolResult(res, err)
+}
+
+func callerID(ctx context.Context, req *mcp.CallToolRequest) string {
+	if req != nil && req.Extra != nil && req.Extra.TokenInfo != nil && req.Extra.TokenInfo.UserID != "" {
+		return req.Extra.TokenInfo.UserID
+	}
+	if info := mcpauth.TokenInfoFromContext(ctx); info != nil && info.UserID != "" {
+		return info.UserID
+	}
+	return auth.Caller(ctx)
 }
 
 func previewToolResult(out runtime.Preview, callErr error) (*mcp.CallToolResult, any, error) {
@@ -173,7 +191,7 @@ func invokeToolResult(res InvokeResult, callErr error) (*mcp.CallToolResult, any
 }
 
 var (
-	authHeader   = regexp.MustCompile(`(?i)\b(authorization)\s*:\s*(?:bearer|basic)?\s*\S+`)
+	authHeader   = regexp.MustCompile(`(?i)\b(authorization|veto-caller)\s*:\s*(?:bearer|basic)?\s*\S+`)
 	authScheme   = regexp.MustCompile(`(?i)\b(bearer|basic)\s+\S+`)
 	httpURL      = regexp.MustCompile(`https?://[^\s"'<>]+`)
 	userinfo     = regexp.MustCompile(`(?i)(https?://)[^/\s@"']+@`)
