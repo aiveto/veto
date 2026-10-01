@@ -124,16 +124,11 @@ func projectBody(raw []byte, p Projection, cut bool, max int64) ([]byte, *result
 		for _, item := range typed {
 			items = append(items, pick(item, p.Fields))
 		}
-		offset := p.Offset
-		if offset < 0 {
-			offset = 0
+		offset, end, cut, err := pageWindow(len(items), p.Offset, p.Limit)
+		if err != nil {
+			return nil, nil, false, fmt.Errorf("project response: %w", err)
 		}
-		if offset > len(items) {
-			offset = len(items)
-		}
-		end := len(items)
-		if p.Limit > 0 && offset+p.Limit < end {
-			end = offset + p.Limit
+		if cut {
 			truncated = true
 		}
 		pageItems := items[offset:end]
@@ -163,6 +158,21 @@ func projectBody(raw []byte, p Projection, cut bool, max int64) ([]byte, *result
 	default:
 		return nil, nil, false, fmt.Errorf("project response: %w", errNotJSON)
 	}
+}
+
+func pageWindow(n, offset, limit int) (int, int, bool, error) {
+	if offset < 0 || limit < 0 {
+		return 0, 0, false, fmt.Errorf("projection page is out of range")
+	}
+	if offset > n {
+		offset = n
+	}
+	end := n
+	if limit > 0 && limit < n-offset {
+		end = offset + limit
+		return offset, end, true, nil
+	}
+	return offset, end, false, nil
 }
 
 func fitEncoded(items []any, max int64) ([]byte, bool, error) {
