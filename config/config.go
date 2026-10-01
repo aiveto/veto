@@ -1,10 +1,13 @@
 package config
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 
@@ -71,7 +74,12 @@ func Load(path string) (File, error) {
 		return File{}, fmt.Errorf("read config: %w", err)
 	}
 	cfg := Defaults()
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	if err := rejectUnknown(data); err != nil {
+		return File{}, fmt.Errorf("parse config: %w", err)
+	}
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	if err := dec.Decode(&cfg); err != nil && err != io.EOF {
 		return File{}, fmt.Errorf("parse config: %w", err)
 	}
 	cfg.applyDefaults()
@@ -181,7 +189,7 @@ func (f File) validate() error {
 	switch f.Policy {
 	case "builtin", "opa":
 	default:
-		return fmt.Errorf("policy provider %q is not in this slice", f.Policy)
+		return fmt.Errorf("unsupported policy provider %q", f.Policy)
 	}
 	if f.Policy == "opa" && f.PolicyFile != "" && f.PolicyBundle != "" {
 		return fmt.Errorf("policy opa takes policy_file or policy_bundle")
@@ -326,6 +334,9 @@ func (s *Source) UnmarshalYAML(node *yaml.Node) error {
 		*s = Source{Source: "env", Env: env}
 		return nil
 	}
+	if err := unknownKeys(node, reflect.TypeOf(Source{})); err != nil {
+		return err
+	}
 	type plain Source
 	var decoded plain
 	if err := node.Decode(&decoded); err != nil {
@@ -336,6 +347,97 @@ func (s *Source) UnmarshalYAML(node *yaml.Node) error {
 		s.Source = "env"
 	}
 	return nil
+}
+
+func rejectUnknown(data []byte) error {
+	if len(bytes.TrimSpace(data)) == 0 {
+		return nil
+	}
+	var node yaml.Node
+	if err := yaml.Unmarshal(data, &node); err != nil {
+		return err
+	}
+	return unknownKeys(&node, reflect.TypeOf(File{}))
+}
+
+func unknownKeys(node *yaml.Node, typ reflect.Type) error {
+	if node == nil {
+		return nil
+	}
+	if node.Kind == yaml.DocumentNode {
+		if len(node.Content) == 0 {
+			return nil
+		}
+		return unknownKeys(node.Content[0], typ)
+	}
+	if node.Kind == yaml.AliasNode {
+		return unknownKeys(node.Alias, typ)
+	}
+	for typ.Kind() == reflect.Pointer {
+		typ = typ.Elem()
+	}
+	switch node.Kind {
+	case yaml.MappingNode:
+		if typ.Kind() == reflect.Map {
+			elem := typ.Elem()
+			for i := 1; i < len(node.Content); i += 2 {
+				if err := unknownKeys(node.Content[i], elem); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+		if typ.Kind() != reflect.Struct {
+			return nil
+		}
+		fields := yamlFields(typ)
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			key := node.Content[i].Value
+			ft, ok := fields[key]
+			if !ok {
+				return fmt.Errorf("unknown config field %q", key)
+			}
+			if err := unknownKeys(node.Content[i+1], ft); err != nil {
+				return err
+			}
+		}
+	case yaml.SequenceNode:
+		if typ.Kind() == reflect.Slice || typ.Kind() == reflect.Array {
+			elem := typ.Elem()
+			for _, item := range node.Content {
+				if err := unknownKeys(item, elem); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func yamlFields(typ reflect.Type) map[string]reflect.Type {
+	out := make(map[string]reflect.Type, typ.NumField())
+	for i := 0; i < typ.NumField(); i++ {
+		f := typ.Field(i)
+		if f.PkgPath != "" {
+			continue
+		}
+		tag := f.Tag.Get("yaml")
+		if tag == "-" {
+			continue
+		}
+		name := strings.ToLower(f.Name)
+		if tag != "" {
+			part := strings.Split(tag, ",")[0]
+			if part == "-" {
+				continue
+			}
+			if part != "" {
+				name = part
+			}
+		}
+		out[name] = f.Type
+	}
+	return out
 }
 
 func (c *CommandLine) UnmarshalYAML(node *yaml.Node) error {

@@ -237,7 +237,7 @@ func TestExternalPolicyFailsClosed(t *testing.T) {
 		want string
 	}{
 		{name: "opa", body: "policy: opa\n", want: "opa"},
-		{name: "unknown policy", body: "policy: other\n", want: "not in this slice"},
+		{name: "unknown policy", body: "policy: other\n", want: "unsupported policy provider"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
