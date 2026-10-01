@@ -1,17 +1,17 @@
 # veto
 
-Veto turns existing OpenAPI services into a bounded, policy-checked capability surface for AI agents.
+The model proposes. Veto decides. Your API executes.
 
-Agents search, describe, and invoke through three stable tools. Auth, approval, and relations are checked before the API sees the request. Replay and CI drift checks read the recorded decision.
+Point veto at the OpenAPI you already have. The model gets three tools: search, describe, and invoke. Auth, approval, and relations are checked before the API sees the request. A delete waits until a person says yes. The model never receives the OpenAPI file.
 
 ```text
 API contracts
      ↓
-Capability catalog
+Catalog
      ↓
-Discover only what is relevant
+Search
      ↓
-Bounded context
+Context pack
      ↓
 Policy
      ↓
@@ -22,11 +22,9 @@ The API call
 Trace and test
 ```
 
-The model proposes. Veto decides. Your API executes.
-
 ## Three tools
 
-Orders, customers, and payments can be hundreds of operations. The agent gets three:
+Orders, customers, and payments can be hundreds of operations. The model gets three:
 
 ```text
 capabilities_search
@@ -34,7 +32,7 @@ capabilities_describe
 capabilities_invoke
 ```
 
-It searches, reads one description, and invokes through policy. Pin or group a few when you need them.
+It searches, reads one description, and invokes through policy. It does not get one tool for every operation. Pin lists a few operations beside those three. Group adds one tool per resource.
 
 ## The delete waits
 
