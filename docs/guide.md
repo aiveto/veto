@@ -164,6 +164,14 @@ Cursor and Claude Desktop both take this server entry. Use a config path the `ve
 
 `operation_id` is the catalog id. `params` is an object. Path, query, and header values are strings, keyed by parameter name. `body` is the request body: a string is sent as written, and a JSON object is encoded as JSON and sent. There is no schema compiler in that step. `approval_id` is empty on the first call. A `confirmation_required` result carries a pending id. That id does not run the call. `veto approve <id>` records the approval and prints an approved id. A later invoke with that approved id runs once.
 
+`approval_webhook` names a command or an HTTP URL. When a call is pending, veto POSTs JSON, or writes the same JSON to the command's stdin:
+
+```json
+{"id":"<pending id>","operation":"orders.delete","caller":"ada"}
+```
+
+The message is the pending id, the operation, and the caller. It leaves out parameters, secrets, and upstream tokens. `veto approve` is still the local approval. The model's next call is not an approval.
+
 ## Remote MCP
 
 Stdio stays the default. `--http` serves the same three tools over Streamable HTTP.
@@ -287,6 +295,24 @@ input: surface
 ```
 
 `veto eval --config veto.yaml --case cases` runs the cases without the diff.
+
+## Policy
+
+`policy: builtin` is the default. `policy: opa` reads `policy_file` or `policy_bundle`.
+
+```yaml
+policy: opa
+policy_file: policy.rego
+environment: prod
+caller: ada
+approval_webhook: https://hooks.example/pending
+```
+
+A command is the other webhook form: `approval_webhook: /usr/local/bin/veto-notify`.
+
+Rego sees `operation`, `params`, `method`, `path`, `side_effect`, `permissions`, `caller`, `environment`, `auth_scheme`, `tags`, and `resource_group`. A fact the call does not have is empty. `environment` is the config value. `caller` is the invoke caller, or `caller` in config when the invoke omits one. `auth_scheme` is the scheme names on the operation. `path` is the contract path. `resource_group` is the catalog group.
+
+A deny stops the call before HTTP. When Rego allows the call, builtin permissions and confirmation still apply.
 
 ## Replay
 

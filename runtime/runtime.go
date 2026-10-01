@@ -68,6 +68,7 @@ type (
 		Base    policy.Hook
 		State   *policy.State
 		Exec    Executor
+		Notify  policy.Notifier
 	}
 )
 
@@ -76,7 +77,8 @@ func (rt Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	ctx = auth.WithCaller(ctx, req.Caller)
+	caller := requestCaller(ctx, req)
+	ctx = auth.WithCaller(ctx, caller)
 	op := rt.operation(req.Operation)
 	if op == nil {
 		return rt.record(ctx, Result{Status: "error"}), fmt.Errorf("unknown operation %q", req.Operation)
@@ -106,7 +108,7 @@ func (rt Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 	ctx = policy.WithInput(ctx, policy.Input{
 		Params:    args,
 		Arguments: req.Arguments,
-		Caller:    req.Caller,
+		Caller:    caller,
 	})
 	decision, err := rt.decide(ctx, op)
 	if err != nil {
@@ -117,18 +119,23 @@ func (rt Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 		defer span.End()
 		span.SetAttributes(telemetry.Attr("operation.id", req.Operation))
 		if req.Approval == "" {
-			id, err := rt.State.RequestFor(req.Caller, req.Operation, args)
+			id, err := rt.State.RequestFor(caller, req.Operation, args)
 			if err != nil {
 				return rt.record(ctx, Result{Status: "error", OperationID: req.Operation}), err
 			}
 			span.SetAttributes(telemetry.Attr("approval.id", id))
-			return rt.record(ctx, Result{
+			res := Result{
 				Status:      "confirmation_required",
 				ApprovalID:  id,
 				OperationID: req.Operation,
-			}), nil
+			}
+			if err := rt.notify(ctx, policy.Notice{ID: id, Operation: req.Operation, Caller: caller}); err != nil {
+				res.Error = err.Error()
+				return rt.record(ctx, res), err
+			}
+			return rt.record(ctx, res), nil
 		}
-		ok, err := rt.State.ConsumeFor(req.Caller, req.Approval, req.Operation, args)
+		ok, err := rt.State.ConsumeFor(caller, req.Approval, req.Operation, args)
 		if err != nil {
 			return rt.record(ctx, Result{Status: "error"}), err
 		}
@@ -172,7 +179,8 @@ func (rt Runtime) Preview(ctx context.Context, req Request) (Preview, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	ctx = auth.WithCaller(ctx, req.Caller)
+	caller := requestCaller(ctx, req)
+	ctx = auth.WithCaller(ctx, caller)
 	op := rt.operation(req.Operation)
 	if op == nil {
 		return Preview{Errors: []string{fmt.Sprintf("unknown operation %q", req.Operation)}}, nil
@@ -197,7 +205,7 @@ func (rt Runtime) Preview(ctx context.Context, req Request) (Preview, error) {
 	ctx = policy.WithInput(ctx, policy.Input{
 		Params:    args,
 		Arguments: req.Arguments,
-		Caller:    req.Caller,
+		Caller:    caller,
 	})
 	decision, err := rt.decide(ctx, op)
 	if err != nil {
@@ -207,6 +215,23 @@ func (rt Runtime) Preview(ctx context.Context, req Request) (Preview, error) {
 	out.Decision = string(decision)
 	out.ApprovalRequired = decision == policy.DecisionConfirmationNeeded
 	return out, nil
+}
+
+func requestCaller(ctx context.Context, req Request) string {
+	if req.Caller != "" {
+		return req.Caller
+	}
+	return auth.Caller(ctx)
+}
+
+func (rt Runtime) notify(ctx context.Context, notice policy.Notice) error {
+	if rt.Notify == nil {
+		return nil
+	}
+	if err := rt.Notify.Pending(ctx, notice); err != nil {
+		return fmt.Errorf("approval webhook: %w", err)
+	}
+	return nil
 }
 
 func (rt Runtime) requestBase(op *catalog.Operation) string {

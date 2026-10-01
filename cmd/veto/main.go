@@ -858,6 +858,13 @@ func applyProviders(loop *agent.Loop, cfg config.File) error {
 	default:
 		return fmt.Errorf("policy provider %q is not in this slice", cfg.Policy)
 	}
+	if cfg.ApprovalWebhook.URL != "" || len(cfg.ApprovalWebhook.Command) > 0 {
+		hook, err := policy.NewWebhook(cfg.ApprovalWebhook.URL, append([]string(nil), cfg.ApprovalWebhook.Command...))
+		if err != nil {
+			return err
+		}
+		loop.Notify = hook
+	}
 	if cfg.Execution != "in-process" {
 		return fmt.Errorf("execution provider %q is not in this slice", cfg.Execution)
 	}

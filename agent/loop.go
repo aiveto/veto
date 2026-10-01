@@ -75,6 +75,7 @@ type (
 		base      policy.Hook
 		State     *policy.State
 		Exec      Executor
+		Notify    policy.Notifier
 		Memory    Memory
 		Flows     map[string]*flow.Definition
 		Packs     *runctx.Builder
@@ -212,6 +213,7 @@ func (l *Loop) Runtime() runtime.Runtime {
 		Base:    l.base,
 		State:   l.State,
 		Exec:    l.Exec,
+		Notify:  l.Notify,
 	}
 }
 
