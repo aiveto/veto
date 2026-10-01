@@ -26,15 +26,17 @@ type (
 		Pending(ctx context.Context, notice Notice) error
 	}
 
-	// Webhook is one command or one HTTP URL.
-	Webhook struct {
-		url     string
+	HTTPNotifier struct {
+		url    string
+		client *http.Client
+	}
+
+	CommandNotifier struct {
 		command []string
-		client  *http.Client
 	}
 )
 
-func NewWebhook(rawURL string, command []string) (*Webhook, error) {
+func NewWebhook(rawURL string, command []string) (Notifier, error) {
 	if rawURL == "" && len(command) == 0 {
 		return nil, fmt.Errorf("approval webhook required")
 	}
@@ -46,7 +48,7 @@ func NewWebhook(rawURL string, command []string) (*Webhook, error) {
 		if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
 			return nil, fmt.Errorf("approval webhook URL is not http or https")
 		}
-		return &Webhook{
+		return &HTTPNotifier{
 			url: rawURL,
 			client: &http.Client{
 				Timeout:       10 * time.Second,
@@ -57,13 +59,32 @@ func NewWebhook(rawURL string, command []string) (*Webhook, error) {
 	if command[0] == "" {
 		return nil, fmt.Errorf("approval webhook command required")
 	}
-	return &Webhook{command: append([]string(nil), command...)}, nil
+	return &CommandNotifier{command: append([]string(nil), command...)}, nil
 }
 
-func (w *Webhook) Pending(ctx context.Context, notice Notice) error {
-	if w == nil {
+func (h *HTTPNotifier) Pending(ctx context.Context, notice Notice) error {
+	if h == nil {
 		return fmt.Errorf("approval webhook required")
 	}
+	body, err := noticeJSON(notice)
+	if err != nil {
+		return err
+	}
+	return h.post(ctx, body)
+}
+
+func (c *CommandNotifier) Pending(ctx context.Context, notice Notice) error {
+	if c == nil {
+		return fmt.Errorf("approval webhook required")
+	}
+	body, err := noticeJSON(notice)
+	if err != nil {
+		return err
+	}
+	return c.run(ctx, body)
+}
+
+func noticeJSON(notice Notice) ([]byte, error) {
 	body, err := json.Marshal(struct {
 		ID        string `json:"id"`
 		Operation string `json:"operation"`
@@ -74,21 +95,18 @@ func (w *Webhook) Pending(ctx context.Context, notice Notice) error {
 		Caller:    notice.Caller,
 	})
 	if err != nil {
-		return fmt.Errorf("encode: %w", err)
+		return nil, fmt.Errorf("encode: %w", err)
 	}
-	if w.url != "" {
-		return w.post(ctx, body)
-	}
-	return w.run(ctx, body)
+	return body, nil
 }
 
-func (w *Webhook) post(ctx context.Context, body []byte) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, w.url, bytes.NewReader(body))
+func (h *HTTPNotifier) post(ctx context.Context, body []byte) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, h.url, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	client := w.client
+	client := h.client
 	if client == nil {
 		client = &http.Client{Timeout: 10 * time.Second, CheckRedirect: refuseRedirect}
 	}
@@ -104,8 +122,8 @@ func (w *Webhook) post(ctx context.Context, body []byte) error {
 	return nil
 }
 
-func (w *Webhook) run(ctx context.Context, body []byte) error {
-	cmd := exec.CommandContext(ctx, w.command[0], w.command[1:]...)
+func (c *CommandNotifier) run(ctx context.Context, body []byte) error {
+	cmd := exec.CommandContext(ctx, c.command[0], c.command[1:]...)
 	cmd.Env = []string{"PATH=" + os.Getenv("PATH")}
 	cmd.Stdin = bytes.NewReader(body)
 	cmd.Stdout = io.Discard
