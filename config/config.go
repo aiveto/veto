@@ -364,9 +364,18 @@ func rejectUnknown(data []byte) error {
 }
 
 func unknownKeys(node *yaml.Node, typ reflect.Type) error {
+	return walkConfig(node, typ, map[*yaml.Node]struct{}{})
+}
+
+func walkConfig(node *yaml.Node, typ reflect.Type, active map[*yaml.Node]struct{}) error {
 	if node == nil {
 		return nil
 	}
+	if _, seen := active[node]; seen {
+		return errors.New("yaml alias cycle")
+	}
+	active[node] = struct{}{}
+	defer delete(active, node)
 	for typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
 	}
@@ -375,42 +384,56 @@ func unknownKeys(node *yaml.Node, typ reflect.Type) error {
 		if len(node.Content) == 0 {
 			return nil
 		}
-		return unknownKeys(node.Content[0], typ)
+		return walkConfig(node.Content[0], typ, active)
 	case yaml.AliasNode:
-		return unknownKeys(node.Alias, typ)
+		return walkConfig(node.Alias, typ, active)
 	case yaml.ScalarNode:
 		return nil
 	case yaml.MappingNode:
+		seenKey := map[string]struct{}{}
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			key := node.Content[i].Value
+			if _, ok := seenKey[key]; ok {
+				return fmt.Errorf("duplicate field %q", key)
+			}
+			seenKey[key] = struct{}{}
+		}
 		if typ.Kind() == reflect.Map {
 			elem := typ.Elem()
 			for i := 1; i < len(node.Content); i += 2 {
-				if err := unknownKeys(node.Content[i], elem); err != nil {
+				if err := walkConfig(node.Content[i], elem, active); err != nil {
 					return err
 				}
 			}
-			return nil
 		}
-		if typ.Kind() != reflect.Struct {
-			return nil
-		}
-		fields := yamlFields(typ)
-		for i := 0; i+1 < len(node.Content); i += 2 {
-			key := node.Content[i].Value
-			ft, ok := fields[key]
-			if !ok {
-				return fmt.Errorf("unknown config field %q", key)
+		if typ.Kind() == reflect.Struct {
+			fields := yamlFields(typ)
+			for i := 0; i+1 < len(node.Content); i += 2 {
+				key := node.Content[i].Value
+				ft, ok := fields[key]
+				if !ok {
+					return fmt.Errorf("unknown config field %q", key)
+				}
+				if err := walkConfig(node.Content[i+1], ft, active); err != nil {
+					return err
+				}
 			}
-			if err := unknownKeys(node.Content[i+1], ft); err != nil {
-				return err
+		}
+		if typ.Kind() != reflect.Map && typ.Kind() != reflect.Struct {
+			for i := 1; i < len(node.Content); i += 2 {
+				if err := walkConfig(node.Content[i], typ, active); err != nil {
+					return err
+				}
 			}
 		}
 	case yaml.SequenceNode:
+		elem := typ
 		if typ.Kind() == reflect.Slice || typ.Kind() == reflect.Array {
-			elem := typ.Elem()
-			for _, item := range node.Content {
-				if err := unknownKeys(item, elem); err != nil {
-					return err
-				}
+			elem = typ.Elem()
+		}
+		for _, item := range node.Content {
+			if err := walkConfig(item, elem, active); err != nil {
+				return err
 			}
 		}
 	}

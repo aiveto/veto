@@ -173,3 +173,27 @@ func TestUnknownConfigField(t *testing.T) {
 	_, err = config.Load(path)
 	assert.ErrorContains(t, err, `unknown config field "nope"`)
 }
+
+func TestLoadRejectsDuplicateFieldsAndAliasCycles(t *testing.T) {
+	dir := t.TempDir()
+	dup := filepath.Join(dir, "dup.yaml")
+	require.NoError(t, os.WriteFile(dup, []byte("model: scripted\nmodel: openai\n"), 0o600))
+	_, err := config.Load(dup)
+	require.ErrorContains(t, err, `duplicate field "model"`)
+
+	cycle := filepath.Join(dir, "cycle.yaml")
+	require.NoError(t, os.WriteFile(cycle, []byte("model: &loop [*loop]\n"), 0o600))
+	_, err = config.Load(cycle)
+	require.ErrorContains(t, err, "alias cycle")
+}
+
+func TestLoadKeepsASharedAnchor(t *testing.T) {
+	body := "auth:\n  a: &login\n    source: login\n    client_id: veto\n    issuer: https://idp.example\n  b: *login\n"
+	path := filepath.Join(t.TempDir(), "veto.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(body), 0o600))
+	cfg, err := config.Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, "veto", cfg.Auth["a"].ClientID)
+	assert.Equal(t, "veto", cfg.Auth["b"].ClientID)
+	assert.Equal(t, "https://idp.example", cfg.Auth["b"].Issuer)
+}
