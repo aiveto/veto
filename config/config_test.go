@@ -149,7 +149,7 @@ func TestUnusableProviderKeysFail(t *testing.T) {
 	}{
 		{name: "memory file without a path", body: "memory: file\n", want: "memory_file"},
 		{name: "subagents", body: "subagents: on\n", want: "subagents"},
-		{name: "unknown policy", body: "policy: other\n", want: "not in this slice"},
+		{name: "unknown policy", body: "policy: other\n", want: "unsupported policy provider"},
 		{name: "unknown execution", body: "execution: other\n", want: "not in this slice"},
 		{name: "unknown decision", body: "decision: other\n", want: "not in this slice"},
 	}
@@ -161,4 +161,15 @@ func TestUnusableProviderKeysFail(t *testing.T) {
 			assert.ErrorContains(t, err, tc.want)
 		})
 	}
+}
+
+func TestUnknownConfigField(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "veto.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("polciy: builtin\n"), 0o644))
+	_, err := config.Load(path)
+	assert.ErrorContains(t, err, `unknown config field "polciy"`)
+
+	require.NoError(t, os.WriteFile(path, []byte("auth:\n  bearer:\n    source: env\n    env: TOKEN\n    nope: 1\n"), 0o644))
+	_, err = config.Load(path)
+	assert.ErrorContains(t, err, `unknown config field "nope"`)
 }
