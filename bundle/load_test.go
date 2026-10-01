@@ -56,19 +56,62 @@ func TestBundleRejectsTokenURLAndBaseURL(t *testing.T) {
 	}
 }
 
-func TestBundleAllowsClientSecretEnvName(t *testing.T) {
+func TestBundleRejectsDeploymentFields(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "auth",
+			body: "contracts:\n  - orders.yaml\nauth:\n  job:\n    client_secret_env: VETO_SECRET\n",
+			want: "auth",
+		},
+		{
+			name: "webhook command",
+			body: "contracts:\n  - orders.yaml\napproval_webhook: [/bin/sh, -c, \"true\"]\n",
+			want: "approval_webhook",
+		},
+		{
+			name: "token dir",
+			body: "token_dir: /tmp/tokens\ncontracts:\n  - orders.yaml\n",
+			want: "token_dir",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "bundle.yaml"), []byte(tc.body), 0o644))
+			_, err := bundle.Load(dir)
+			require.Error(t, err)
+			assert.ErrorContains(t, err, tc.want)
+			assert.ErrorContains(t, err, "unsupported bundle field")
+		})
+	}
+}
+
+func TestBundleRejectsPathsOutsideTheRoot(t *testing.T) {
 	dir := t.TempDir()
-	data, err := os.ReadFile("../testdata/orders.yaml")
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "orders.yaml"), data, 0o644))
-	body := "contracts:\n  - orders.yaml\nauth:\n  job:\n    client_secret_env: VETO_SECRET\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "bundle.yaml"), []byte(body), 0o644))
-	loaded, err := bundle.Load(dir)
-	require.NoError(t, err)
-	t.Cleanup(loaded.Close)
-	assert.Empty(t, loaded.Config.Auth)
-	require.Len(t, loaded.Config.Contracts, 1)
-	assert.True(t, strings.HasSuffix(loaded.Config.Contracts[0], "orders.yaml"))
+	outside := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(outside, "outside.yaml"), []byte("openapi: 3.0.3\n"), 0o644))
+	require.NoError(t, os.Symlink(outside, filepath.Join(dir, "linked")))
+	cases := []string{
+		"contracts:\n  - ../outside.yaml\n",
+		"contracts:\n  - linked/outside.yaml\n",
+		"relations_file: /etc/passwd\n",
+	}
+	for _, body := range cases {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "bundle.yaml"), []byte(body), 0o644))
+		_, err := bundle.Load(dir)
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "escapes the bundle")
+	}
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "cases"), 0o755))
+	require.NoError(t, os.Symlink(filepath.Join(outside, "outside.yaml"), filepath.Join(dir, "cases", "leak.yaml")))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "bundle.yaml"), []byte("cases:\n  - cases\n"), 0o644))
+	_, err := bundle.Load(dir)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "escapes the bundle")
 }
 
 func TestBundleZipReadsTheInnerDirectory(t *testing.T) {

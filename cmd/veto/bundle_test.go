@@ -75,11 +75,7 @@ func ordersCustomersBundle(t *testing.T) string {
 		require.NoError(t, os.MkdirAll(filepath.Dir(dest), 0o755))
 		require.NoError(t, os.WriteFile(dest, data, 0o644))
 	}
-	manifest := `semantics: file
-semantics_file: semantics.yaml
-flow_file: flow.yaml
-agent_file: agent.yaml
-relations_file: relations.yaml
+	manifest := `relations_file: relations.yaml
 contracts:
   - orders.yaml
   - customers.yaml
