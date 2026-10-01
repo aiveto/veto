@@ -38,6 +38,9 @@ type (
 		ApprovalID  string         `json:"approval_id,omitempty" jsonschema:"approved id from veto approve; a pending id does not run the call"`
 		Token       string         `json:"token,omitempty" jsonschema:"user token for this call when the scheme source is invoke"`
 		Preview     bool           `json:"preview,omitempty" jsonschema:"resolve, validate, and check policy, then stop before a token URL and upstream HTTP"`
+		Fields      []string       `json:"fields,omitempty" jsonschema:"response fields to return; omit them to keep the whole body"`
+		Offset      int            `json:"offset,omitempty" jsonschema:"page offset when fields are set"`
+		Limit       int            `json:"limit,omitempty" jsonschema:"page size when fields are set"`
 	}
 )
 
@@ -83,7 +86,7 @@ func register(server *mcp.Server, srv *Server, opt Options) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "capabilities_invoke",
-		Description: "Invoke an operation through policy and HTTP. params values are strings. params.body may be a JSON object and is sent as the request body. confirmation_required includes a pending id. That id does not run the call. veto approve records the approval and prints the id a later invoke accepts once. preview stops before a token URL and before upstream HTTP.",
+		Description: "Invoke an operation through policy and HTTP. params values are strings. params.body may be a JSON object and is sent as the request body. confirmation_required includes a pending id. That id does not run the call. veto approve records the approval and prints the id a later invoke accepts once. preview stops before a token URL and before upstream HTTP. fields names the JSON fields a successful call returns. With no fields, the body is unchanged.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args invokeArgs) (*mcp.CallToolResult, any, error) {
 		return invokeCall(ctx, req, srv, args)
 	})
@@ -139,6 +142,9 @@ func invokeCall(ctx context.Context, req *mcp.CallToolRequest, srv *Server, args
 		Arguments: args.Params,
 		Approval:  args.ApprovalID,
 		Caller:    caller,
+		Fields:    args.Fields,
+		Offset:    args.Offset,
+		Limit:     args.Limit,
 	})
 	return invokeToolResult(res, err)
 }

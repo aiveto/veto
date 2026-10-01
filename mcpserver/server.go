@@ -7,6 +7,7 @@ import (
 
 	"github.com/aiveto/veto/agent"
 	"github.com/aiveto/veto/catalog"
+	"github.com/aiveto/veto/result"
 	"github.com/aiveto/veto/runctx"
 	"github.com/aiveto/veto/runtime"
 	"github.com/aiveto/veto/semantics"
@@ -14,14 +15,16 @@ import (
 
 type (
 	InvokeResult struct {
-		Status      string `json:"status"`
-		ApprovalID  string `json:"approval_id,omitempty"`
-		OperationID string `json:"operation_id,omitempty"`
-		HTTPStatus  int    `json:"http_status,omitempty"`
-		Body        string `json:"body,omitempty"`
-		Code        string `json:"code,omitempty"`
-		Retryable   bool   `json:"retryable"`
-		Error       string `json:"error,omitempty"`
+		Status      string       `json:"status"`
+		ApprovalID  string       `json:"approval_id,omitempty"`
+		OperationID string       `json:"operation_id,omitempty"`
+		HTTPStatus  int          `json:"http_status,omitempty"`
+		Body        string       `json:"body,omitempty"`
+		Code        string       `json:"code,omitempty"`
+		Retryable   bool         `json:"retryable"`
+		Error       string       `json:"error,omitempty"`
+		Truncated   bool         `json:"truncated,omitempty"`
+		Page        *result.Page `json:"page,omitempty"`
 	}
 
 	Server struct {
@@ -91,6 +94,8 @@ func (s *Server) Call(ctx context.Context, req runtime.Request) (InvokeResult, e
 		Code:        call.Code,
 		Retryable:   call.Retryable,
 		Error:       call.Error,
+		Truncated:   call.Truncated,
+		Page:        call.Page,
 	}, err
 }
 

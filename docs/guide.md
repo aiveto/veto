@@ -164,6 +164,15 @@ Cursor and Claude Desktop both take this server entry. Use a config path the `ve
 
 `operation_id` is the catalog id. `params` is an object. Path, query, and header values are strings, keyed by parameter name. `body` is the request body: a string is sent as written, and a JSON object is encoded as JSON and sent. There is no schema compiler in that step. `approval_id` is empty on the first call. A `confirmation_required` result carries a pending id. That id does not run the call. `veto approve <id>` records the approval and prints an approved id. A later invoke with that approved id runs once.
 
+`response_fields` in `veto.yaml`, or `fields` on this invoke, names the JSON fields returned after a successful call. A list also returns `page` with `offset`, `limit`, and `returned`. `truncated` is true when the response cap cuts the body or the page stops before the end. `response_limit` is the page size when the invoke omits `limit`. With no fields named, the body is unchanged. The cap stays. `--keep-sensitive` is still what records a response body, and secrets are still removed from the trace.
+
+```yaml
+response_fields:
+  - id
+  - name
+response_limit: 20
+```
+
 `approval_webhook` names a command or an HTTP URL. When a call is pending, veto POSTs JSON, or writes the same JSON to the command's stdin:
 
 ```json

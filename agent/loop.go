@@ -10,6 +10,7 @@ import (
 	"github.com/aiveto/veto/flow"
 	"github.com/aiveto/veto/memory"
 	"github.com/aiveto/veto/policy"
+	"github.com/aiveto/veto/result"
 	"github.com/aiveto/veto/runctx"
 	"github.com/aiveto/veto/runtime"
 	"github.com/aiveto/veto/semantics"
@@ -30,6 +31,8 @@ type (
 		Code        string
 		Retryable   bool
 		Error       string
+		Truncated   bool
+		Page        *result.Page
 	}
 
 	Outcome struct {
@@ -232,6 +235,8 @@ func (l *Loop) Invoke(ctx context.Context, operationID string, params map[string
 		Code:        out.Code,
 		Retryable:   out.Retryable,
 		Error:       out.Error,
+		Truncated:   out.Truncated,
+		Page:        out.Page,
 	}, err
 }
 
