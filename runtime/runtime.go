@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aiveto/veto/auth"
@@ -70,6 +71,7 @@ type (
 	}
 
 	// Runtime resolves, validates, checks policy, verifies approval, executes, shapes, and records.
+	// A nil Gate is created on first use. Copies made before that call do not share the gate.
 	Runtime struct {
 		Catalog *catalog.Catalog
 		Policy  policy.Hook
@@ -82,16 +84,27 @@ type (
 	}
 )
 
+// lazyGate publishes a nil Gate. It is not stored on Runtime, so a Runtime value stays copyable.
+var lazyGate sync.Mutex
+
+// invokeGate publishes one gate. A gate set before the first call is kept.
+// Concurrent first calls on the same Runtime share that gate.
+func (rt *Runtime) invokeGate() *InvokeGate {
+	lazyGate.Lock()
+	defer lazyGate.Unlock()
+	if rt.Gate == nil {
+		rt.Gate = &InvokeGate{}
+	}
+	return rt.Gate
+}
+
 // Invoke runs one operation. MCP uses this directly. It does not run the agent loop.
 func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 	if rt == nil {
 		return Result{Status: "error"}, errors.New("runtime required")
 	}
 	caller := requestCaller(ctx, req)
-	if rt.Gate == nil {
-		rt.Gate = &InvokeGate{}
-	}
-	if ok, wait := rt.Gate.allow(caller, rt.clock()); !ok {
+	if ok, wait := rt.invokeGate().allow(caller, rt.clock()); !ok {
 		retry := ""
 		if wait > 0 {
 			retry = wait.String()

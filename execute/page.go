@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"strings"
@@ -11,13 +12,15 @@ import (
 	"github.com/aiveto/veto/catalog"
 )
 
-func followPages(ctx context.Context, cfg Config, op *catalog.Operation, params map[string]string, body string, pageCap int) (string, error) {
+func followPages(ctx context.Context, cfg Config, op *catalog.Operation, params map[string]string, body string, pageCap int) (string, bool, error) {
 	items, ok := pageItems(body)
 	if !ok {
-		return body, nil
+		return body, false, nil
 	}
+	limit := bodyLimit(cfg.MaxBody)
 	current := cloneParams(params)
 	seen := map[string]bool{}
+	truncated := false
 	for page := 1; page < pageCap; page++ {
 		next, ok := nextPage(op.Page, body)
 		if !ok {
@@ -31,23 +34,42 @@ func followPages(ctx context.Context, cfg Config, op *catalog.Operation, params 
 		maps.Copy(current, next)
 		resp, err := InvokeResponse(ctx, cfg, op, current)
 		if err != nil {
-			return "", err
+			return "", false, err
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			_, _ = readBody(resp, cfg.MaxBody)
+			return "", false, fmt.Errorf("follow page: http %d", resp.StatusCode)
 		}
 		body, err = readBody(resp, cfg.MaxBody)
 		if err != nil {
-			return "", err
+			return "", false, err
 		}
 		more, ok := pageItems(body)
 		if !ok {
+			return "", false, errors.New("follow page: response is not a page")
+		}
+		if pageBytes(items)+pageBytes(more) > int(limit) {
+			truncated = true
 			break
 		}
 		items = append(items, more...)
 	}
 	raw, err := json.Marshal(items)
 	if err != nil {
-		return "", fmt.Errorf("collect pages: %w", err)
+		return "", false, fmt.Errorf("collect pages: %w", err)
 	}
-	return string(raw), nil
+	if int64(len(raw)) > limit {
+		return "", false, fmt.Errorf("response exceeds %d bytes", limit)
+	}
+	return string(raw), truncated, nil
+}
+
+func pageBytes(items []json.RawMessage) int {
+	n := 2
+	for _, item := range items {
+		n += len(item) + 1
+	}
+	return n
 }
 
 func nextPage(mapping map[string]string, body string) (map[string]string, bool) {

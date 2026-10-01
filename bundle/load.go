@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/aiveto/veto/config"
+	"github.com/aiveto/veto/internal/yamlfile"
 	"gopkg.in/yaml.v3"
 )
 
@@ -335,6 +336,9 @@ type manifest struct {
 }
 
 func parseManifest(data []byte) (manifest, error) {
+	if err := yamlfile.Prepare(data); err != nil {
+		return manifest{}, fmt.Errorf("parse bundle: %w", err)
+	}
 	var node yaml.Node
 	if err := yaml.Unmarshal(data, &node); err != nil {
 		return manifest{}, fmt.Errorf("parse bundle: %w", err)
@@ -576,6 +580,9 @@ var baseURLKeys = map[string]struct{}{
 }
 
 func rejectSecrets(data []byte) error {
+	if err := yamlfile.Prepare(data); err != nil {
+		return fmt.Errorf("parse bundle: %w", err)
+	}
 	var doc yaml.Node
 	if err := yaml.Unmarshal(data, &doc); err != nil {
 		return fmt.Errorf("parse bundle: %w", err)

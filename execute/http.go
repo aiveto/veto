@@ -74,11 +74,14 @@ func (c Client) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, par
 	code, retryable := classify(resp.StatusCode)
 	out := result.HTTPResult{Status: resp.StatusCode, Body: body, Code: code, Retryable: retryable}
 	if follow {
-		merged, err := followPages(ctx, cfg, op, params, body, c.FollowPages)
+		merged, cut, err := followPages(ctx, cfg, op, params, body, c.FollowPages)
 		if err != nil {
 			return result.HTTPResult{}, err
 		}
 		out.Body = merged
+		if cut {
+			out.Truncated = true
+		}
 	}
 	if follow && len(project.Fields) > 0 {
 		shaped, projected, err := shapeBody(resp.StatusCode, []byte(out.Body), false, Config{Project: project, MaxBody: c.MaxBody})

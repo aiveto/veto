@@ -93,3 +93,39 @@ func TestGeneratedCLIHelpAndConfirm(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, string(out), "confirmation required")
 }
+
+func TestRenderRejectsAModulePathThatCannotBeImported(t *testing.T) {
+	cat := &catalog.Catalog{Operations: []catalog.Operation{{ID: "orders.get", Method: "GET", PathTemplate: "/orders"}}}
+	cat.Finalize()
+	_, err := generate.Render("not a module", cat)
+	require.ErrorContains(t, err, "module path")
+}
+
+func TestGeneratedAdversarialNamesCompile(t *testing.T) {
+	cat := &catalog.Catalog{Operations: []catalog.Operation{{
+		ID: "Calls", Method: "GET", PathTemplate: "/calls",
+		Params: []catalog.Param{
+			{Name: "args", In: "query"},
+			{Name: "confirm", In: "query"},
+			{Name: "fmt", In: "query"},
+			{Name: "ctx", In: "query"},
+		},
+	}}}
+	cat.Finalize()
+	dir := t.TempDir()
+	require.NoError(t, generate.Write(dir, "example.com/adversarial", cat))
+	root, err := filepath.Abs("..")
+	require.NoError(t, err)
+	replace := exec.CommandContext(t.Context(), "go", "mod", "edit", "-replace", "github.com/aiveto/veto="+root)
+	replace.Dir = dir
+	out, err := replace.CombinedOutput()
+	require.NoError(t, err, string(out))
+	tidy := exec.CommandContext(t.Context(), "go", "mod", "tidy")
+	tidy.Dir = dir
+	out, err = tidy.CombinedOutput()
+	require.NoError(t, err, string(out))
+	run := exec.CommandContext(t.Context(), "go", "test", "-count=1", "./...")
+	run.Dir = dir
+	out, err = run.CombinedOutput()
+	require.NoError(t, err, string(out))
+}
