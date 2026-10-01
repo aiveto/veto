@@ -20,6 +20,7 @@ import (
 type doctorCmd struct {
 	contract  []string
 	config    string
+	bundle    string
 	agent     string
 	relations string
 	baseURL   string
@@ -38,6 +39,7 @@ func newDoctorCommand() *cobra.Command {
 	}
 	c.Flags().StringArrayVar(&cmd.contract, "contract", nil, "OpenAPI file. Repeat to register another API. Overrides config.")
 	c.Flags().StringVar(&cmd.config, "config", "", "Path to veto.yaml provider keys.")
+	c.Flags().StringVar(&cmd.bundle, "bundle", "", "Directory or zip of contracts, relations, and check cases.")
 	c.Flags().StringVar(&cmd.agent, "agent", "", "Path to agent.yaml. Overrides agent_file.")
 	c.Flags().StringVar(&cmd.relations, "relations", "", "Relations file. Overrides relations_file.")
 	c.Flags().StringVar(&cmd.baseURL, "base-url", "", "Override the server URL on every operation. Empty uses each contract server.")
@@ -47,8 +49,9 @@ func newDoctorCommand() *cobra.Command {
 }
 
 func runDoctor(cmd doctorCmd) {
-	loop, cfg, err := buildLoop(cmd.contract, cmd.config, cmd.agent, cmd.relations, cmd.baseURL)
+	loop, cfg, err := buildLoopBundle(cmd.contract, cmd.config, cmd.bundle, cmd.agent, cmd.relations, cmd.baseURL)
 	if err != nil {
+		releaseBundles()
 		fmt.Fprintf(os.Stderr, "doctor: %v\n", err)
 		os.Exit(1)
 	}
@@ -63,6 +66,7 @@ func runDoctor(cmd doctorCmd) {
 		fmt.Fprintln(os.Stderr, line)
 	}
 	if fail {
+		releaseBundles()
 		os.Exit(1)
 	}
 }

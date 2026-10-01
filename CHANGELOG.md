@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A capability bundle is a directory or a zip of contracts, relations, and check cases. `veto check --bundle` and `veto doctor --bundle` load it the same way as a config that points at those files. Credentials, token URLs, client secrets, and environment base URLs stay in the deployment config. A bundle that contains a client secret, a token URL, or a base URL does not load.
 - `response_fields`, or `fields` on invoke, returns those JSON fields after a successful call, plus a page and `truncated` when the response cap cuts the body. With no fields named, the body is unchanged. The cap stays. Secrets stay off the trace.
 - OPA input includes method, path, side effect, permissions, caller, environment, auth scheme, tags, and resource group, along with operation and params. A missing fact is empty. A deny on method or caller does not call HTTP. Builtin confirmation still applies when Rego allows the call.
 - `approval_webhook` names a command or an HTTP URL called when a call is pending. It receives the pending id, the operation, and the caller. It does not receive parameters, secrets, or upstream tokens. `veto approve` remains the local approval. A pending id does not send HTTP.
