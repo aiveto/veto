@@ -68,7 +68,7 @@ func (l *Log) Store(ctx context.Context, item Item) error {
 	if err := l.inner.Store(ctx, item); err != nil {
 		return err
 	}
-	return l.rewrite()
+	return l.rewrite(ctx)
 }
 
 func (l *Log) Search(ctx context.Context, query string) ([]Item, error) {
@@ -98,11 +98,11 @@ func (l *Log) Delete(ctx context.Context, id string) error {
 	if err := l.inner.Delete(ctx, id); err != nil {
 		return err
 	}
-	return l.rewrite()
+	return l.rewrite(ctx)
 }
 
-func (l *Log) rewrite() error {
-	items, err := l.inner.Recent(context.Background(), 1<<30)
+func (l *Log) rewrite(ctx context.Context) error {
+	items, err := l.inner.Recent(ctx, 1<<30)
 	if err != nil {
 		return err
 	}

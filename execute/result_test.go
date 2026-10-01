@@ -26,7 +26,7 @@ func TestHTTPResultCarriesCodeAndReplayOmitsBody(t *testing.T) {
 
 	rec, err := telemetry.Record()
 	require.NoError(t, err)
-	defer rec.Stop(context.Background())
+	defer func() { require.NoError(t, rec.Stop(context.Background())) }()
 
 	got, err := execute.Client{BaseURL: ts.URL}.InvokeHTTPResult(context.Background(), op, map[string]string{"id": "1"})
 	require.NoError(t, err)
@@ -41,7 +41,7 @@ func TestHTTPResultCarriesCodeAndReplayOmitsBody(t *testing.T) {
 
 	rec2, err := telemetry.Record()
 	require.NoError(t, err)
-	defer rec2.Stop(context.Background())
+	defer func() { require.NoError(t, rec2.Stop(context.Background())) }()
 	_, err = (execute.Client{BaseURL: ts.URL, RecordBody: true}).InvokeHTTPResult(context.Background(), op, map[string]string{"id": "1"})
 	require.NoError(t, err)
 	assert.Contains(t, spanText(t, rec2), "http.body="+secret)
@@ -68,7 +68,7 @@ func TestResponseCapOmitsParamValuesAndSetsToolAttributes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			rec, err := telemetry.Record()
 			require.NoError(t, err)
-			defer rec.Stop(context.Background())
+			defer func() { require.NoError(t, rec.Stop(context.Background())) }()
 			got, err := execute.Client{BaseURL: ts.URL, MaxBody: tc.max}.InvokeHTTPResult(context.Background(), op, map[string]string{"id": secret})
 			text := spanText(t, rec)
 			assert.Contains(t, text, "gen_ai.tool.name="+op.ID)
@@ -92,10 +92,13 @@ func TestClientTimeoutEndsAHungCall(t *testing.T) {
 		<-r.Context().Done()
 	}))
 	defer ts.Close()
-	_, err := execute.InvokeResponse(context.Background(), execute.Config{
+	resp, err := execute.InvokeResponse(context.Background(), execute.Config{
 		BaseURL: ts.URL,
 		Client:  &http.Client{Timeout: 30 * time.Millisecond},
 	}, op, map[string]string{"id": "1"})
+	if resp != nil && resp.Body != nil {
+		assert.NoError(t, resp.Body.Close())
+	}
 	assert.Error(t, err)
 }
 

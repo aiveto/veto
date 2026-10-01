@@ -128,7 +128,7 @@ func Serve(ctx context.Context, addr string, h http.Handler) error {
 	if addr == "" {
 		addr = DefaultAddr
 	}
-	ln, err := net.Listen("tcp", addr)
+	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", addr)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
@@ -140,7 +140,7 @@ func Listen(ctx context.Context, addr string, h http.Handler) (string, error) {
 	if addr == "" {
 		addr = DefaultAddr
 	}
-	ln, err := net.Listen("tcp", addr)
+	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", addr)
 	if err != nil {
 		return "", fmt.Errorf("listen: %w", err)
 	}
@@ -149,10 +149,15 @@ func Listen(ctx context.Context, addr string, h http.Handler) (string, error) {
 		_ = serveListener(ctx, ln, h)
 	}()
 	deadline := time.Now().Add(2 * time.Second)
+	var dialer net.Dialer
 	for {
-		conn, dialErr := net.DialTimeout("tcp", bound, 20*time.Millisecond)
+		attempt, cancel := context.WithTimeout(ctx, 20*time.Millisecond)
+		conn, dialErr := dialer.DialContext(attempt, "tcp", bound)
+		cancel()
 		if dialErr == nil {
-			_ = conn.Close()
+			if err := conn.Close(); err != nil {
+				return "", err
+			}
 			return bound, nil
 		}
 		if time.Now().After(deadline) {
@@ -163,9 +168,6 @@ func Listen(ctx context.Context, addr string, h http.Handler) (string, error) {
 }
 
 func serveListener(ctx context.Context, ln net.Listener, h http.Handler) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	srv := &http.Server{Handler: h, ReadHeaderTimeout: 5 * time.Second}
 	errc := make(chan error, 1)
 	go func() {
@@ -177,10 +179,13 @@ func serveListener(ctx context.Context, ln net.Listener, h http.Handler) error {
 	}()
 	select {
 	case <-ctx.Done():
-		shut, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		shut, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 		defer cancel()
-		_ = srv.Shutdown(shut)
-		return <-errc
+		shutErr := srv.Shutdown(shut)
+		if err := <-errc; err != nil {
+			return err
+		}
+		return shutErr
 	case err := <-errc:
 		return err
 	}

@@ -114,8 +114,14 @@ func (h *HTTPNotifier) post(ctx context.Context, body []byte) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+	_, copyErr := io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+	closeErr := resp.Body.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("status %d", resp.StatusCode)
 	}

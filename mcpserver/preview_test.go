@@ -85,7 +85,7 @@ security:
 	require.NoError(t, err)
 	session, err := mcp.NewClient(&mcp.Implementation{Name: "client", Version: "0.1.0"}, nil).Connect(ctx, clientTransport, nil)
 	require.NoError(t, err)
-	defer session.Close()
+	t.Cleanup(func() { require.NoError(t, session.Close()) })
 
 	res, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name: "capabilities_invoke",

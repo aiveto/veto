@@ -2,6 +2,7 @@ package bundle_test
 
 import (
 	"archive/zip"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,7 +14,7 @@ import (
 )
 
 func TestBundleRejectsClientSecret(t *testing.T) {
-	t.Cleanup(bundle.Release)
+	t.Cleanup(func() { require.NoError(t, bundle.Release()) })
 	dir := t.TempDir()
 	body := "contracts:\n  - orders.yaml\nauth:\n  job:\n    client_secret: super-secret-value\n"
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "bundle.yaml"), []byte(body), 0o644))
@@ -124,7 +125,7 @@ func TestBundleZipReadsTheInnerDirectory(t *testing.T) {
 	require.NoError(t, zipDir(zipPath, parent))
 	loaded, err := bundle.Load(zipPath)
 	require.NoError(t, err)
-	t.Cleanup(loaded.Close)
+	t.Cleanup(func() { require.NoError(t, loaded.Close()) })
 	require.Len(t, loaded.Config.Cases, 1)
 	assert.True(t, strings.HasSuffix(loaded.Config.Cases[0], "cases"))
 }
@@ -163,13 +164,10 @@ func zipDir(dest, root string) error {
 		return err
 	})
 	if err != nil {
-		w.Close()
-		f.Close()
-		return err
+		return errors.Join(err, w.Close(), f.Close())
 	}
 	if err := w.Close(); err != nil {
-		f.Close()
-		return err
+		return errors.Join(err, f.Close())
 	}
 	return f.Close()
 }

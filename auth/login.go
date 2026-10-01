@@ -22,7 +22,7 @@ type LoginOptions struct {
 	Scheme      Scheme
 	Dir         string
 	Device      bool
-	Open        func(string) error
+	Open        func(context.Context, string) error
 	HTTP        *http.Client
 	RedirectURL string
 	Out         io.Writer
@@ -76,17 +76,18 @@ func HasBrowser() bool {
 	}
 }
 
-func OpenBrowser(raw string) error {
-	var cmd *exec.Cmd
+func OpenBrowser(ctx context.Context, raw string) error {
+	var name string
+	var args []string
 	switch runtime.GOOS {
 	case "darwin":
-		cmd = exec.Command("open", raw)
+		name, args = "open", []string{raw}
 	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", raw)
+		name, args = "rundll32", []string{"url.dll,FileProtocolHandler", raw}
 	default:
-		cmd = exec.Command("xdg-open", raw)
+		name, args = "xdg-open", []string{raw}
 	}
-	return cmd.Start()
+	return exec.CommandContext(ctx, name, args...).Start()
 }
 
 // SetToken stores a token the operator already holds. The file mode is 0600.
@@ -118,8 +119,10 @@ func codeLogin(ctx context.Context, opt LoginOptions, scheme Scheme) error {
 	code, err := waitForCode(ctx, redirect, state, func(listen string) error {
 		cfg = oauthConfig(scheme, listen, secret)
 		authURL := cfg.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier))
-		fmt.Fprintf(opt.Out, "Open this URL to sign in:\n%s\n", authURL)
-		if err := opt.Open(authURL); err != nil {
+		if _, err := fmt.Fprintf(opt.Out, "Open this URL to sign in:\n%s\n", authURL); err != nil {
+			return fmt.Errorf("write login url: %w", err)
+		}
+		if err := opt.Open(ctx, authURL); err != nil {
 			return fmt.Errorf("open browser: %w", err)
 		}
 		return nil
@@ -158,7 +161,9 @@ func deviceLogin(ctx context.Context, opt LoginOptions, scheme Scheme) error {
 	if dev.VerificationURIComplete != "" {
 		show = dev.VerificationURIComplete
 	}
-	fmt.Fprintf(opt.Out, "Open %s\nEnter code %s\n", show, dev.UserCode)
+	if _, err := fmt.Fprintf(opt.Out, "Open %s\nEnter code %s\n", show, dev.UserCode); err != nil {
+		return fmt.Errorf("write device code: %w", err)
+	}
 	tok, err := cfg.DeviceAccessToken(ctx, dev)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -190,7 +195,7 @@ func waitForCode(ctx context.Context, redirect, state string, open func(listen s
 	if err != nil {
 		return "", fmt.Errorf("redirect url: %w", err)
 	}
-	ln, err := net.Listen("tcp", u.Host)
+	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", u.Host)
 	if err != nil {
 		return "", fmt.Errorf("listen on redirect URL: %w", err)
 	}
@@ -233,9 +238,13 @@ func waitForCode(ctx context.Context, redirect, state string, open func(listen s
 		default:
 		}
 	})
-	srv := &http.Server{Handler: mux}
+	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() { _ = srv.Serve(ln) }()
-	defer func() { _ = srv.Shutdown(context.Background()) }()
+	defer func() {
+		shut, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shut)
+	}()
 	listen := redirect
 	if u.Port() == "" || strings.HasSuffix(u.Host, ":0") {
 		listen = fmt.Sprintf("%s://%s%s", u.Scheme, ln.Addr().String(), path)

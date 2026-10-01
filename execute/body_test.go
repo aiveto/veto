@@ -66,10 +66,13 @@ func TestMissingRequiredInputDoesNotCallDo(t *testing.T) {
 			op := loadSpec(t, tc.spec).ByID(tc.op)
 			require.NotNil(t, op)
 			trip := &failTrip{}
-			_, err := execute.InvokeResponse(context.Background(), execute.Config{
+			resp, err := execute.InvokeResponse(context.Background(), execute.Config{
 				BaseURL: "http://127.0.0.1:9",
 				Client:  &http.Client{Transport: trip},
 			}, op, tc.params)
+			if resp != nil && resp.Body != nil {
+				assert.NoError(t, resp.Body.Close())
+			}
 			assert.ErrorContains(t, err, tc.want)
 			assert.False(t, trip.called)
 		})

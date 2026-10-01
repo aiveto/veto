@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -79,7 +80,7 @@ func Load(path string) (File, error) {
 	}
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
-	if err := dec.Decode(&cfg); err != nil && err != io.EOF {
+	if err := dec.Decode(&cfg); err != nil && !errors.Is(err, io.EOF) {
 		return File{}, fmt.Errorf("parse config: %w", err)
 	}
 	cfg.applyDefaults()

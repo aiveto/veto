@@ -301,9 +301,6 @@ func waitRetry(ctx context.Context, d time.Duration) error {
 	if d <= 0 {
 		return nil
 	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	timer := time.NewTimer(d)
 	defer timer.Stop()
 	select {
@@ -403,9 +400,6 @@ func DraftRequest(ctx context.Context, base string, op *catalog.Operation, param
 	}
 	if base == "" {
 		return nil, fmt.Errorf("operation %s has no server URL", op.ID)
-	}
-	if ctx == nil {
-		ctx = context.Background()
 	}
 	return prepareRequest(ctx, base, op, params, false)
 }

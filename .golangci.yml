@@ -3,14 +3,24 @@ version: "2"
 run:
   timeout: 5m
 
-linters:
-  default: none
-  enable:
-    - govet
-    - staticcheck
-    - unused
-    - ineffassign
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
 
-formatters:
+linters:
+  default: standard
   enable:
-    - gofmt
+    - bodyclose
+    - contextcheck
+    - copyloopvar
+    - durationcheck
+    - errchkjson
+    - errorlint
+    - fatcontext
+    - makezero
+    - nilerr
+    - nilnesserr
+    - noctx
+    - reassign
+    - unconvert
+    - wastedassign

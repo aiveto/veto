@@ -51,21 +51,21 @@ func TestGeneratedCLIHelpAndConfirm(t *testing.T) {
 	assert.NotContains(t, string(sdk), "return agent.Call{}")
 	root, err := filepath.Abs("..")
 	require.NoError(t, err)
-	replace := exec.Command("go", "mod", "edit", "-replace", "github.com/aiveto/veto="+root)
+	replace := exec.CommandContext(t.Context(), "go", "mod", "edit", "-replace", "github.com/aiveto/veto="+root)
 	replace.Dir = dir
 	out, err := replace.CombinedOutput()
 	require.NoError(t, err, string(out))
-	tidy := exec.Command("go", "mod", "tidy")
+	tidy := exec.CommandContext(t.Context(), "go", "mod", "tidy")
 	tidy.Dir = dir
 	out, err = tidy.CombinedOutput()
 	require.NoError(t, err, string(out))
 
-	compile := exec.Command("go", "test", "./...")
+	compile := exec.CommandContext(t.Context(), "go", "test", "./...")
 	compile.Dir = dir
 	out, err = compile.CombinedOutput()
 	require.NoError(t, err, string(out))
 
-	help := exec.Command("go", "run", "./cli", "delete", "--help-json")
+	help := exec.CommandContext(t.Context(), "go", "run", "./cli", "delete", "--help-json")
 	help.Dir = dir
 	out, err = help.CombinedOutput()
 	require.NoError(t, err, string(out))
@@ -84,7 +84,7 @@ func TestGeneratedCLIHelpAndConfirm(t *testing.T) {
 	assert.Equal(t, "DELETE", doc.Method)
 	assert.Equal(t, "http://127.0.0.1:8080", doc.Server)
 
-	deny := exec.Command("go", "run", "./cli", "delete", "--id", "123")
+	deny := exec.CommandContext(t.Context(), "go", "run", "./cli", "delete", "--id", "123")
 	deny.Dir = dir
 	out, err = deny.CombinedOutput()
 	assert.Error(t, err)

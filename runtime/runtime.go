@@ -82,9 +82,6 @@ type (
 
 // Invoke runs one operation. MCP uses this directly. It does not run the agent loop.
 func (rt Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	caller := requestCaller(ctx, req)
 	if !allowInvoke(rt.State, caller, rt.clock()) {
 		return rt.record(ctx, Result{
@@ -201,9 +198,6 @@ func (rt Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 
 // Preview resolves, validates, and checks policy. It does not fetch a token or call upstream.
 func (rt Runtime) Preview(ctx context.Context, req Request) (Preview, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	caller := requestCaller(ctx, req)
 	ctx = auth.WithCaller(ctx, caller)
 	op := rt.operation(req.Operation)

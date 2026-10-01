@@ -128,12 +128,15 @@ func TestQueryKeyIsScrubbedFromTheErrorAndTrace(t *testing.T) {
 	const secret = "query-secret-value"
 	rec, err := telemetry.Record()
 	require.NoError(t, err)
-	defer rec.Stop(context.Background())
-	_, err = execute.InvokeResponse(context.Background(), execute.Config{
+	defer func() { require.NoError(t, rec.Stop(context.Background())) }()
+	resp, err := execute.InvokeResponse(context.Background(), execute.Config{
 		BaseURL: "http://127.0.0.1:9",
 		Client:  &http.Client{Transport: errTrip{}},
 		Auth:    map[string]string{"queryAuth": secret},
 	}, op, nil)
+	if resp != nil && resp.Body != nil {
+		assert.NoError(t, resp.Body.Close())
+	}
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), secret)
 	assert.NotContains(t, spanText(t, rec), secret)
@@ -279,7 +282,7 @@ func TestTokenStaysOffTheTrace(t *testing.T) {
 	t.Setenv("QUERY_TOKEN", query)
 	rec, err := telemetry.Record()
 	require.NoError(t, err)
-	defer rec.Stop(context.Background())
+	defer func() { require.NoError(t, rec.Stop(context.Background())) }()
 	creds := auth.New(auth.Options{Schemes: []auth.Scheme{
 		{Name: "bearerAuth", Source: "client_credentials", TokenURL: tokenSrv.URL, ClientID: "job", ClientSecretEnv: "WORKFORCE_SECRET"},
 		{Name: "queryAuth", Source: "env", Env: "QUERY_TOKEN"},
@@ -323,9 +326,9 @@ func TestLoginStoresRefreshAndInvokeRefreshesWithoutABrowser(t *testing.T) {
 		RedirectURL: "http://127.0.0.1:0/callback",
 		HTTP:        tokenSrv.Client(),
 		Out:         io.Discard,
-		Open: func(raw string) error {
+		Open: func(ctx context.Context, raw string) error {
 			opens.Add(1)
-			return finishCodeLogin(raw)
+			return finishCodeLogin(ctx, raw)
 		},
 	})
 	require.NoError(t, err)
@@ -398,7 +401,7 @@ func TestCommandHookFailuresSkipUpstream(t *testing.T) {
 	}
 }
 
-func finishCodeLogin(raw string) error {
+func finishCodeLogin(ctx context.Context, raw string) error {
 	u, err := url.Parse(raw)
 	if err != nil {
 		return err
@@ -414,7 +417,11 @@ func finishCodeLogin(raw string) error {
 	cb.RawQuery = url.Values{"code": {"abc"}, "state": {q.Get("state")}}.Encode()
 	var resp *http.Response
 	for range 20 {
-		resp, err = http.Get(cb.String())
+		req, reqErr := http.NewRequestWithContext(ctx, http.MethodGet, cb.String(), nil)
+		if reqErr != nil {
+			return reqErr
+		}
+		resp, err = http.DefaultClient.Do(req)
 		if err == nil {
 			break
 		}
@@ -423,9 +430,12 @@ func finishCodeLogin(raw string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
-	_, _ = io.ReadAll(resp.Body)
-	return nil
+	_, readErr := io.ReadAll(resp.Body)
+	closeErr := resp.Body.Close()
+	if readErr != nil {
+		return readErr
+	}
+	return closeErr
 }
 
 type errString string

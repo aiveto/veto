@@ -26,7 +26,7 @@ func TestBearerHeaderIsSentAndKeptOffTheSpan(t *testing.T) {
 
 	rec, err := telemetry.Record()
 	require.NoError(t, err)
-	defer rec.Stop(context.Background())
+	defer func() { require.NoError(t, rec.Stop(context.Background())) }()
 	_, err = execute.Client{BaseURL: ts.URL, Auth: map[string]string{"bearerAuth": secret}}.InvokeHTTPResult(context.Background(), op, map[string]string{"id": "1"})
 	require.NoError(t, err)
 	assert.Equal(t, "Bearer "+secret, got)

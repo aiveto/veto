@@ -577,11 +577,11 @@ func (s *State) consumeSigned(caller, token, opID string, params map[string]stri
 	}
 	unix, err := strconv.ParseInt(parts[1], 10, 64)
 	if err != nil || !now.Before(time.Unix(unix, 0)) {
-		return false, nil
+		return rejectToken()
 	}
 	got, err := base64.RawURLEncoding.DecodeString(parts[3])
 	if err != nil {
-		return false, nil
+		return rejectToken()
 	}
 	mac := hmac.New(sha256.New, s.secret)
 	_, _ = mac.Write([]byte(approvalPayload(caller, opID, params, unix, parts[2])))
@@ -607,6 +607,10 @@ func (s *State) consumeSigned(caller, token, opID string, params map[string]stri
 		return false, fmt.Errorf("approval nonce: %w", cerr)
 	}
 	return true, nil
+}
+
+func rejectToken() (bool, error) {
+	return false, nil
 }
 
 func plainNonce(nonce string) bool {
