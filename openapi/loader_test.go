@@ -2,6 +2,7 @@ package openapi_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -96,7 +97,7 @@ paths:
 `
 
 func specWithLink(link string) string {
-	return `openapi: 3.0.3
+	return fmt.Sprintf(`openapi: 3.0.3
 info:
   title: t
   version: "1"
@@ -115,5 +116,6 @@ paths:
           description: ok
           links:
             next:
-              ` + link + "\n"
+              %s
+`, link)
 }

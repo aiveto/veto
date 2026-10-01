@@ -153,11 +153,11 @@ func (f File) validate() error {
 	if f.Semantics == "file" && f.SemanticsFile == "" {
 		return fmt.Errorf("semantics file provider needs semantics_file")
 	}
-	if f.Decision != "default" && f.Decision != "jev" {
+	if f.Decision != "default" {
 		return fmt.Errorf("decision provider %q is not in this slice", f.Decision)
 	}
 	switch f.Policy {
-	case "builtin", "opa", "spicedb":
+	case "builtin", "opa":
 	default:
 		return fmt.Errorf("policy provider %q is not in this slice", f.Policy)
 	}
@@ -170,7 +170,7 @@ func (f File) validate() error {
 	if f.TraceExport != "" && f.TraceExport != "stdout" && f.TraceExport != "otlp" {
 		return fmt.Errorf("trace export %q is not in this slice", f.TraceExport)
 	}
-	if f.Execution != "in-process" && f.Execution != "temporal" {
+	if f.Execution != "in-process" {
 		return fmt.Errorf("execution provider %q is not in this slice", f.Execution)
 	}
 	if f.Subagents != "off" {

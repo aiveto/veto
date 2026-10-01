@@ -10,12 +10,12 @@ Define narrow interfaces and ship one in-memory or scripted default per concern.
 
 ## Architect
 
-Early interfaces for Jev, OSSIE, or Temporal tempt premature abstraction.
+Early interfaces for OSSIE tempt premature abstraction.
 
 ## Decision
 
-Interfaces: `memory.Memory`, `agent.Completer`, `semantics.Provider`, `policy.Hook`. Defaults: local map memory, scripted model, derived+file semantics, builtin policy. Document optional provider keys (Jev, OSSIE, Temporal) in ADR 012. They are not packages in this slice.
+Interfaces: `memory.Memory`, `agent.Completer`, `semantics.Provider`, `policy.Hook`. Defaults: local map memory, scripted model, derived+file semantics, builtin policy. Document optional provider keys in ADR 012. They are not packages in this slice.
 
 ## What we refused
 
-Bundling Jev, OSSIE clients, Temporal, or a subagent package in the core tree.
+Bundling OSSIE clients or a subagent package in the core tree.

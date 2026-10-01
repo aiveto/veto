@@ -10,7 +10,7 @@ A custom check has to call `Builtin` unless it stops. `model_base_url` belongs o
 
 ## Architect
 
-`veto serve` still cannot load a Go hook. OPA, SpiceDB, Temporal, and another memory stay keys for later. The semantics file already patches derived notes. Lock that with a test.
+`veto serve` still cannot load a Go hook. OPA and another memory stay keys for later. The semantics file already patches derived notes. Lock that with a test.
 
 ## Decision
 

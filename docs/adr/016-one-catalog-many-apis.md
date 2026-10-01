@@ -14,8 +14,8 @@ Guess the edge from the field name so customers appear as soon as the second API
 
 ## Decision
 
-Do not guess. `customerId` creates no edge. The relation file does. Model, memory, semantics, policy, and in-process execution stay the hook points. Temporal, Jev, and Ossie are config keys for a later provider. They are not clients in this module.
+Do not guess. `customerId` creates no edge. The relation file does. Model, memory, semantics, policy, and in-process execution stay the hook points. Ossie is not a client in this module.
 
 ## What we refused
 
-A foreign-key heuristic. A Temporal package. One tool per operation.
+A foreign-key heuristic. One tool per operation.

@@ -1,14 +1,8 @@
 # veto
 
-The control plane between AI agents and your APIs.
+Veto turns existing OpenAPI services into a bounded, policy-checked capability surface for AI agents.
 
-Your APIs already create, read, update, delete, refund, publish, deploy, and approve.
-
-The problem is giving an agent access to all of that.
-
-Hundreds of operations become hundreds of tools. The whole spec wastes context. The model decides, and a bad decision is a real side effect.
-
-Veto puts a boundary between intent and execution.
+Agents search, describe, and invoke through three stable tools. Veto handles auth, approval, relations, replay, and CI drift checks before your API ever sees the request.
 
 ```text
 API contracts
