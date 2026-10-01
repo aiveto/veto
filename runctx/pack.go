@@ -1,8 +1,6 @@
 package runctx
 
 import (
-	"maps"
-	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -77,138 +75,104 @@ func (b *Builder) Build(cat *catalog.Catalog, turns []Turn, described *catalog.O
 	return p
 }
 
-// The index is cut first. Turns, the description, and pending parameters follow.
+// The index is cut first. Related lines are dropped whole. A pending approval that does not fit is omitted.
 func (b *Builder) limit(p *Pack) {
-	recount(p)
+	p.Bytes = len(p.Serialize())
 	if p.Bytes <= b.MaxBytes {
 		return
 	}
-	room := b.MaxBytes - (p.Bytes - len(p.Index))
+	p.Truncated = true
+	fullIndex := p.Index
+	shrinkIndex(p, b.MaxBytes)
+	for len(p.Related) > 0 && len(p.Serialize()) > b.MaxBytes {
+		p.Related = p.Related[:len(p.Related)-1]
+	}
+	if p.Index != fullIndex {
+		p.Index = fullIndex
+		if len(p.Serialize()) > b.MaxBytes {
+			shrinkIndex(p, b.MaxBytes)
+		}
+	}
+	trimTurns(p, b.MaxBytes)
+	trimDetail(p, b.MaxBytes)
+	if len(p.Serialize()) > b.MaxBytes {
+		p.PendingConfirmation = nil
+	}
+	trimFloor(p, b.MaxBytes)
+	p.Bytes = len(p.Serialize())
+}
+
+func shrinkIndex(p *Pack, max int) {
+	overhead := len(p.Serialize()) - len(p.Index)
+	room := max - overhead
+	if room < 0 {
+		room = 0
+	}
 	index, cut := fitIndex(p.Index, room)
 	p.Index = index
 	if cut {
 		p.Truncated = true
 	}
-	recount(p)
-	if p.Bytes <= b.MaxBytes {
-		return
-	}
-	p.Truncated = true
-	trimTurns(p, b.MaxBytes)
-	trimDetail(p, b.MaxBytes)
-	trimPending(p, b.MaxBytes)
-	recount(p)
-}
-
-func recount(p *Pack) {
-	p.Bytes = len(p.Rules) + len(p.Index) + len(p.DescribedDetail)
-	for _, t := range p.Turns {
-		p.Bytes += len(t.Role) + len(t.Content)
-	}
-	for _, rel := range p.Related {
-		p.Bytes += len(rel)
-	}
-	p.Bytes += pendingBytes(p.PendingConfirmation)
 }
 
 func trimTurns(p *Pack, max int) {
-	if p.Bytes <= max || len(p.Turns) == 0 {
+	if len(p.Serialize()) <= max || len(p.Turns) == 0 {
 		return
 	}
 	p.Turns = cloneTurns(p.Turns)
 	for i := range p.Turns {
-		if p.Bytes <= max {
+		if len(p.Serialize()) <= max {
 			return
 		}
 		content := p.Turns[i].Content
-		if content == "" {
-			continue
-		}
-		keep := len(content) - (p.Bytes - max)
+		overflow := len(p.Serialize()) - max
+		keep := len(content) - overflow
 		if keep < 0 {
 			keep = 0
 		}
-		next := prefixBytes(content, keep)
-		p.Bytes -= len(content) - len(next)
-		p.Turns[i].Content = next
+		p.Turns[i].Content = prefixBytes(content, keep)
 	}
 }
 
 func trimDetail(p *Pack, max int) {
-	if p.Bytes <= max || p.DescribedDetail == "" {
+	if len(p.Serialize()) <= max || p.DescribedDetail == "" {
 		return
 	}
-	keep := len(p.DescribedDetail) - (p.Bytes - max)
+	overflow := len(p.Serialize()) - max
+	keep := len(p.DescribedDetail) - overflow
 	if keep < 0 {
 		keep = 0
 	}
-	next := prefixBytes(p.DescribedDetail, keep)
-	p.Bytes -= len(p.DescribedDetail) - len(next)
-	p.DescribedDetail = next
+	p.DescribedDetail = prefixBytes(p.DescribedDetail, keep)
 }
 
-func trimPending(p *Pack, max int) {
-	pend := p.PendingConfirmation
-	if pend == nil || p.Bytes <= max || len(pend.Params) == 0 {
-		return
-	}
-	detachPending(p)
-	pend = p.PendingConfirmation
-	keys := make([]string, 0, len(pend.Params))
-	for k := range pend.Params {
-		keys = append(keys, k)
-	}
-	sort.Slice(keys, func(i, j int) bool {
-		if len(pend.Params[keys[i]]) != len(pend.Params[keys[j]]) {
-			return len(pend.Params[keys[i]]) > len(pend.Params[keys[j]])
-		}
-		return keys[i] < keys[j]
-	})
-	for _, k := range keys {
-		if p.Bytes <= max {
-			return
-		}
-		value := pend.Params[k]
-		if value == "" {
-			continue
-		}
-		keep := len(value) - (p.Bytes - max)
+func trimFloor(p *Pack, max int) {
+	for len(p.Serialize()) > max && p.Rules != "" {
+		overflow := len(p.Serialize()) - max
+		keep := len(p.Rules) - overflow
 		if keep < 0 {
 			keep = 0
 		}
-		next := prefixBytes(value, keep)
-		p.Bytes -= len(value) - len(next)
-		pend.Params[k] = next
+		p.Rules = prefixBytes(p.Rules, keep)
 	}
-}
-
-func detachPending(p *Pack) {
-	src := p.PendingConfirmation
-	if src == nil {
+	for len(p.Serialize()) > max && p.DescribedOperationID != "" {
+		overflow := len(p.Serialize()) - max
+		keep := len(p.DescribedOperationID) - overflow
+		if keep < 0 {
+			keep = 0
+		}
+		p.DescribedOperationID = prefixBytes(p.DescribedOperationID, keep)
+	}
+	if len(p.Serialize()) <= max || len(p.Turns) == 0 {
 		return
 	}
-	cp := *src
-	if src.Params != nil {
-		cp.Params = maps.Clone(src.Params)
-	}
-	p.PendingConfirmation = &cp
+	p.Turns = nil
 }
 
 func cloneTurns(in []Turn) []Turn {
 	out := make([]Turn, len(in))
 	copy(out, in)
 	return out
-}
-
-func pendingBytes(pend *policy.PendingConfirmation) int {
-	if pend == nil {
-		return 0
-	}
-	n := len(pend.ID) + len(pend.OperationID)
-	for k, v := range pend.Params {
-		n += len(k) + len(v)
-	}
-	return n
 }
 
 func prefixBytes(s string, n int) string {
@@ -244,8 +208,12 @@ func fitIndex(index string, budget int) (string, bool) {
 // Serialize returns a human-readable pack for tests and debugging.
 func (p Pack) Serialize() string {
 	var parts []string
-	parts = append(parts, "rules: "+p.Rules)
-	parts = append(parts, "index: "+p.Index)
+	if p.Rules != "" {
+		parts = append(parts, "rules: "+p.Rules)
+	}
+	if p.Index != "" {
+		parts = append(parts, "index: "+p.Index)
+	}
 	for _, t := range p.Turns {
 		parts = append(parts, t.Role+": "+t.Content)
 	}

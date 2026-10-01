@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/openapi"
@@ -113,6 +114,47 @@ func TestPackBoundsTurnsDetailAndPending(t *testing.T) {
 	assert.Equal(t, turn, turns[0].Content)
 	assert.Equal(t, param, pending.Params["id"])
 	assert.Contains(t, pack.Serialize(), "capabilities_invoke")
+}
+
+func TestSerializedPackStaysInsideTheBudget(t *testing.T) {
+	note := strings.Repeat("n", 9000)
+	cat := &catalog.Catalog{Operations: []catalog.Operation{{
+		ID: "orders.get", Method: "GET", PathTemplate: "/orders/{id}", Name: "get",
+	}}}
+	cat.Finalize()
+	cat.Graph.Edges = append(cat.Graph.Edges, catalog.Edge{
+		From: "orders.get", To: "customers.get", Kind: catalog.EdgeRelates, Note: note,
+	})
+	sem := semantics.NewDerived(cat)
+	pack := runctx.NewBuilder(8192).Build(cat, nil, cat.ByID("orders.get"), sem, nil)
+	assert.LessOrEqual(t, len(pack.Serialize()), 8192)
+	assert.NotContains(t, pack.Serialize(), note)
+	assert.True(t, pack.Truncated)
+
+	turns := make([]runctx.Turn, 40)
+	for i := range turns {
+		turns[i] = runctx.Turn{Role: "user", Content: "hi"}
+	}
+	longID := strings.Repeat("op", 3000)
+	wide := &catalog.Catalog{Operations: []catalog.Operation{{ID: longID, Name: "n", Description: "d"}}}
+	wide.Finalize()
+	many := runctx.NewBuilder(8192).Build(wide, turns, wide.ByID(longID), semantics.NewDerived(wide), &policy.PendingConfirmation{
+		ID: strings.Repeat("p", 5000), OperationID: longID, Params: map[string]string{"id": strings.Repeat("9", 4000)},
+	})
+	assert.LessOrEqual(t, len(many.Serialize()), 8192)
+	assert.NotContains(t, many.Serialize(), strings.Repeat("9", 4000))
+	assert.Nil(t, many.PendingConfirmation)
+
+	tiny := runctx.NewBuilder(1).Build(cat, []runctx.Turn{{Role: "user", Content: "hello"}}, cat.ByID("orders.get"), sem, nil)
+	assert.LessOrEqual(t, len(tiny.Serialize()), 1)
+	assert.True(t, utf8.ValidString(tiny.Serialize()))
+
+	runeText := strings.Repeat("é", 50)
+	original := []runctx.Turn{{Role: "user", Content: runeText}}
+	cut := runctx.NewBuilder(len("rules: ")+len(runctx.NewBuilder(0).Build(nil, nil, nil, nil, nil).Rules)+8).Build(nil, original, nil, nil, nil)
+	assert.LessOrEqual(t, len(cut.Serialize()), len("rules: ")+len(runctx.NewBuilder(0).Build(nil, nil, nil, nil, nil).Rules)+8)
+	assert.True(t, utf8.ValidString(cut.Serialize()))
+	assert.Equal(t, runeText, original[0].Content)
 }
 
 func TestPackKeepsSearchHitsAndDropsTheRest(t *testing.T) {
