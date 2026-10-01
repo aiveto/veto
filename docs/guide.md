@@ -47,6 +47,35 @@ Paths are relative to `veto.yaml`. `auth` maps a security scheme to an env var, 
 
 `veto validate --config veto.yaml` loads the contracts and prints the operation count and joins.
 
+## Capability bundle
+
+A directory, or a zip of that directory, holds the contracts, the relations file, and the check cases for one integration. `bundle.yaml` lists those files the same way `veto.yaml` does. When `bundle.yaml` is absent, `veto.yaml` in that directory is the manifest. Credentials, token URLs, client secrets, and environment base URLs stay in the deployment config. A bundle that contains a client secret, a token URL, or a base URL does not load.
+
+```bash
+veto check --bundle ./orders-customers
+veto doctor --bundle ./orders-customers.zip --config veto.yaml
+veto serve --config veto.yaml
+```
+
+Deployment `veto.yaml`:
+
+```yaml
+bundle: ./orders-customers
+auth:
+  bearerAuth: ORDER_TOKEN
+```
+
+`bundle.yaml`:
+
+```yaml
+contracts:
+  - orders.yaml
+  - customers.yaml
+relations_file: relations.yaml
+cases:
+  - cases
+```
+
 ## Auth
 
 A string names the environment variable that already holds the token:
@@ -263,7 +292,7 @@ veto pack --config veto.yaml --message "who placed order 123"
 
 ## Check in CI
 
-`veto check` loads the catalog, prints joins, and runs the case files. `--case` is required. `--against` is a git ref or a snapshot JSON file. The check fails when a joined operation disappears, confirmation is dropped without an `agent.yaml` change, a new destructive operation appears, a discovery-only operation becomes callable, a required permission is removed, or an eval expectation changes.
+`veto check` loads the catalog, prints joins, and runs the case files. `--case` names the case file or directory. When it is omitted, check uses the `cases` list from the bundle. `--against` is a git ref or a snapshot JSON file. The check fails when a joined operation disappears, confirmation is dropped without an `agent.yaml` change, a new destructive operation appears, a discovery-only operation becomes callable, a required permission is removed, or an eval expectation changes.
 
 `--against` reads files from that git ref, so the checkout needs the history.
 

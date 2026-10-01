@@ -14,6 +14,7 @@ import (
 	"github.com/aiveto/veto/agent/openai"
 	"github.com/aiveto/veto/agentmeta"
 	"github.com/aiveto/veto/auth"
+	"github.com/aiveto/veto/bundle"
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/config"
 	"github.com/aiveto/veto/eval"
@@ -95,6 +96,7 @@ type (
 )
 
 func main() {
+	defer bundle.Release()
 	root, err := newRoot()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "veto: %v\n", err)
@@ -741,13 +743,33 @@ func loadCatalog(contracts []string, relationsPath string) (*catalog.Catalog, er
 }
 
 func resolve(configPath string, contracts []string, relations, agent string) (config.File, []string, string, string, error) {
+	return resolveBundle(configPath, "", contracts, relations, agent)
+}
+
+func resolveBundle(configPath, bundlePath string, contracts []string, relations, agent string) (config.File, []string, string, string, error) {
 	cfg := config.Defaults()
+	loadedConfig := false
 	if configPath != "" {
 		loaded, err := config.Load(configPath)
 		if err != nil {
 			return config.File{}, nil, "", "", err
 		}
 		cfg = loaded
+		loadedConfig = true
+	}
+	if bundlePath == "" {
+		bundlePath = cfg.Bundle
+	}
+	if bundlePath != "" {
+		shared, err := bundle.Load(bundlePath)
+		if err != nil {
+			return config.File{}, nil, "", "", err
+		}
+		if loadedConfig {
+			cfg = overlayBundle(cfg, shared.Config)
+		} else {
+			cfg = shared.Config
+		}
 	}
 	if len(contracts) == 0 {
 		contracts = cfg.Contracts
@@ -761,8 +783,40 @@ func resolve(configPath string, contracts []string, relations, agent string) (co
 	return cfg, contracts, relations, agent, nil
 }
 
+func overlayBundle(deploy, shared config.File) config.File {
+	out := deploy
+	if len(shared.Contracts) > 0 {
+		out.Contracts = shared.Contracts
+	}
+	if shared.RelationsFile != "" {
+		out.RelationsFile = shared.RelationsFile
+	}
+	if len(shared.Cases) > 0 {
+		out.Cases = shared.Cases
+	}
+	if shared.SemanticsFile != "" {
+		out.SemanticsFile = shared.SemanticsFile
+		out.Semantics = shared.Semantics
+	}
+	if shared.AgentFile != "" {
+		out.AgentFile = shared.AgentFile
+	}
+	if shared.FlowFile != "" {
+		out.FlowFile = shared.FlowFile
+	}
+	return out
+}
+
+func releaseBundles() {
+	bundle.Release()
+}
+
 func buildLoop(contracts []string, configPath, agentPath, relationsPath, baseURL string) (*agent.Loop, config.File, error) {
-	cfg, contracts, relationsPath, agentPath, err := resolve(configPath, contracts, relationsPath, agentPath)
+	return buildLoopBundle(contracts, configPath, "", agentPath, relationsPath, baseURL)
+}
+
+func buildLoopBundle(contracts []string, configPath, bundlePath, agentPath, relationsPath, baseURL string) (*agent.Loop, config.File, error) {
+	cfg, contracts, relationsPath, agentPath, err := resolveBundle(configPath, bundlePath, contracts, relationsPath, agentPath)
 	if err != nil {
 		return nil, config.File{}, err
 	}
