@@ -2,7 +2,7 @@
 
 Veto turns existing OpenAPI services into a bounded, policy-checked capability surface for AI agents.
 
-Agents search, describe, and invoke through three stable tools. Veto handles auth, approval, relations, replay, and CI drift checks before your API ever sees the request.
+Agents search, describe, and invoke through three stable tools. Auth, approval, and relations are checked before the API sees the request. Replay and CI drift checks read the recorded decision.
 
 ```text
 API contracts
@@ -45,10 +45,12 @@ orders.delete
      ↓
 confirmation required
      ↓
-NO HTTP REQUEST
+veto approve <pending id>
+     ↓
+the approved id runs once
 ```
 
-Approval checks the same call again. Then it is sent.
+The pending id does not send HTTP. `veto approve` records the yes. The approved id is one use.
 
 ## The next API is declared
 
@@ -59,15 +61,17 @@ relations:
     to: customers.get
 ```
 
-`orders.get` returns a customer id. `customers.get` runs because that line says so. Veto does not guess joins from field names. The raw spec stays out of the model.
+`orders.get` returns a customer id. The relation names `customers.get` as the next call. `capabilities_invoke` runs one operation. Follow runs that next call. Veto does not guess joins from field names. The raw spec stays out of the model.
 
 ```bash
+git clone https://github.com/aiveto/veto.git
+cd veto
 go install github.com/aiveto/veto/cmd/veto@latest
 go run ./examples/two-apis
 go run ./cmd/veto serve --config examples/two-apis/veto.yaml --stdio
 ```
 
-A declared `Content-Type` such as `application/json;v=3` is sent as written. Setup is in [docs/guide.md](docs/guide.md).
+Setup is in [docs/guide.md](docs/guide.md).
 
 `veto check --against` fails when a confirmation disappears, a joined call is gone, or a new destructive operation appears. `veto replay` shows the decision. The user message stays off the trace.
 
