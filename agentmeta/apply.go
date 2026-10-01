@@ -1,8 +1,10 @@
 package agentmeta
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/aiveto/veto/catalog"
@@ -32,10 +34,71 @@ func Load(path string) (File, error) {
 		return File{}, fmt.Errorf("read agent file: %w", err)
 	}
 	var f File
-	if err := yaml.Unmarshal(data, &f); err != nil {
+	if err := decodeStrict(data, &f); err != nil {
 		return File{}, fmt.Errorf("parse agent file: %w", err)
 	}
 	return f, nil
+}
+
+func decodeStrict(data []byte, out any) error {
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	var doc yaml.Node
+	if err := dec.Decode(&doc); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		return err
+	}
+	var extra yaml.Node
+	err := dec.Decode(&extra)
+	if err == nil {
+		return errors.New("extra document")
+	}
+	if !errors.Is(err, io.EOF) {
+		return err
+	}
+	if err := rejectDup(&doc, map[*yaml.Node]struct{}{}); err != nil {
+		return err
+	}
+	known := yaml.NewDecoder(bytes.NewReader(data))
+	known.KnownFields(true)
+	return known.Decode(out)
+}
+
+func rejectDup(n *yaml.Node, active map[*yaml.Node]struct{}) error {
+	if n == nil {
+		return nil
+	}
+	if _, seen := active[n]; seen {
+		return errors.New("yaml alias cycle")
+	}
+	active[n] = struct{}{}
+	defer delete(active, n)
+	switch n.Kind {
+	case yaml.DocumentNode, yaml.SequenceNode:
+		for _, child := range n.Content {
+			if err := rejectDup(child, active); err != nil {
+				return err
+			}
+		}
+	case yaml.MappingNode:
+		keys := map[string]struct{}{}
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			key := n.Content[i].Value
+			if _, ok := keys[key]; ok {
+				return fmt.Errorf("duplicate field %q", key)
+			}
+			keys[key] = struct{}{}
+			if err := rejectDup(n.Content[i+1], active); err != nil {
+				return err
+			}
+		}
+	case yaml.AliasNode:
+		return rejectDup(n.Alias, active)
+	case yaml.ScalarNode:
+		return nil
+	}
+	return nil
 }
 
 func Apply(cat *catalog.Catalog, f File) error {

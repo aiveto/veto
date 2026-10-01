@@ -19,7 +19,7 @@ func newInitCommand() *cobra.Command {
 		Run: func(_ *cobra.Command, args []string) {
 			if err := writeStarter(".", args); err != nil {
 				fmt.Fprintf(os.Stderr, "init: %v\n", err)
-				os.Exit(1)
+				exitMain(1)
 			}
 		},
 	}

@@ -71,7 +71,7 @@ func runCheck(cmd checkCmd) {
 	if err := runChecked(cmd); err != nil {
 		releaseBundles()
 		fmt.Fprintf(os.Stderr, "check: %v\n", err)
-		os.Exit(1)
+		exitMain(1)
 	}
 }
 

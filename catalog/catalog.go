@@ -42,6 +42,8 @@ type (
 		Kind       string   `json:"Kind"`
 		Scopes     []string `json:"Scopes"`
 		UserHeader string   `json:"UserHeader"`
+		Type       string   `json:"-"` // OpenAPI security scheme type
+		Scheme     string   `json:"-"` // OpenAPI http scheme, such as basic
 	}
 
 	Param struct {

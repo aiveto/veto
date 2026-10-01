@@ -38,17 +38,21 @@ func NewScripted() *Scripted {
 }
 
 func (s *Scripted) WithOperation(operationID string) *Scripted {
-	out := *s
+	if s == nil {
+		return &Scripted{}
+	}
+	out := &Scripted{patterns: make([]scriptPattern, len(s.patterns))}
+	copy(out.patterns, s.patterns)
 	for i := range out.patterns {
 		if strings.Contains(out.patterns[i].operationID, "delete") || out.patterns[i].operationID == "deleteOrder" {
 			out.patterns[i].operationID = operationID
 		}
 	}
-	return &out
+	return out
 }
 
 func (s *Scripted) Complete(ctx context.Context, req Request) (Response, error) {
-	span := telemetry.StartSpan(ctx, "model.request")
+	_, span := telemetry.StartSpan(ctx, "model.request")
 	defer span.End()
 	msg := strings.TrimSpace(req.UserMessage)
 	if msg != "" && !strings.Contains(req.Context, msg) {

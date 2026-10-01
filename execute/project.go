@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -113,7 +114,7 @@ func shapeBody(status int, raw []byte, cut bool, cfg Config) ([]byte, View, erro
 var errNotJSON = errors.New("body is not json")
 
 func projectBody(raw []byte, p Projection, cut bool, limit int64) ([]byte, *result.Page, bool, error) {
-	val, partial, err := decodeContainer(raw)
+	val, partial, err := decodeContainer(raw, cut)
 	if err != nil {
 		return nil, nil, false, fmt.Errorf("project response: %w", err)
 	}
@@ -200,26 +201,55 @@ func fitEncoded(items []any, limit int64) ([]byte, bool, error) {
 	return encoded, true, nil
 }
 
-func decodeContainer(raw []byte) (any, bool, error) {
+func decodeContainer(raw []byte, cut bool) (any, bool, error) {
 	trimmed := bytes.TrimSpace(raw)
 	if len(trimmed) == 0 {
 		return nil, false, errNotJSON
 	}
 	dec := json.NewDecoder(bytes.NewReader(trimmed))
 	dec.UseNumber()
+	var (
+		val     any
+		partial bool
+		err     error
+	)
 	switch trimmed[0] {
 	case '{':
-		obj, partial, err := decodeObject(dec)
-		return obj, partial, err
+		var obj map[string]any
+		obj, partial, err = decodeObject(dec, cut)
+		val = obj
 	case '[':
-		items, partial, err := decodeArray(dec)
-		return items, partial, err
+		var items []any
+		items, partial, err = decodeArray(dec, cut)
+		val = items
 	default:
 		return nil, false, errNotJSON
 	}
+	if err != nil {
+		return nil, false, err
+	}
+	if cut {
+		return val, partial, nil
+	}
+	if partial {
+		return nil, false, errNotJSON
+	}
+	if err := requireEOF(dec); err != nil {
+		return nil, false, err
+	}
+	return val, false, nil
 }
 
-func decodeObject(dec *json.Decoder) (map[string]any, bool, error) {
+func requireEOF(dec *json.Decoder) error {
+	var extra any
+	err := dec.Decode(&extra)
+	if errors.Is(err, io.EOF) {
+		return nil
+	}
+	return errNotJSON
+}
+
+func decodeObject(dec *json.Decoder, cut bool) (map[string]any, bool, error) {
 	tok, err := dec.Token()
 	if err != nil || tok != json.Delim('{') {
 		return nil, false, errNotJSON
@@ -228,30 +258,30 @@ func decodeObject(dec *json.Decoder) (map[string]any, bool, error) {
 	for dec.More() {
 		keyTok, err := dec.Token()
 		if err != nil {
-			return keptPartial(obj)
+			return partialOrError(cut, obj)
 		}
 		key, ok := keyTok.(string)
 		if !ok {
-			return keptPartial(obj)
+			return partialOrError(cut, obj)
 		}
 		var raw json.RawMessage
 		if err := dec.Decode(&raw); err != nil {
-			return keptPartial(obj)
+			return partialOrError(cut, obj)
 		}
 		val, err := decodeRaw(raw)
 		if err != nil {
-			return keptPartial(obj)
+			return partialOrError(cut, obj)
 		}
 		obj[key] = val
 	}
 	tok, err = dec.Token()
 	if err != nil || tok != json.Delim('}') {
-		return keptPartial(obj)
+		return partialOrError(cut, obj)
 	}
 	return obj, false, nil
 }
 
-func decodeArray(dec *json.Decoder) ([]any, bool, error) {
+func decodeArray(dec *json.Decoder, cut bool) ([]any, bool, error) {
 	tok, err := dec.Token()
 	if err != nil || tok != json.Delim('[') {
 		return nil, false, errNotJSON
@@ -260,23 +290,27 @@ func decodeArray(dec *json.Decoder) ([]any, bool, error) {
 	for dec.More() {
 		var raw json.RawMessage
 		if err := dec.Decode(&raw); err != nil {
-			return keptPartial(items)
+			return partialOrError(cut, items)
 		}
 		val, err := decodeRaw(raw)
 		if err != nil {
-			return keptPartial(items)
+			return partialOrError(cut, items)
 		}
 		items = append(items, val)
 	}
 	tok, err = dec.Token()
 	if err != nil || tok != json.Delim(']') {
-		return keptPartial(items)
+		return partialOrError(cut, items)
 	}
 	return items, false, nil
 }
 
-func keptPartial[T any](v T) (T, bool, error) {
-	return v, true, nil
+func partialOrError[T any](cut bool, v T) (T, bool, error) {
+	if cut {
+		return v, true, nil
+	}
+	var zero T
+	return zero, false, errNotJSON
 }
 
 func decodeRaw(raw []byte) (any, error) {

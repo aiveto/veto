@@ -29,6 +29,15 @@ func TestBundleRejectsClientSecret(t *testing.T) {
 	assert.ErrorContains(t, err, "client_secret")
 }
 
+func TestBundleRejectsAliasCycles(t *testing.T) {
+	t.Cleanup(func() { require.NoError(t, bundle.Release()) })
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "bundle.yaml"), []byte("x: &cycle [*cycle]\n"), 0o600))
+	_, err := bundle.Load(dir)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "alias cycle")
+}
+
 func TestBundleRejectsTokenURLAndBaseURL(t *testing.T) {
 	cases := []struct {
 		name string

@@ -1,9 +1,11 @@
 package eval
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -95,7 +97,7 @@ func LoadCase(path string) (*Case, error) {
 		return nil, fmt.Errorf("read case: %w", err)
 	}
 	var c Case
-	if err := yaml.Unmarshal(data, &c); err != nil {
+	if err := decodeStrict(data, &c); err != nil {
 		return nil, fmt.Errorf("parse case: %w", err)
 	}
 	return &c, nil
@@ -167,10 +169,68 @@ func (r *Runner) checkPack(c *Case) error {
 	return nil
 }
 
-func (g *httpGate) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, params map[string]string) (result.HTTPResult, error) {
+func (g *httpGate) InvokeHTTPResult(context.Context, *catalog.Operation, map[string]string) (result.HTTPResult, error) {
 	g.hits++
-	if g.next == nil {
-		return result.HTTPResult{}, errors.New("http call")
+	return result.HTTPResult{}, errors.New("http ran")
+}
+
+func decodeStrict(data []byte, out any) error {
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	var doc yaml.Node
+	if err := dec.Decode(&doc); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		return err
 	}
-	return g.next.InvokeHTTPResult(ctx, op, params)
+	var extra yaml.Node
+	err := dec.Decode(&extra)
+	if err == nil {
+		return errors.New("extra document")
+	}
+	if !errors.Is(err, io.EOF) {
+		return err
+	}
+	if err := rejectDup(&doc, map[*yaml.Node]struct{}{}); err != nil {
+		return err
+	}
+	known := yaml.NewDecoder(bytes.NewReader(data))
+	known.KnownFields(true)
+	return known.Decode(out)
+}
+
+func rejectDup(n *yaml.Node, active map[*yaml.Node]struct{}) error {
+	if n == nil {
+		return nil
+	}
+	if _, seen := active[n]; seen {
+		return errors.New("yaml alias cycle")
+	}
+	active[n] = struct{}{}
+	defer delete(active, n)
+	switch n.Kind {
+	case yaml.DocumentNode, yaml.SequenceNode:
+		for _, child := range n.Content {
+			if err := rejectDup(child, active); err != nil {
+				return err
+			}
+		}
+	case yaml.MappingNode:
+		keys := map[string]struct{}{}
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			key := n.Content[i].Value
+			if _, ok := keys[key]; ok {
+				return fmt.Errorf("duplicate field %q", key)
+			}
+			keys[key] = struct{}{}
+			if err := rejectDup(n.Content[i+1], active); err != nil {
+				return err
+			}
+		}
+	case yaml.AliasNode:
+		return rejectDup(n.Alias, active)
+	case yaml.ScalarNode:
+		return nil
+	}
+	return nil
 }

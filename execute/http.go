@@ -25,25 +25,27 @@ const DefaultMaxResponseBytes int64 = 1 << 20
 
 type (
 	Config struct {
-		BaseURL    string
-		Client     *http.Client
-		RecordBody bool
-		Auth       map[string]string // secret by scheme name; never read from yaml
-		Creds      *auth.Resolver
-		MaxBody    int64
-		Project    Projection
+		BaseURL         string
+		Client          *http.Client
+		RecordBody      bool
+		Auth            map[string]string // secret by scheme name; never read from yaml
+		Creds           *auth.Resolver
+		MaxBody         int64
+		Project         Projection
+		FollowRedirects bool
 	}
 
 	Client struct {
-		BaseURL     string
-		HTTP        *http.Client
-		RecordBody  bool
-		Auth        map[string]string
-		Creds       *auth.Resolver
-		FollowPages int
-		MaxBody     int64
-		Fields      []string
-		Limit       int
+		BaseURL         string
+		HTTP            *http.Client
+		RecordBody      bool
+		Auth            map[string]string
+		Creds           *auth.Resolver
+		FollowPages     int
+		FollowRedirects bool
+		MaxBody         int64
+		Fields          []string
+		Limit           int
 	}
 )
 
@@ -59,7 +61,7 @@ func (c Client) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, par
 	}
 	cfg := Config{
 		BaseURL: c.BaseURL, Client: c.HTTP, RecordBody: c.RecordBody, Auth: c.Auth, Creds: c.Creds, MaxBody: c.MaxBody,
-		Project: callProject,
+		Project: callProject, FollowRedirects: c.FollowRedirects,
 	}
 	resp, view, err := invokeResponse(ctx, cfg, op, params)
 	if err != nil {
@@ -103,7 +105,7 @@ func InvokeResponse(ctx context.Context, cfg Config, op *catalog.Operation, para
 
 func invokeResponse(ctx context.Context, cfg Config, op *catalog.Operation, params map[string]string) (*http.Response, View, error) {
 	cfg.Client = auth.WithEnvProxy(cfg.Client)
-	span := telemetry.StartSpan(ctx, "execute.invoke")
+	ctx, span := telemetry.StartSpan(ctx, "execute.invoke")
 	defer span.End()
 	span.SetAttributes(
 		telemetry.Attr("operation.id", op.ID),
@@ -132,6 +134,7 @@ func invokeResponse(ctx context.Context, cfg Config, op *catalog.Operation, para
 	if err != nil {
 		return nil, View{}, err
 	}
+	cfg.Client = boundRedirects(cfg.Client, len(creds) > 0, cfg.FollowRedirects)
 	if names := paramNames(params); names != "" {
 		span.SetAttributes(telemetry.Attr("params", names))
 	}
@@ -199,6 +202,36 @@ func retryUnauthorized(ctx context.Context, cfg Config, op *catalog.Operation, r
 		return readResponse{}, err
 	}
 	return readResponse{resp: resp, raw: raw, cut: cut}, nil
+}
+
+// Credentialed calls stay on the origin unless FollowRedirects is set.
+// Same scheme and host use the default redirect policy, including 301, 302, and 303.
+func boundRedirects(client *http.Client, credentialed, follow bool) *http.Client {
+	if client == nil || !credentialed || follow {
+		return client
+	}
+	dup := *client
+	prev := dup.CheckRedirect
+	dup.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) == 0 || req == nil || req.URL == nil || via[0] == nil || via[0].URL == nil {
+			return http.ErrUseLastResponse
+		}
+		if !sameOrigin(via[0].URL, req.URL) {
+			return http.ErrUseLastResponse
+		}
+		if prev != nil {
+			return prev(req, via)
+		}
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		return nil
+	}
+	return &dup
+}
+
+func sameOrigin(a, b *url.URL) bool {
+	return strings.EqualFold(a.Scheme, b.Scheme) && strings.EqualFold(a.Host, b.Host)
 }
 
 func scrubTransport(err error, secrets, queryKeys []string) error {

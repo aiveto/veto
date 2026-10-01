@@ -37,6 +37,8 @@ type (
 	}
 )
 
+var commandNotifyTimeout = 10 * time.Second
+
 func NewWebhook(rawURL string, command []string) (Notifier, error) {
 	if rawURL == "" && len(command) == 0 {
 		return nil, errors.New("approval webhook required")
@@ -130,6 +132,8 @@ func (h *HTTPNotifier) post(ctx context.Context, body []byte) error {
 }
 
 func (c *CommandNotifier) run(ctx context.Context, body []byte) error {
+	ctx, cancel := context.WithTimeout(ctx, commandNotifyTimeout)
+	defer cancel()
 	cmd := exec.CommandContext(ctx, c.command[0], c.command[1:]...)
 	cmd.Env = []string{"PATH=" + os.Getenv("PATH")}
 	cmd.Stdin = bytes.NewReader(body)

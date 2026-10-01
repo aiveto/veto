@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/aiveto/veto/agent"
@@ -116,6 +118,13 @@ func main() {
 	exitMain(0)
 }
 
+func stdioTraceConflict(stdio bool, export string) error {
+	if stdio && export == "stdout" {
+		return errors.New("trace_export stdout cannot share stdio")
+	}
+	return nil
+}
+
 func exitMain(code int) {
 	if err := bundle.Release(); err != nil {
 		fmt.Fprintf(os.Stderr, "bundle: %v\n", err)
@@ -192,17 +201,17 @@ func newPreviewCommand() *cobra.Command {
 func runPreview(cmd previewCmd) {
 	if cmd.operation == "" {
 		fmt.Fprintf(os.Stderr, "preview: operation required\n")
-		os.Exit(1)
+		exitMain(1)
 	}
 	loop, _, err := buildLoop(cmd.contract, cmd.config, cmd.agent, cmd.relations, cmd.baseURL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "preview: %v\n", err)
-		os.Exit(1)
+		exitMain(1)
 	}
 	args, err := paramArgs(cmd.param)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "preview: %v\n", err)
-		os.Exit(1)
+		exitMain(1)
 	}
 	rt := loop.Runtime()
 	out, err := rt.Preview(context.Background(), runtime.Request{
@@ -212,16 +221,16 @@ func runPreview(cmd previewCmd) {
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "preview: %v\n", err)
-		os.Exit(1)
+		exitMain(1)
 	}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(out); err != nil {
 		fmt.Fprintf(os.Stderr, "preview: %v\n", err)
-		os.Exit(1)
+		exitMain(1)
 	}
 	if len(out.Errors) > 0 {
-		os.Exit(1)
+		exitMain(1)
 	}
 }
 
@@ -249,7 +258,7 @@ func newApproveCommand() *cobra.Command {
 			approved, err := approveID(args[0])
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "approve: %v\n", err)
-				os.Exit(1)
+				exitMain(1)
 			}
 			fmt.Println(approved)
 		},
@@ -394,16 +403,16 @@ func runValidate(cmd validateCmd) {
 	contracts, relations, agent := src.contracts, src.relations, src.agent
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "validate failed: %v\n", err)
-		os.Exit(1)
+		exitMain(1)
 	}
 	cat, err := loadCatalog(contracts, relations)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "validate failed: %v\n", err)
-		os.Exit(1)
+		exitMain(1)
 	}
 	if err := applyAgent(cat, agent); err != nil {
 		fmt.Fprintf(os.Stderr, "validate failed: %v\n", err)
-		os.Exit(1)
+		exitMain(1)
 	}
 	fmt.Printf("ok: %s (%d operations)\n", cat.Title, len(cat.Operations))
 	for _, line := range cat.Joins() {
@@ -416,20 +425,20 @@ func runGenerate(cmd generateCmd) {
 	contracts, relations, agent := src.contracts, src.relations, src.agent
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "generate: %v\n", err)
-		os.Exit(1)
+		exitMain(1)
 	}
 	cat, err := loadCatalog(contracts, relations)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "generate: %v\n", err)
-		os.Exit(1)
+		exitMain(1)
 	}
 	if err := applyAgent(cat, agent); err != nil {
 		fmt.Fprintf(os.Stderr, "generate: %v\n", err)
-		os.Exit(1)
+		exitMain(1)
 	}
 	if err := generate.Write(cmd.out, cmd.module, cat); err != nil {
 		fmt.Fprintf(os.Stderr, "generate: %v\n", err)
-		os.Exit(1)
+		exitMain(1)
 	}
 	fmt.Printf("ok: %s\n", cmd.out)
 }
@@ -441,17 +450,21 @@ func runServe(cmd serveCmd, c *cobra.Command) {
 	}
 	if !cmd.http && !stdio {
 		fmt.Fprintf(os.Stderr, "serve: stdio or http required\n")
-		os.Exit(1)
+		exitMain(1)
 	}
 	loop, cfg, err := buildLoop(cmd.contract, cmd.config, cmd.agent, cmd.relations, cmd.baseURL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "serve: %v\n", err)
-		os.Exit(1)
+		exitMain(1)
+	}
+	if err := stdioTraceConflict(stdio, cfg.TraceExport); err != nil {
+		fmt.Fprintf(os.Stderr, "serve: %v\n", err)
+		exitMain(1)
 	}
 	stop, err := telemetry.Install(cfg.TraceExport)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "serve: %v\n", err)
-		os.Exit(1)
+		exitMain(1)
 	}
 	finish := func() {
 		if err := stop(context.Background()); err != nil {
@@ -460,12 +473,14 @@ func runServe(cmd serveCmd, c *cobra.Command) {
 	}
 	fail := func() {
 		finish()
-		os.Exit(1)
+		exitMain(1)
 	}
 	if err := mcpserver.ValidatePins(loop.Catalog, cmd.pin); err != nil {
 		fmt.Fprintf(os.Stderr, "serve: %v\n", err)
 		fail()
 	}
+	ctx, stopSig := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSig()
 	calls := loop.Runtime()
 	srv := &mcpserver.Server{
 		Catalog:   loop.Catalog,
@@ -490,7 +505,7 @@ func runServe(cmd serveCmd, c *cobra.Command) {
 		}
 		fmt.Fprintf(os.Stderr, "mcp http://%s\n", addr)
 		if !stdio {
-			if err := mcpserver.Serve(context.Background(), addr, handler); err != nil {
+			if err := mcpserver.Serve(ctx, addr, handler); err != nil && !errors.Is(err, context.Canceled) {
 				fmt.Fprintf(os.Stderr, "serve: %v\n", err)
 				fail()
 			}
@@ -498,13 +513,13 @@ func runServe(cmd serveCmd, c *cobra.Command) {
 			return
 		}
 		go func() {
-			if err := mcpserver.Serve(context.Background(), addr, handler); err != nil {
+			if err := mcpserver.Serve(ctx, addr, handler); err != nil && !errors.Is(err, context.Canceled) {
 				fmt.Fprintf(os.Stderr, "serve: %v\n", err)
 				fail()
 			}
 		}()
 	}
-	if err := mcpserver.RunStdio(context.Background(), srv, opt); err != nil {
+	if err := mcpserver.RunStdio(ctx, srv, opt); err != nil && !errors.Is(err, context.Canceled) {
 		fmt.Fprintf(os.Stderr, "serve: %v\n", err)
 		fail()
 	}
@@ -515,12 +530,12 @@ func runEval(cmd evalCmd) {
 	loop, cfg, err := buildLoop(cmd.contract, cmd.config, cmd.agent, cmd.relations, cmd.baseURL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "eval: %v\n", err)
-		os.Exit(1)
+		exitMain(1)
 	}
 	stop, err := telemetry.Install(cfg.TraceExport)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "eval: %v\n", err)
-		os.Exit(1)
+		exitMain(1)
 	}
 	finish := func() {
 		if err := stop(context.Background()); err != nil {
@@ -530,7 +545,7 @@ func runEval(cmd evalCmd) {
 	if err := runCases(loop, cmd.cases); err != nil {
 		fmt.Fprintf(os.Stderr, "eval failed: %v\n", err)
 		finish()
-		os.Exit(1)
+		exitMain(1)
 	}
 	finish()
 }
@@ -554,12 +569,12 @@ func runPack(cmd packCmd) {
 	loop, _, err := buildLoop(cmd.contract, cmd.config, cmd.agent, cmd.relations, "")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "pack: %v\n", err)
-		os.Exit(1)
+		exitMain(1)
 	}
 	out, err := packOutput(loop, cmd.message, cmd.asJSON)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "pack: %v\n", err)
-		os.Exit(1)
+		exitMain(1)
 	}
 	fmt.Print(out)
 }
@@ -586,19 +601,19 @@ func runReplay(cmd replayCmd) {
 		view, err := replay.Load(cmd.from)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "replay: %v\n", err)
-			os.Exit(1)
+			exitMain(1)
 		}
 		fmt.Print(view.String())
 		return
 	}
 	if cmd.message == "" {
 		fmt.Fprintf(os.Stderr, "replay: message required\n")
-		os.Exit(1)
+		exitMain(1)
 	}
 	rec, err := telemetry.Record()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "replay: %v\n", err)
-		os.Exit(1)
+		exitMain(1)
 	}
 	finish := func() {
 		if stopErr := rec.Stop(context.Background()); stopErr != nil {
@@ -607,7 +622,7 @@ func runReplay(cmd replayCmd) {
 	}
 	fail := func() {
 		finish()
-		os.Exit(1)
+		exitMain(1)
 	}
 	loop, cfg, err := buildLoop(cmd.contract, cmd.config, cmd.agent, cmd.relations, cmd.baseURL)
 	if err != nil {
@@ -946,6 +961,7 @@ func applyProviders(loop *agent.Loop, cfg config.File) error {
 	switch cfg.Policy {
 	case "builtin":
 		loop.SetPolicy(base)
+		loop.SetFloor(base)
 	case "opa":
 		eng, err := opa.New(context.Background(), cfg.PolicyFile, cfg.PolicyBundle, base)
 		if err != nil {

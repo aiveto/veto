@@ -44,19 +44,27 @@ func mapScheme(doc *openapi3.T, name string, scopes []string) catalog.Auth {
 	if scheme == nil {
 		return catalog.Auth{Name: name, Kind: "unsupported"}
 	}
-	copied := cloneScopes(scopes)
-	var out catalog.Auth
+	out := catalog.Auth{
+		Name:   name,
+		Scopes: cloneScopes(scopes),
+		Type:   scheme.Type,
+		Scheme: scheme.Scheme,
+	}
 	switch {
 	case strings.EqualFold(scheme.Type, "http") && strings.EqualFold(scheme.Scheme, "bearer"):
-		out = catalog.Auth{Name: name, Header: "Authorization", Kind: "bearer", Scopes: copied}
+		out.Header = "Authorization"
+		out.Kind = "bearer"
 	case strings.EqualFold(scheme.Type, "apiKey") && strings.EqualFold(scheme.In, "header"):
-		out = catalog.Auth{Name: name, Header: scheme.Name, Kind: "apiKey", Scopes: copied}
+		out.Header = scheme.Name
+		out.Kind = "apiKey"
 	case strings.EqualFold(scheme.Type, "apiKey") && strings.EqualFold(scheme.In, "query"):
-		out = catalog.Auth{Name: name, Query: scheme.Name, Kind: "apiKey", Scopes: copied}
+		out.Query = scheme.Name
+		out.Kind = "apiKey"
 	case strings.EqualFold(scheme.Type, "oauth2"):
-		out = catalog.Auth{Name: name, Header: "Authorization", Kind: "oauth2", Scopes: copied}
+		out.Header = "Authorization"
+		out.Kind = "oauth2"
 	default:
-		out = catalog.Auth{Name: name, Kind: "unsupported"}
+		out.Kind = "unsupported"
 	}
 	if out.Kind != "unsupported" {
 		out.UserHeader = extString(scheme.Extensions, "x-user-token-header")

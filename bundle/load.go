@@ -584,13 +584,22 @@ func rejectSecrets(data []byte) error {
 }
 
 func walkSecrets(n *yaml.Node) error {
+	return walkSecretsSeen(n, map[*yaml.Node]struct{}{})
+}
+
+func walkSecretsSeen(n *yaml.Node, active map[*yaml.Node]struct{}) error {
 	if n == nil {
 		return nil
 	}
+	if _, seen := active[n]; seen {
+		return errors.New("bundle yaml alias cycle")
+	}
+	active[n] = struct{}{}
+	defer delete(active, n)
 	switch n.Kind {
 	case yaml.DocumentNode, yaml.SequenceNode:
 		for _, child := range n.Content {
-			if err := walkSecrets(child); err != nil {
+			if err := walkSecretsSeen(child, active); err != nil {
 				return err
 			}
 		}
@@ -603,12 +612,12 @@ func walkSecrets(n *yaml.Node) error {
 			if _, ok := baseURLKeys[key]; ok {
 				return errors.New("bundle contains an environment base URL")
 			}
-			if err := walkSecrets(n.Content[i+1]); err != nil {
+			if err := walkSecretsSeen(n.Content[i+1], active); err != nil {
 				return err
 			}
 		}
 	case yaml.AliasNode:
-		return walkSecrets(n.Alias)
+		return walkSecretsSeen(n.Alias, active)
 	case yaml.ScalarNode:
 		return nil
 	}

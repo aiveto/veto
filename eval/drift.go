@@ -6,6 +6,7 @@ type CaseExpect struct {
 	Name                 string `json:"name"`
 	Operation            string `json:"operation"`
 	ConfirmationRequired bool   `json:"confirmation_required"`
+	NoHTTP               bool   `json:"no_http"`
 }
 
 func Expects(cases []*Case) []CaseExpect {
@@ -18,6 +19,7 @@ func Expects(cases []*Case) []CaseExpect {
 			Name:                 c.Name,
 			Operation:            c.Expect.OperationID,
 			ConfirmationRequired: c.Expect.ConfirmationRequired,
+			NoHTTP:               c.Expect.NoHTTP,
 		})
 	}
 	return out
@@ -35,8 +37,8 @@ func Drift(base, next []CaseExpect) []string {
 			out = append(out, "eval case "+b.Name+" was removed")
 			continue
 		}
-		if n.Operation != b.Operation || n.ConfirmationRequired != b.ConfirmationRequired {
-			out = append(out, "eval case "+b.Name+" changed operation or confirmation")
+		if n.Operation != b.Operation || n.ConfirmationRequired != b.ConfirmationRequired || n.NoHTTP != b.NoHTTP {
+			out = append(out, "eval case "+b.Name+" changed operation, confirmation, or no_http")
 		}
 	}
 	sort.Strings(out)

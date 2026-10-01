@@ -69,7 +69,7 @@ func runAuthLogin(cmd authLoginCmd) {
 	scheme, dir, err := configuredScheme(cmd.config, cmd.scheme)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "auth login: %v\n", err)
-		os.Exit(1)
+		exitMain(1)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	err = auth.Login(ctx, auth.LoginOptions{
@@ -80,21 +80,21 @@ func runAuthLogin(cmd authLoginCmd) {
 	cancel()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "auth login: %v\n", err)
-		os.Exit(1)
+		exitMain(1)
 	}
 }
 
 func runAuthSet(cmd authSetCmd) {
 	if cmd.scheme == "" {
 		fmt.Fprintln(os.Stderr, "auth set: scheme required")
-		os.Exit(1)
+		exitMain(1)
 	}
 	dir := auth.DefaultTokenDir()
 	if cmd.config != "" {
 		cfg, err := loadAuthConfig(cmd.config)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "auth set: %v\n", err)
-			os.Exit(1)
+			exitMain(1)
 		}
 		dir = tokenDir(cfg)
 	} else if d := os.Getenv("VETO_TOKEN_DIR"); d != "" {
@@ -104,11 +104,11 @@ func runAuthSet(cmd authSetCmd) {
 	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
 	if err != nil && strings.TrimSpace(line) == "" {
 		fmt.Fprintf(os.Stderr, "auth set: %v\n", err)
-		os.Exit(1)
+		exitMain(1)
 	}
 	if err := auth.SetToken(dir, cmd.scheme, line); err != nil {
 		fmt.Fprintf(os.Stderr, "auth set: %v\n", err)
-		os.Exit(1)
+		exitMain(1)
 	}
 }
 

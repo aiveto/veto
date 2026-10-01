@@ -34,6 +34,7 @@ type (
 		Error       string
 		Truncated   bool
 		Page        *result.Page
+		RetryAfter  string
 	}
 
 	Outcome struct {
@@ -83,6 +84,7 @@ type (
 		Memory    Memory
 		Flows     map[string]*flow.Definition
 		Packs     *runctx.Builder
+		gate      *runtime.InvokeGate
 	}
 )
 
@@ -104,6 +106,7 @@ func New(cat *catalog.Catalog, sem Notes, exec Executor) (*Loop, error) {
 		Memory:    memory.NewLocalMap(),
 		Flows:     map[string]*flow.Definition{},
 		Packs:     runctx.NewBuilder(0),
+		gate:      &runtime.InvokeGate{},
 	}, nil
 }
 
@@ -111,7 +114,6 @@ func (l *Loop) SetPolicy(hook policy.Hook) {
 	if hook == nil {
 		hook = policy.Builtin{}
 	}
-	l.base = hook
 	l.Policy = hook
 }
 
@@ -137,7 +139,7 @@ func (l *Loop) WrapPolicy(around policy.Around) {
 }
 
 func (l *Loop) Run(ctx context.Context, userText string) (Outcome, error) {
-	span := telemetry.StartSpan(ctx, "agent.run")
+	ctx, span := telemetry.StartSpan(ctx, "agent.run")
 	defer span.End()
 
 	turns, err := l.memoryTurns(ctx, userText)
@@ -222,6 +224,9 @@ func (l *Loop) Runtime() runtime.Runtime {
 	if l.base == nil {
 		l.base = policy.Builtin{}
 	}
+	if l.gate == nil {
+		l.gate = &runtime.InvokeGate{}
+	}
 	return runtime.Runtime{
 		Catalog: l.Catalog,
 		Policy:  l.Policy,
@@ -229,11 +234,13 @@ func (l *Loop) Runtime() runtime.Runtime {
 		State:   l.State,
 		Exec:    l.Exec,
 		Notify:  l.Notify,
+		Gate:    l.gate,
 	}
 }
 
 func (l *Loop) Invoke(ctx context.Context, operationID string, params map[string]string, approvalID string) (Call, error) {
-	out, err := l.Runtime().Invoke(ctx, runtime.Request{
+	rt := l.Runtime()
+	out, err := rt.Invoke(ctx, runtime.Request{
 		Operation: operationID,
 		Arguments: runtime.FromStrings(params),
 		Approval:  approvalID,
@@ -249,6 +256,7 @@ func (l *Loop) Invoke(ctx context.Context, operationID string, params map[string
 		Error:       out.Error,
 		Truncated:   out.Truncated,
 		Page:        out.Page,
+		RetryAfter:  out.RetryAfter,
 	}, err
 }
 

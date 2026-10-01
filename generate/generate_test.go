@@ -43,6 +43,9 @@ func TestGeneratedCLIHelpAndConfirm(t *testing.T) {
 	dir := t.TempDir()
 	const module = "example.com/ordergen"
 	require.NoError(t, generate.Write(dir, module, cat))
+	mod, err := os.ReadFile(filepath.Join(dir, "go.mod"))
+	require.NoError(t, err)
+	assert.Contains(t, string(mod), "go 1.27.1")
 	sdk, err := os.ReadFile(filepath.Join(dir, "sdk", "client.go"))
 	require.NoError(t, err)
 	assert.Contains(t, string(sdk), "Calls.Invoke")

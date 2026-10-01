@@ -286,6 +286,7 @@ func TestExtensionCannotSkipConfirmationOrDenial(t *testing.T) {
 		{
 			name: "wrapper keeps a permission denial",
 			setup: func(loop *agent.Loop) {
+				loop.SetFloor(policy.Builtin{Allow: map[string]bool{}})
 				loop.SetPolicy(policy.Builtin{Allow: map[string]bool{}})
 				loop.WrapPolicy(allowStop)
 			},
@@ -302,7 +303,7 @@ func TestExtensionCannotSkipConfirmationOrDenial(t *testing.T) {
 		{
 			name: "replaced allow-all keeps a permission denial",
 			setup: func(loop *agent.Loop) {
-				loop.SetPolicy(policy.Builtin{Allow: map[string]bool{}})
+				loop.SetFloor(policy.Builtin{Allow: map[string]bool{}})
 				loop.Policy = allowAll{}
 			},
 			status: "denied",
@@ -314,6 +315,13 @@ func TestExtensionCannotSkipConfirmationOrDenial(t *testing.T) {
 				loop.Policy = allowAll{}
 			},
 			status: "confirmation_required",
+		},
+		{
+			name: "opa deny stays on the overlay",
+			setup: func(loop *agent.Loop) {
+				loop.SetPolicy(eng)
+			},
+			status: "denied",
 		},
 		{
 			name: "wrapper keeps an opa denial",

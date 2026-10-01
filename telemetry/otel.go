@@ -36,9 +36,8 @@ type (
 	}
 )
 
-func StartSpan(ctx context.Context, name string) trace.Span {
-	_, span := otel.Tracer(tracerName).Start(ctx, name)
-	return span
+func StartSpan(ctx context.Context, name string) (context.Context, trace.Span) {
+	return otel.Tracer(tracerName).Start(ctx, name)
 }
 
 func Attr(key, value string) attribute.KeyValue {
@@ -74,7 +73,12 @@ func Install(export string) (func(context.Context) error, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s trace: %w", export, err)
 	}
-	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exp))
+	var tp *sdktrace.TracerProvider
+	if export == "otlp" {
+		tp = sdktrace.NewTracerProvider(sdktrace.WithBatcher(exp))
+	} else {
+		tp = sdktrace.NewTracerProvider(sdktrace.WithSyncer(exp))
+	}
 	otel.SetTracerProvider(tp)
 	return tp.Shutdown, nil
 }

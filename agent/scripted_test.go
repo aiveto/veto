@@ -30,3 +30,14 @@ func TestScriptedRequiresTheMessageInThePack(t *testing.T) {
 		})
 	}
 }
+
+func TestWithOperationDoesNotChangeTheOriginal(t *testing.T) {
+	base := agent.NewScripted()
+	next := base.WithOperation("assets.delete")
+	got, err := next.Complete(t.Context(), agent.Request{UserMessage: "delete order 9", Context: "delete order 9"})
+	require.NoError(t, err)
+	assert.Equal(t, "assets.delete", got.OperationID)
+	orig, err := base.Complete(t.Context(), agent.Request{UserMessage: "delete order 9", Context: "delete order 9"})
+	require.NoError(t, err)
+	assert.Equal(t, "orders.delete", orig.OperationID)
+}

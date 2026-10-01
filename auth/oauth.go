@@ -113,7 +113,7 @@ func postForm(ctx context.Context, client *http.Client, endpoint string, form ur
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
-	resp, err := client.Do(req)
+	resp, err := noRedirect(client).Do(req)
 	if err != nil {
 		return tokenResponse{}, fmt.Errorf("token endpoint: %s", Redact(err.Error(), secrets, nil))
 	}
@@ -331,8 +331,22 @@ func withOAuthClient(ctx context.Context, base *http.Client) (context.Context, *
 	}
 	captured.base = base.Transport
 	client := *base
+	client.CheckRedirect = refuseTokenRedirect
 	client.Transport = captured
 	return context.WithValue(ctx, oauth2.HTTPClient, &client), captured
+}
+
+func noRedirect(client *http.Client) *http.Client {
+	if client == nil {
+		client = &http.Client{}
+	}
+	dup := *client
+	dup.CheckRedirect = refuseTokenRedirect
+	return &dup
+}
+
+func refuseTokenRedirect(*http.Request, []*http.Request) error {
+	return http.ErrUseLastResponse
 }
 
 func (c *bodyCapture) RoundTrip(req *http.Request) (*http.Response, error) {

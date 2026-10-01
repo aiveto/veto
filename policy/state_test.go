@@ -136,6 +136,28 @@ func TestDefaultNonceDirFollowsTheSecret(t *testing.T) {
 	assert.Contains(t, a, "approval-nonces")
 }
 
+func TestUnsignedApprovalExpiresAndIsSwept(t *testing.T) {
+	dir := t.TempDir()
+	when := time.Unix(1_700_000_000, 0)
+	s := NewState()
+	s.SetNonceDir(dir)
+	s.now = func() time.Time { return when }
+	params := map[string]string{"id": "1"}
+	pending, err := s.RequestConfirmation("orders.delete", params)
+	require.NoError(t, err)
+	raw, err := os.ReadFile(filepath.Join(dir, "confirmations", pending+".json"))
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), `"expiry":`)
+	approved, err := s.Approve(pending)
+	require.NoError(t, err)
+	s.now = func() time.Time { return when.Add(16 * time.Minute) }
+	ok, err := s.ConsumeFor("", approved, "orders.delete", params)
+	require.NoError(t, err)
+	assert.False(t, ok)
+	_, err = os.Stat(filepath.Join(dir, "confirmations", pending+".json"))
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
 func TestUnsignedApprovalIsOneUseAcrossStates(t *testing.T) {
 	params := map[string]string{"id": "1"}
 	for round := range 20 {
