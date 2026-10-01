@@ -95,6 +95,30 @@ func TestRequestConfirmationReturnsTheStoreError(t *testing.T) {
 	require.Error(t, approveErr)
 }
 
+func TestCallersDoNotShareApprovalIDsOrTokens(t *testing.T) {
+	dir := t.TempDir()
+	now := func() time.Time { return time.Unix(1_000, 0) }
+	s := withSigner(t, dir, []byte("secret"), now)
+	params := map[string]string{"id": "1"}
+	ada, err := s.RequestFor("ada", "orders.delete", params)
+	require.NoError(t, err)
+	grace, err := s.RequestFor("grace", "orders.delete", params)
+	require.NoError(t, err)
+	assert.NotEqual(t, ada, grace)
+	adaToken, err := s.Approve(ada)
+	require.NoError(t, err)
+	graceToken, err := s.Approve(grace)
+	require.NoError(t, err)
+	assert.NotEqual(t, adaToken, graceToken)
+	assert.False(t, consumedFor(t, s, "grace", ada, "orders.delete", params))
+	assert.False(t, consumedFor(t, s, "grace", adaToken, "orders.delete", params))
+	assert.False(t, consumedFor(t, s, "ada", graceToken, "orders.delete", params))
+	assert.False(t, consumedFor(t, s, "", adaToken, "orders.delete", params))
+	assert.True(t, consumedFor(t, s, "ada", adaToken, "orders.delete", params))
+	assert.False(t, consumedFor(t, s, "ada", adaToken, "orders.delete", params))
+	assert.True(t, consumedFor(t, s, "grace", graceToken, "orders.delete", params))
+}
+
 func TestDefaultNonceDirFollowsTheSecret(t *testing.T) {
 	a, err := defaultNonceDir([]byte("secret"))
 	require.NoError(t, err)
@@ -120,7 +144,12 @@ func withSigner(t *testing.T, dir string, secret []byte, now func() time.Time) *
 
 func consumed(t *testing.T, s *State, id, op string, params map[string]string) bool {
 	t.Helper()
-	ok, err := s.ConsumeConfirmation(id, op, params)
+	return consumedFor(t, s, "", id, op, params)
+}
+
+func consumedFor(t *testing.T, s *State, caller, id, op string, params map[string]string) bool {
+	t.Helper()
+	ok, err := s.ConsumeFor(caller, id, op, params)
 	require.NoError(t, err)
 	return ok
 }

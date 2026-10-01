@@ -273,6 +273,7 @@ func (r *Resolver) materialScheme(ctx context.Context, a catalog.Auth, in creden
 		}
 		key += "\x00" + subject
 	}
+	key = scopedKey(ctx, key)
 	if !force {
 		if mat, ok := r.cache.fresh(key, r.now()); ok {
 			return mat, nil
@@ -587,6 +588,13 @@ func placeToken(a catalog.Auth, headerOverride, token string, exp time.Time) Mat
 	}
 }
 
+func scopedKey(ctx context.Context, key string) string {
+	if id := Caller(ctx); id != "" {
+		return key + "\x00" + id
+	}
+	return key
+}
+
 func cacheKey(s Scheme, scopes []string) string {
 	cp := append([]string(nil), scopes...)
 	sort.Strings(cp)
@@ -671,7 +679,7 @@ func (p extraProvider) Resolve(ctx context.Context, in credentials.Request) (cre
 	if len(need) == 0 {
 		need = p.a.Scopes
 	}
-	key := cacheKey(s, need)
+	key := scopedKey(ctx, cacheKey(s, need))
 	if !force {
 		if mat, ok := p.r.cache.fresh(key, p.r.now()); ok {
 			return credentialOf(mat), nil
