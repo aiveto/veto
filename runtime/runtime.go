@@ -22,12 +22,16 @@ type (
 	}
 
 	// Request is one invoke. Caller is the caller or tenant. Arguments stay typed until HTTP serialization.
+	// Fields names the response fields to return. An empty list leaves the body unchanged.
 	Request struct {
 		Operation   string
 		Arguments   map[string]any
 		Caller      string
 		Approval    string
 		Idempotency string
+		Fields      []string
+		Offset      int
+		Limit       int
 	}
 
 	// Result is the shaped outcome of one invoke.
@@ -40,6 +44,8 @@ type (
 		Code        string
 		Retryable   bool
 		Error       string
+		Truncated   bool
+		Page        *result.Page
 	}
 
 	// HTTPRequest is the call that would be sent, with secret values removed.
@@ -152,6 +158,13 @@ func (rt Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 		return rt.record(ctx, Result{Status: "error"}), fmt.Errorf("missing executor")
 	}
 	ctx = execute.WithIdempotency(ctx, req.Idempotency)
+	if len(req.Fields) > 0 || req.Limit > 0 || req.Offset > 0 {
+		ctx = execute.WithProjection(ctx, execute.Projection{
+			Fields: req.Fields,
+			Offset: req.Offset,
+			Limit:  req.Limit,
+		})
+	}
 	call, err := rt.Exec.InvokeHTTPResult(ctx, op, args)
 	if err != nil {
 		res := Result{Status: "error", OperationID: req.Operation}
@@ -171,6 +184,8 @@ func (rt Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 		Body:        call.Body,
 		Code:        call.Code,
 		Retryable:   call.Retryable,
+		Truncated:   call.Truncated,
+		Page:        call.Page,
 	}), nil
 }
 

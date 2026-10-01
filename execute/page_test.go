@@ -44,6 +44,31 @@ func TestPageFollowCollectsAndDefaultStaysOne(t *testing.T) {
 	assert.Equal(t, `[{"id":"1"},{"id":"2"}]`, many.Body)
 }
 
+func TestPageFollowStillWalksWhenFieldsAreSet(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "spec.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(pageSpec), 0o644))
+	cat, err := openapi.Load(context.Background(), path)
+	require.NoError(t, err)
+	op := cat.ByID("orders.list")
+	var hits atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		if r.URL.Query().Get("cursor") == "b" {
+			_, _ = w.Write([]byte(`{"items":[{"id":"2","name":"bee"}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"items":[{"id":"1","name":"aye"}],"next":"b"}`))
+	}))
+	defer ts.Close()
+
+	got, err := execute.Client{BaseURL: ts.URL, FollowPages: 5, Fields: []string{"id"}}.InvokeHTTPResult(context.Background(), op, nil)
+	require.NoError(t, err)
+	assert.Equal(t, int32(2), hits.Load())
+	assert.JSONEq(t, `[{"id":"1"},{"id":"2"}]`, got.Body)
+	assert.NotContains(t, got.Body, "name")
+	assert.NotContains(t, got.Body, "next")
+}
+
 const pageSpec = `openapi: 3.0.3
 info:
   title: Orders

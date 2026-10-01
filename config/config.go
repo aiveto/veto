@@ -38,6 +38,8 @@ type File struct {
 	TokenDir        string            `yaml:"token_dir"`
 	Server          string            `yaml:"server"`
 	Page            string            `yaml:"page"`
+	ResponseFields  []string          `yaml:"response_fields"`
+	ResponseLimit   int               `yaml:"response_limit"`
 	Caller          string            `yaml:"caller"`
 	Callers         map[string]string `yaml:"callers"`
 	ApprovalWebhook Webhook           `yaml:"approval_webhook"`
@@ -191,6 +193,9 @@ func (f File) validate() error {
 	}
 	if f.Page != "" && f.Page != "follow" {
 		return fmt.Errorf("page %q is not follow", f.Page)
+	}
+	if f.ResponseLimit < 0 {
+		return fmt.Errorf("response_limit is negative")
 	}
 	for name, src := range f.Auth {
 		if err := src.validate(name); err != nil {

@@ -3,11 +3,20 @@ package result
 import "fmt"
 
 type (
+	// Page is the slice of a list response that was returned.
+	Page struct {
+		Offset   int `json:"offset"`
+		Limit    int `json:"limit,omitempty"`
+		Returned int `json:"returned"`
+	}
+
 	HTTPResult struct {
 		Status    int
 		Body      string
 		Code      string
 		Retryable bool
+		Truncated bool
+		Page      *Page
 	}
 
 	ParamError struct {

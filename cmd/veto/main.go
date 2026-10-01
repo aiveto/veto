@@ -813,6 +813,8 @@ func buildLoop(contracts []string, configPath, agentPath, relationsPath, baseURL
 		Auth:        authSecrets(cfg.Auth),
 		Creds:       authResolver(cfg),
 		FollowPages: pages,
+		Fields:      cfg.ResponseFields,
+		Limit:       cfg.ResponseLimit,
 	})
 	if err != nil {
 		return nil, config.File{}, err
