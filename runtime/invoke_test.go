@@ -96,6 +96,61 @@ func TestDeleteWaitsForApproval(t *testing.T) {
 	assert.Equal(t, int32(1), hits.Load())
 }
 
+func TestPreviewRejectsABodyThatIsNotAJSONObject(t *testing.T) {
+	var hits atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+	}))
+	defer ts.Close()
+	cat := &catalog.Catalog{Operations: []catalog.Operation{{
+		ID:           "orders.create",
+		Method:       http.MethodPost,
+		PathTemplate: "/orders",
+		Params: []catalog.Param{{
+			Name: "body", In: "body", Required: true, Schema: `{"type":"object"}`,
+		}},
+	}}}
+	cat.Finalize()
+	rt := runtime.Runtime{Catalog: cat, State: policy.NewState(), Exec: execute.Client{BaseURL: ts.URL}}
+	out, err := rt.Preview(context.Background(), runtime.Request{
+		Operation: "orders.create",
+		Arguments: runtime.FromStrings(map[string]string{"body": "not-json"}),
+	})
+	require.NoError(t, err)
+	assert.NotEmpty(t, out.Errors)
+	assert.Empty(t, out.Decision)
+	_, err = rt.Invoke(context.Background(), runtime.Request{
+		Operation: "orders.create",
+		Arguments: runtime.FromStrings(map[string]string{"body": "not-json"}),
+	})
+	assert.Error(t, err)
+	assert.Equal(t, int32(0), hits.Load())
+}
+
+func TestInvokeRejectsUnserializable(t *testing.T) {
+	var hits atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+	}))
+	defer ts.Close()
+	cat := &catalog.Catalog{Operations: []catalog.Operation{{
+		ID:           "labels.get",
+		Method:       http.MethodGet,
+		PathTemplate: "/labels/{id}",
+		Params: []catalog.Param{{
+			Name: "id", In: "path", Required: true, Style: "matrix", Schema: `{"type":"string"}`,
+		}},
+	}}}
+	cat.Finalize()
+	rt := runtime.Runtime{Catalog: cat, State: policy.NewState(), Exec: execute.Client{BaseURL: ts.URL}}
+	_, err := rt.Invoke(context.Background(), runtime.Request{
+		Operation: "labels.get",
+		Arguments: runtime.FromStrings(map[string]string{"id": "abc"}),
+	})
+	assert.ErrorContains(t, err, "cannot be serialized")
+	assert.Equal(t, int32(0), hits.Load())
+}
+
 func TestMissingParamSkipsHTTP(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)

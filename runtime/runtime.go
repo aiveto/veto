@@ -227,8 +227,12 @@ func (rt Runtime) Preview(ctx context.Context, req Request) (Preview, error) {
 		out.Errors = append(out.Errors, err.Error())
 		return out, nil
 	}
-	out.Decision = string(decision)
-	out.ApprovalRequired = decision == policy.DecisionConfirmationNeeded
+	if len(out.Errors) == 0 {
+		out.Decision = string(decision)
+		out.ApprovalRequired = decision == policy.DecisionConfirmationNeeded
+	} else if decision == policy.DecisionDeny {
+		out.Decision = string(decision)
+	}
 	return out, nil
 }
 

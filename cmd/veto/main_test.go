@@ -413,7 +413,7 @@ contracts:
 	require.NoError(t, err)
 	assert.Contains(t, strings.Join(missing.Errors, "\n"), "id required")
 	assert.Equal(t, "orders.get", missing.OperationID)
-	assert.NotEmpty(t, missing.Decision)
+	assert.Empty(t, missing.Decision)
 	assert.Equal(t, int32(0), tokenHits.Load())
 	assert.Equal(t, int32(0), upstreamHits.Load())
 
