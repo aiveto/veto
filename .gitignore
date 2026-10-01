@@ -5,4 +5,5 @@
 *.out
 /generated
 /bin/
+/dist/
 .DS_Store
