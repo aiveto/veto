@@ -2,44 +2,47 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
 type File struct {
-	Model         string            `yaml:"model"`
-	ModelName     string            `yaml:"model_name"`
-	ModelBaseURL  string            `yaml:"model_base_url"`
-	Memory        string            `yaml:"memory"`
-	Semantics     string            `yaml:"semantics"`
-	SemanticsFile string            `yaml:"semantics_file"`
-	Decision      string            `yaml:"decision"`
-	Policy        string            `yaml:"policy"`
-	PolicyFile    string            `yaml:"policy_file"`
-	PolicyBundle  string            `yaml:"policy_bundle"`
-	Environment   string            `yaml:"environment"`
-	Telemetry     string            `yaml:"telemetry"`
-	TraceExport   string            `yaml:"trace_export"`
-	Execution     string            `yaml:"execution"`
-	Subagents     string            `yaml:"subagents"`
-	FlowFile      string            `yaml:"flow_file"`
-	AgentFile     string            `yaml:"agent_file"`
-	RelationsFile string            `yaml:"relations_file"`
-	Contracts     []string          `yaml:"contracts"`
-	ReplayRedact  string            `yaml:"replay_redact"`
-	TraceFile     string            `yaml:"trace_file"`
-	Timeout       time.Duration     `yaml:"timeout"`
-	Auth          Sources           `yaml:"auth"`
-	TokenDir      string            `yaml:"token_dir"`
-	Server        string            `yaml:"server"`
-	Page          string            `yaml:"page"`
-	Caller        string            `yaml:"caller"`
-	Callers       map[string]string `yaml:"callers"`
-	Permissions   []string          `yaml:"permissions"`
-	MemoryFile    string            `yaml:"memory_file"`
+	Model           string            `yaml:"model"`
+	ModelName       string            `yaml:"model_name"`
+	ModelBaseURL    string            `yaml:"model_base_url"`
+	Memory          string            `yaml:"memory"`
+	Semantics       string            `yaml:"semantics"`
+	SemanticsFile   string            `yaml:"semantics_file"`
+	Decision        string            `yaml:"decision"`
+	Policy          string            `yaml:"policy"`
+	PolicyFile      string            `yaml:"policy_file"`
+	PolicyBundle    string            `yaml:"policy_bundle"`
+	Environment     string            `yaml:"environment"`
+	Telemetry       string            `yaml:"telemetry"`
+	TraceExport     string            `yaml:"trace_export"`
+	Execution       string            `yaml:"execution"`
+	Subagents       string            `yaml:"subagents"`
+	FlowFile        string            `yaml:"flow_file"`
+	AgentFile       string            `yaml:"agent_file"`
+	RelationsFile   string            `yaml:"relations_file"`
+	Contracts       []string          `yaml:"contracts"`
+	ReplayRedact    string            `yaml:"replay_redact"`
+	TraceFile       string            `yaml:"trace_file"`
+	Timeout         time.Duration     `yaml:"timeout"`
+	Auth            Sources           `yaml:"auth"`
+	TokenDir        string            `yaml:"token_dir"`
+	Server          string            `yaml:"server"`
+	Page            string            `yaml:"page"`
+	Caller          string            `yaml:"caller"`
+	Callers         map[string]string `yaml:"callers"`
+	ApprovalWebhook Webhook           `yaml:"approval_webhook"`
+	Permissions     []string          `yaml:"permissions"`
+	MemoryFile      string            `yaml:"memory_file"`
 }
 
 func Defaults() File {
@@ -92,6 +95,12 @@ func Load(path string) (File, error) {
 	}
 	if cfg.TraceFile != "" && !filepath.IsAbs(cfg.TraceFile) {
 		cfg.TraceFile = filepath.Join(dir, cfg.TraceFile)
+	}
+	if len(cfg.ApprovalWebhook.Command) > 0 {
+		bin := cfg.ApprovalWebhook.Command[0]
+		if bin != "" && !filepath.IsAbs(bin) && strings.Contains(bin, string(filepath.Separator)) {
+			cfg.ApprovalWebhook.Command[0] = filepath.Join(dir, bin)
+		}
 	}
 	if cfg.TokenDir != "" && !filepath.IsAbs(cfg.TokenDir) {
 		cfg.TokenDir = filepath.Join(dir, cfg.TokenDir)
@@ -192,6 +201,64 @@ func (f File) validate() error {
 		if id == "" || env == "" {
 			return fmt.Errorf("caller credential required")
 		}
+	}
+	if err := f.ApprovalWebhook.validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Webhook is a command or an HTTP URL. It is called when a call is pending.
+type Webhook struct {
+	URL     string
+	Command []string
+}
+
+func (w *Webhook) UnmarshalYAML(node *yaml.Node) error {
+	switch node.Kind {
+	case yaml.ScalarNode:
+		var one string
+		if err := node.Decode(&one); err != nil {
+			return err
+		}
+		one = strings.TrimSpace(one)
+		if one == "" {
+			return nil
+		}
+		if strings.Contains(one, "://") {
+			w.URL = one
+			return nil
+		}
+		w.Command = []string{one}
+		return nil
+	case yaml.SequenceNode:
+		var parts []string
+		if err := node.Decode(&parts); err != nil {
+			return err
+		}
+		w.Command = parts
+		return nil
+	default:
+		return fmt.Errorf("approval_webhook is a command or an HTTP URL")
+	}
+}
+
+func (w Webhook) validate() error {
+	if w.URL == "" && len(w.Command) == 0 {
+		return nil
+	}
+	if w.URL != "" && len(w.Command) > 0 {
+		return fmt.Errorf("approval_webhook is a command or an HTTP URL")
+	}
+	if w.URL != "" {
+		u, err := url.Parse(w.URL)
+		if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+			return fmt.Errorf("approval_webhook URL is not http or https")
+		}
+		return nil
+	}
+	if strings.TrimSpace(w.Command[0]) == "" {
+		return fmt.Errorf("approval_webhook command required")
 	}
 	return nil
 }

@@ -11,6 +11,7 @@ import (
 )
 
 // data.veto.decision is allow, deny, or confirmation. data.veto.reason is a short string.
+// The input is the call. A fact the call does not have is empty.
 
 type Engine struct {
 	query       rego.PreparedEvalQuery
@@ -68,19 +69,18 @@ func (e *Engine) evaluate(ctx context.Context, op *catalog.Operation) (policy.De
 		return policy.DecisionDeny, "", fmt.Errorf("missing operation")
 	}
 	in := policy.InputFrom(ctx)
-	params := map[string]string{}
-	for k, v := range in.Params {
-		params[k] = v
-	}
 	input := map[string]any{
-		"operation": op.ID,
-		"params":    params,
-	}
-	if e.Environment != "" {
-		input["environment"] = e.Environment
-	}
-	if e.Principal != "" {
-		input["principal"] = e.Principal
+		"operation":      op.ID,
+		"params":         cloneParams(in.Params),
+		"method":         op.Method,
+		"path":           op.PathTemplate,
+		"side_effect":    string(op.SideEffect),
+		"permissions":    copyStrings(op.Permissions),
+		"caller":         e.caller(in),
+		"environment":    e.Environment,
+		"auth_scheme":    schemeNames(op),
+		"tags":           copyStrings(op.Tags),
+		"resource_group": op.Group,
 	}
 	rs, err := e.query.Eval(ctx, rego.EvalInput(input))
 	if err != nil {
@@ -103,6 +103,45 @@ func (e *Engine) evaluate(ctx context.Context, op *catalog.Operation) (policy.De
 	default:
 		return policy.DecisionDeny, reason, fmt.Errorf("policy decision %q", decision)
 	}
+}
+
+func (e *Engine) caller(in policy.Input) string {
+	if in.Caller != "" {
+		return in.Caller
+	}
+	if e == nil {
+		return ""
+	}
+	return e.Principal
+}
+
+func cloneParams(in map[string]string) map[string]string {
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func copyStrings(in []string) []string {
+	if len(in) == 0 {
+		return []string{}
+	}
+	return append([]string{}, in...)
+}
+
+func schemeNames(op *catalog.Operation) []string {
+	names := []string{}
+	if op == nil {
+		return names
+	}
+	for _, a := range op.AuthSchemes() {
+		if a.Name == "" {
+			continue
+		}
+		names = append(names, a.Name)
+	}
+	return names
 }
 
 func decisionFields(value any) (string, string, error) {

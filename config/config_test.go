@@ -94,6 +94,30 @@ func TestAuthSourcesKeepTheEnvShorthand(t *testing.T) {
 	assert.True(t, strings.HasSuffix(cfg.TokenDir, "tokens"))
 }
 
+func TestApprovalWebhookIsACommandOrURL(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "veto.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("approval_webhook: https://hooks.example/pending\n"), 0o644))
+	cfg, err := config.Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, "https://hooks.example/pending", cfg.ApprovalWebhook.URL)
+	assert.Empty(t, cfg.ApprovalWebhook.Command)
+
+	require.NoError(t, os.WriteFile(path, []byte("approval_webhook: ./bin/notify\n"), 0o644))
+	cfg, err = config.Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, []string{filepath.Join(dir, "bin/notify")}, cfg.ApprovalWebhook.Command)
+
+	require.NoError(t, os.WriteFile(path, []byte("approval_webhook:\n  - /usr/local/bin/notify\n"), 0o644))
+	cfg, err = config.Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"/usr/local/bin/notify"}, cfg.ApprovalWebhook.Command)
+
+	require.NoError(t, os.WriteFile(path, []byte("approval_webhook: ftp://hooks.example/pending\n"), 0o644))
+	_, err = config.Load(path)
+	assert.ErrorContains(t, err, "approval_webhook")
+}
+
 func TestCallersNameEnvVars(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "veto.yaml")
 	require.NoError(t, os.WriteFile(path, []byte("callers:\n  ada: ADA_CALLER_TOKEN\n  grace: GRACE_CALLER_TOKEN\n"), 0o644))
