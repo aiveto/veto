@@ -1,8 +1,8 @@
 # veto
 
-Veto turns existing OpenAPI services into three tools for an agent: search, describe, and invoke (`capabilities_search`, `capabilities_describe`, `capabilities_invoke`).
+Veto turns existing OpenAPI services into a bounded, policy-checked capability surface for AI agents.
 
-Auth, approval, and relations are checked before the API sees the request. Replay and drift checks read the recorded decision.
+Agents search, describe, and invoke through three stable tools. Auth, approval, and relations are checked before the API sees the request. Replay and CI drift checks read the recorded decision.
 
 ```text
 API contracts
