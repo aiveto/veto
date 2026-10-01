@@ -356,10 +356,11 @@ func runServe(cmd serveCmd) {
 		fmt.Fprintf(os.Stderr, "only --stdio is supported\n")
 		os.Exit(1)
 	}
+	calls := loop.Runtime()
 	srv := &mcpserver.Server{
 		Catalog:   loop.Catalog,
 		Semantics: loop.Semantics,
-		Agent:     loop,
+		Calls:     &calls,
 	}
 	opt := mcpserver.Options{Pins: cmd.pin, DirectPins: cmd.directPins, Grouped: cmd.grouped}
 	if err := mcpserver.RunStdio(context.Background(), srv, opt); err != nil {

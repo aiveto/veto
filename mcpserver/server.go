@@ -8,6 +8,7 @@ import (
 	"github.com/aiveto/veto/agent"
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/runctx"
+	"github.com/aiveto/veto/runtime"
 	"github.com/aiveto/veto/semantics"
 )
 
@@ -26,7 +27,7 @@ type (
 	Server struct {
 		Catalog   *catalog.Catalog
 		Semantics agent.Notes
-		Agent     *agent.Loop
+		Calls     *runtime.Runtime
 	}
 )
 
@@ -58,11 +59,21 @@ func (s *Server) Describe(operationID string) ([]byte, error) {
 	return json.Marshal(payload)
 }
 
+// Invoke adapts string parameters at the MCP boundary and calls the shared runtime.
 func (s *Server) Invoke(ctx context.Context, operationID string, params map[string]string, approvalID string) (InvokeResult, error) {
-	if s.Agent == nil {
-		return InvokeResult{Status: "error", Error: "agent required"}, fmt.Errorf("agent required")
+	return s.Call(ctx, runtime.Request{
+		Operation: operationID,
+		Arguments: runtime.FromStrings(params),
+		Approval:  approvalID,
+	})
+}
+
+// Call runs one typed invoke. It does not use the agent loop.
+func (s *Server) Call(ctx context.Context, req runtime.Request) (InvokeResult, error) {
+	if s == nil || s.Calls == nil {
+		return InvokeResult{Status: "error", Error: "runtime required"}, fmt.Errorf("runtime required")
 	}
-	call, err := s.Agent.Invoke(ctx, operationID, params, approvalID)
+	call, err := s.Calls.Invoke(ctx, req)
 	return InvokeResult{
 		Status:      call.Status,
 		ApprovalID:  call.ApprovalID,
