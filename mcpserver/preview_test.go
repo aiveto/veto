@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -35,7 +36,30 @@ func TestPreviewToolSkipsUpstreamAndTokenURL(t *testing.T) {
 	const secret = "preview-client-secret"
 	t.Setenv("PREVIEW_SECRET", secret)
 	path := filepath.Join(t.TempDir(), "api.yaml")
-	spec := "openapi: 3.0.3\ninfo: {title: preview, version: \"1\"}\nservers:\n  - url: " + up.URL + "\npaths:\n  /orders:\n    post:\n      operationId: orders.create\n      summary: Create one order for a customer\n      requestBody:\n        required: true\n        content:\n          application/json:\n            schema: {type: object}\n      responses:\n        \"201\": {description: created}\ncomponents:\n  securitySchemes:\n    bearerAuth:\n      type: http\n      scheme: bearer\nsecurity:\n  - bearerAuth: []\n"
+	spec := fmt.Sprintf(`openapi: 3.0.3
+info: {title: preview, version: "1"}
+servers:
+  - url: %s
+paths:
+  /orders:
+    post:
+      operationId: orders.create
+      summary: Create one order for a customer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object}
+      responses:
+        "201": {description: created}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+security:
+  - bearerAuth: []
+`, up.URL)
 	require.NoError(t, os.WriteFile(path, []byte(spec), 0o644))
 	cat, err := openapi.Load(context.Background(), path)
 	require.NoError(t, err)

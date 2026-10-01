@@ -362,7 +362,15 @@ func TestPreviewDoesNotCallUpstreamOrTokenURL(t *testing.T) {
 	spec := filepath.Join(dir, "api.yaml")
 	require.NoError(t, os.WriteFile(spec, []byte(strings.ReplaceAll(previewSpec, "http://upstream.example", up.URL)), 0o644))
 	conf := filepath.Join(dir, "veto.yaml")
-	text := fmt.Sprintf("auth:\n  bearerAuth:\n    source: client_credentials\n    token_url: %s\n    client_id: job\n    client_secret_env: PREVIEW_SECRET\ncontracts:\n  - %s\n", tokenSrv.URL, spec)
+	text := fmt.Sprintf(`auth:
+  bearerAuth:
+    source: client_credentials
+    token_url: %s
+    client_id: job
+    client_secret_env: PREVIEW_SECRET
+contracts:
+  - %s
+`, tokenSrv.URL, spec)
 	require.NoError(t, os.WriteFile(conf, []byte(text), 0o644))
 	loop, _, err := buildLoop(nil, conf, "", "", "")
 	require.NoError(t, err)
@@ -422,7 +430,9 @@ func loadDoctorCatalog(t *testing.T, body string) *catalog.Catalog {
 	spec := filepath.Join(dir, "api.yaml")
 	require.NoError(t, os.WriteFile(spec, []byte(body), 0o644))
 	conf := filepath.Join(dir, "veto.yaml")
-	require.NoError(t, os.WriteFile(conf, []byte("contracts:\n  - "+spec+"\n"), 0o644))
+	require.NoError(t, os.WriteFile(conf, []byte(fmt.Sprintf(`contracts:
+  - %s
+`, spec)), 0o644))
 	loop, _, err := buildLoop(nil, conf, "", "", "")
 	require.NoError(t, err)
 	return loop.Catalog
