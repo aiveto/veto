@@ -74,6 +74,7 @@ Credentials come from the environment, OAuth, a caller-supplied token, token exc
 
 | Task | How |
 | --- | --- |
+| Write `veto.yaml` for the OpenAPI files you name | [`init`](docs/guide.md#one-vetoyaml) |
 | The catalog loads, and its operation count and joins are printed | [`validate`](docs/guide.md#one-vetoyaml) |
 | Missing auth, a colliding operation id, or a parameter that cannot be sent | [`doctor`](docs/guide.md#doctor) |
 | The request and the policy decision, before a token is fetched and before HTTP | [`preview`](docs/guide.md#preview) |
