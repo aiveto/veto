@@ -48,8 +48,8 @@ func TestPendingWebhookDoesNotCallUpstream(t *testing.T) {
 		script := filepath.Join(dir, "hook.sh")
 		bodyPath := filepath.Join(dir, "body")
 		envPath := filepath.Join(dir, "env")
-		require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\ncat > \"$1\"\nenv > \"$2\"\n"), 0o755))
-		wh, err := policy.NewWebhook("", []string{script, bodyPath, envPath})
+		require.NoError(t, os.WriteFile(script, []byte("cat > \"$1\"\nenv > \"$2\"\n"), 0o600))
+		wh, err := policy.NewWebhook("", []string{"sh", script, bodyPath, envPath})
 		require.NoError(t, err)
 		pending := invokePending(t, wh, secret)
 		body, err := os.ReadFile(bodyPath)
@@ -97,7 +97,7 @@ func invokePending(t *testing.T, notify policy.Notifier, secret string) string {
 
 	req.Approval = first.ApprovalID
 	_, err = rt.Invoke(context.Background(), req)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, int32(0), hits.Load())
 	return first.ApprovalID
 }

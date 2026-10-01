@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
@@ -617,9 +618,7 @@ func cloneMap(in map[string]string) map[string]string {
 		return nil
 	}
 	out := make(map[string]string, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
+	maps.Copy(out, in)
 	return out
 }
 
@@ -740,7 +739,7 @@ func materialOf(c credentials.Credential) Material {
 
 // CredentialSecrets lists header values, query values, and a bearer token without its prefix.
 func CredentialSecrets(c credentials.Credential) []string {
-	var out []string
+	out := make([]string, 0, len(c.Headers)+len(c.Query))
 	for _, v := range c.Headers {
 		out = append(out, secretParts(v)...)
 	}

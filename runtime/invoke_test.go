@@ -54,11 +54,13 @@ func TestInvokeKeepsTypedArgumentsUntilHTTP(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "ok", out.Status)
-	assert.Equal(t, `{"name":"ada"}`, body)
+	assert.JSONEq(t, `{"name":"ada"}`, body)
 	assert.Equal(t, "application/json", contentType)
 	assert.Equal(t, "key-1", key)
 	assert.Equal(t, "tenant-a", seen.caller)
-	assert.Equal(t, "ada", seen.args["body"].(map[string]any)["name"])
+	bodyArg, ok := seen.args["body"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "ada", bodyArg["name"])
 }
 
 func TestDeleteWaitsForApproval(t *testing.T) {
@@ -85,7 +87,7 @@ func TestDeleteWaitsForApproval(t *testing.T) {
 	assert.Equal(t, int32(0), hits.Load())
 	req.Approval = first.ApprovalID
 	_, err = rt.Invoke(context.Background(), req)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, int32(0), hits.Load())
 	approved, err := rt.State.Approve(first.ApprovalID)
 	require.NoError(t, err)
@@ -123,7 +125,7 @@ func TestPreviewRejectsABodyThatIsNotAJSONObject(t *testing.T) {
 		Operation: "orders.create",
 		Arguments: runtime.FromStrings(map[string]string{"body": "not-json"}),
 	})
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, int32(0), hits.Load())
 }
 
@@ -147,7 +149,7 @@ func TestInvokeRejectsUnserializable(t *testing.T) {
 		Operation: "labels.get",
 		Arguments: runtime.FromStrings(map[string]string{"id": "abc"}),
 	})
-	assert.ErrorContains(t, err, "cannot be serialized")
+	require.ErrorContains(t, err, "cannot be serialized")
 	assert.Equal(t, int32(0), hits.Load())
 }
 
@@ -161,7 +163,7 @@ func TestMissingParamSkipsHTTP(t *testing.T) {
 	defer ts.Close()
 	rt := runtime.Runtime{Catalog: cat, State: policy.NewState(), Exec: execute.Client{BaseURL: ts.URL}}
 	out, err := rt.Invoke(context.Background(), runtime.Request{Operation: "orders.get"})
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, "missing_param", out.Code)
 	assert.Equal(t, int32(0), hits.Load())
 }

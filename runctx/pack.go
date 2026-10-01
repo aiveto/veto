@@ -1,6 +1,7 @@
 package runctx
 
 import (
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -18,20 +19,20 @@ type (
 	}
 
 	Turn struct {
-		Role    string
-		Content string
+		Role    string `json:"Role"`
+		Content string `json:"Content"`
 	}
 
 	Pack struct {
-		Rules                string
-		Index                string
-		Turns                []Turn
-		DescribedOperationID string
-		DescribedDetail      string
-		Related              []string
-		PendingConfirmation  *policy.PendingConfirmation
-		Bytes                int
-		Truncated            bool
+		Rules                string                      `json:"Rules"`
+		Index                string                      `json:"Index"`
+		Turns                []Turn                      `json:"Turns"`
+		DescribedOperationID string                      `json:"DescribedOperationID"`
+		DescribedDetail      string                      `json:"DescribedDetail"`
+		Related              []string                    `json:"Related"`
+		PendingConfirmation  *policy.PendingConfirmation `json:"PendingConfirmation"`
+		Bytes                int                         `json:"Bytes"`
+		Truncated            bool                        `json:"Truncated"`
 	}
 
 	Builder struct {
@@ -102,12 +103,9 @@ func (b *Builder) limit(p *Pack) {
 	p.Bytes = len(p.Serialize())
 }
 
-func shrinkIndex(p *Pack, max int) {
+func shrinkIndex(p *Pack, limit int) {
 	overhead := len(p.Serialize()) - len(p.Index)
-	room := max - overhead
-	if room < 0 {
-		room = 0
-	}
+	room := max(limit-overhead, 0)
 	index, cut := fitIndex(p.Index, room)
 	p.Index = index
 	if cut {
@@ -115,55 +113,43 @@ func shrinkIndex(p *Pack, max int) {
 	}
 }
 
-func trimTurns(p *Pack, max int) {
-	if len(p.Serialize()) <= max || len(p.Turns) == 0 {
+func trimTurns(p *Pack, limit int) {
+	if len(p.Serialize()) <= limit || len(p.Turns) == 0 {
 		return
 	}
 	p.Turns = cloneTurns(p.Turns)
 	for i := range p.Turns {
-		if len(p.Serialize()) <= max {
+		if len(p.Serialize()) <= limit {
 			return
 		}
 		content := p.Turns[i].Content
-		overflow := len(p.Serialize()) - max
-		keep := len(content) - overflow
-		if keep < 0 {
-			keep = 0
-		}
+		overflow := len(p.Serialize()) - limit
+		keep := max(len(content)-overflow, 0)
 		p.Turns[i].Content = prefixBytes(content, keep)
 	}
 }
 
-func trimDetail(p *Pack, max int) {
-	if len(p.Serialize()) <= max || p.DescribedDetail == "" {
+func trimDetail(p *Pack, limit int) {
+	if len(p.Serialize()) <= limit || p.DescribedDetail == "" {
 		return
 	}
-	overflow := len(p.Serialize()) - max
-	keep := len(p.DescribedDetail) - overflow
-	if keep < 0 {
-		keep = 0
-	}
+	overflow := len(p.Serialize()) - limit
+	keep := max(len(p.DescribedDetail)-overflow, 0)
 	p.DescribedDetail = prefixBytes(p.DescribedDetail, keep)
 }
 
-func trimFloor(p *Pack, max int) {
-	for len(p.Serialize()) > max && p.Rules != "" {
-		overflow := len(p.Serialize()) - max
-		keep := len(p.Rules) - overflow
-		if keep < 0 {
-			keep = 0
-		}
+func trimFloor(p *Pack, limit int) {
+	for len(p.Serialize()) > limit && p.Rules != "" {
+		overflow := len(p.Serialize()) - limit
+		keep := max(len(p.Rules)-overflow, 0)
 		p.Rules = prefixBytes(p.Rules, keep)
 	}
-	for len(p.Serialize()) > max && p.DescribedOperationID != "" {
-		overflow := len(p.Serialize()) - max
-		keep := len(p.DescribedOperationID) - overflow
-		if keep < 0 {
-			keep = 0
-		}
+	for len(p.Serialize()) > limit && p.DescribedOperationID != "" {
+		overflow := len(p.Serialize()) - limit
+		keep := max(len(p.DescribedOperationID)-overflow, 0)
 		p.DescribedOperationID = prefixBytes(p.DescribedOperationID, keep)
 	}
-	if len(p.Serialize()) <= max || len(p.Turns) == 0 {
+	if len(p.Serialize()) <= limit || len(p.Turns) == 0 {
 		return
 	}
 	p.Turns = nil
@@ -336,9 +322,9 @@ func relationFields(cat *catalog.Catalog, op catalog.Operation) []string {
 }
 
 func lastUser(turns []Turn) string {
-	for i := len(turns) - 1; i >= 0; i-- {
-		if turns[i].Role == "user" {
-			return strings.TrimSpace(turns[i].Content)
+	for _, turn := range slices.Backward(turns) {
+		if turn.Role == "user" {
+			return strings.TrimSpace(turn.Content)
 		}
 	}
 	return ""

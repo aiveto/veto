@@ -45,9 +45,9 @@ func (s *relationSuite) TestJoinAppearsOnlyAfterDeclaration() {
 
 func (s *relationSuite) TestRejectsUnusedSchemaAndMissingTarget() {
 	err := catalog.ApplyRelations(s.cat, []catalog.Relation{{Schema: "Missing", Field: "id", To: "customers.get"}})
-	s.ErrorContains(err, "not used")
+	s.Require().ErrorContains(err, "not used")
 	err = catalog.ApplyRelations(s.cat, []catalog.Relation{{Schema: "Order", Field: "customerId", To: "missing.get"}})
-	s.ErrorContains(err, "unknown operation")
+	s.Require().ErrorContains(err, "unknown operation")
 }
 
 func TestRelations(t *testing.T) {
@@ -58,10 +58,10 @@ func TestDuplicateOperationRefused(t *testing.T) {
 	orders, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
 	_, err = catalog.Merge(orders, orders)
-	assert.ErrorContains(t, err, "duplicate operation")
-	assert.ErrorContains(t, err, "orders.delete")
-	assert.ErrorContains(t, err, "orders.get")
-	assert.ErrorContains(t, err, "orders.list")
+	require.ErrorContains(t, err, "duplicate operation")
+	require.ErrorContains(t, err, "orders.delete")
+	require.ErrorContains(t, err, "orders.get")
+	require.ErrorContains(t, err, "orders.list")
 
 	dir := t.TempDir()
 	const spec = `openapi: 3.0.3
@@ -83,13 +83,13 @@ paths:
           description: ok
 `
 	for _, name := range []string{"customers.yaml", "customer-v3.yaml"} {
-		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(spec), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(spec), 0o600))
 	}
 	left, err := openapi.Load(context.Background(), filepath.Join(dir, "customers.yaml"))
 	require.NoError(t, err)
 	right, err := openapi.Load(context.Background(), filepath.Join(dir, "customer-v3.yaml"))
 	require.NoError(t, err)
 	_, err = catalog.Merge(left, right)
-	assert.ErrorContains(t, err, "duplicate operation")
+	require.ErrorContains(t, err, "duplicate operation")
 	assert.ErrorContains(t, err, "customers.get")
 }

@@ -28,11 +28,11 @@ func newInitCommand() *cobra.Command {
 
 func writeStarter(dir string, contracts []string) error {
 	if len(contracts) == 0 {
-		return fmt.Errorf("contract required")
+		return errors.New("contract required")
 	}
 	configPath := filepath.Join(dir, "veto.yaml")
 	if _, err := os.Stat(configPath); err == nil {
-		return fmt.Errorf("veto.yaml already exists")
+		return errors.New("veto.yaml already exists")
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("read veto.yaml: %w", err)
 	}
@@ -70,7 +70,7 @@ func starterYAML(contracts []string) ([]byte, error) {
 }
 
 func writeIfMissing(path string, body []byte) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if errors.Is(err, os.ErrExist) {
 		return nil
 	}
@@ -89,7 +89,7 @@ func writeIfMissing(path string, body []byte) error {
 }
 
 func writeNew(path string, body []byte) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if errors.Is(err, os.ErrExist) {
 		return fmt.Errorf("%s already exists", filepath.Base(path))
 	}

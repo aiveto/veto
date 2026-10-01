@@ -28,7 +28,7 @@ func TestGeneratedClientKeepsExposureAuthAndIdempotency(t *testing.T) {
 	dir := t.TempDir()
 	const module = "example.com/fidelity"
 	require.NoError(t, generate.Write(dir, module, cat))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "sdk", "fidelity_test.go"), []byte(fidelityProbe), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "sdk", "fidelity_test.go"), []byte(fidelityProbe), 0o600))
 	root, err := filepath.Abs("..")
 	require.NoError(t, err)
 	replace := exec.CommandContext(t.Context(), "go", "mod", "edit", "-replace", "github.com/aiveto/veto="+root)

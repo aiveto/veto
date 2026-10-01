@@ -76,7 +76,7 @@ func TestQueryStyleAndExplodeAreKept(t *testing.T) {
 func loadFixture(t *testing.T, body string) *catalog.Catalog {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "spec.yaml")
-	require.NoError(t, os.WriteFile(path, []byte(body), 0o644))
+	require.NoError(t, os.WriteFile(path, []byte(body), 0o600))
 	cat, err := openapi.Load(context.Background(), path)
 	require.NoError(t, err)
 	return cat

@@ -17,7 +17,7 @@ import (
 
 func TestPageFollowCollectsAndDefaultStaysOne(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "spec.yaml")
-	require.NoError(t, os.WriteFile(path, []byte(pageSpec), 0o644))
+	require.NoError(t, os.WriteFile(path, []byte(pageSpec), 0o600))
 	cat, err := openapi.Load(context.Background(), path)
 	require.NoError(t, err)
 	op := cat.ByID("orders.list")
@@ -35,18 +35,18 @@ func TestPageFollowCollectsAndDefaultStaysOne(t *testing.T) {
 	one, err := execute.Client{BaseURL: ts.URL}.InvokeHTTPResult(context.Background(), op, nil)
 	require.NoError(t, err)
 	assert.Equal(t, int32(1), hits.Load())
-	assert.Equal(t, `{"items":[{"id":"1"}],"next":"b"}`, one.Body)
+	assert.JSONEq(t, `{"items":[{"id":"1"}],"next":"b"}`, one.Body)
 
 	hits.Store(0)
 	many, err := execute.Client{BaseURL: ts.URL, FollowPages: 5}.InvokeHTTPResult(context.Background(), op, nil)
 	require.NoError(t, err)
 	assert.Equal(t, int32(2), hits.Load())
-	assert.Equal(t, `[{"id":"1"},{"id":"2"}]`, many.Body)
+	assert.JSONEq(t, `[{"id":"1"},{"id":"2"}]`, many.Body)
 }
 
 func TestPageFollowStillWalksWhenFieldsAreSet(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "spec.yaml")
-	require.NoError(t, os.WriteFile(path, []byte(pageSpec), 0o644))
+	require.NoError(t, os.WriteFile(path, []byte(pageSpec), 0o600))
 	cat, err := openapi.Load(context.Background(), path)
 	require.NoError(t, err)
 	op := cat.ByID("orders.list")

@@ -60,7 +60,7 @@ components:
 security:
   - bearerAuth: []
 `, up.URL)
-	require.NoError(t, os.WriteFile(path, []byte(spec), 0o644))
+	require.NoError(t, os.WriteFile(path, []byte(spec), 0o600))
 	cat, err := openapi.Load(context.Background(), path)
 	require.NoError(t, err)
 	creds := auth.New(auth.Options{
@@ -123,8 +123,8 @@ security:
 		},
 	})
 	require.NoError(t, err)
-	assert.Greater(t, tokenHits.Load(), int32(0))
-	assert.Greater(t, upstreamHits.Load(), int32(0))
+	assert.Positive(t, tokenHits.Load())
+	assert.Positive(t, upstreamHits.Load())
 }
 
 func toolText(t *testing.T, res *mcp.CallToolResult) string {

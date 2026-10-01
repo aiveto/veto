@@ -2,6 +2,7 @@ package auth
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,7 +13,7 @@ import (
 type storedToken struct {
 	RefreshToken string            `json:"refresh_token,omitempty"`
 	AccessToken  string            `json:"access_token,omitempty"`
-	ExpiresAt    time.Time         `json:"expires_at,omitempty"`
+	ExpiresAt    time.Time         `json:"expires_at,omitzero"`
 	Scopes       []string          `json:"scopes,omitempty"`
 	Audience     string            `json:"audience,omitempty"`
 	TokenURL     string            `json:"token_url,omitempty"`
@@ -198,16 +199,16 @@ func absorb(prev storedToken, tok tokenResponse, s Scheme, scopes []string, exp 
 
 func tokenPath(dir, scheme string) (string, error) {
 	if dir == "" {
-		return "", fmt.Errorf("token directory is unset")
+		return "", errors.New("token directory is unset")
 	}
 	if scheme == "" || strings.Contains(scheme, "..") {
-		return "", fmt.Errorf("invalid auth scheme")
+		return "", errors.New("invalid auth scheme")
 	}
 	for _, r := range scheme {
 		switch {
 		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_', r == '.':
 		default:
-			return "", fmt.Errorf("invalid auth scheme")
+			return "", errors.New("invalid auth scheme")
 		}
 	}
 	return filepath.Join(dir, scheme+".json"), nil

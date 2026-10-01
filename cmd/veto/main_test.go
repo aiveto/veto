@@ -83,9 +83,9 @@ func TestApproveRecordsAnIDTheCallerCannotMint(t *testing.T) {
 }
 
 func TestConfigIsTheCatalog(t *testing.T) {
-	_, contracts, relations, _, err := resolve("../../testdata/veto.yaml", nil, "", "")
+	src, err := resolve("../../testdata/veto.yaml", nil, "", "")
 	require.NoError(t, err)
-	cat, err := loadCatalog(contracts, relations)
+	cat, err := loadCatalog(src.contracts, src.relations)
 	require.NoError(t, err)
 	require.NotNil(t, cat.ByID("orders.get"))
 	require.NotNil(t, cat.ByID("customers.get"))
@@ -115,7 +115,7 @@ memory_file: turns.log
 contracts:
   - %s
 `, contract)
-	require.NoError(t, os.WriteFile(fileCfg, []byte(fileText), 0o644))
+	require.NoError(t, os.WriteFile(fileCfg, []byte(fileText), 0o600))
 	fileLoop, _, err := buildLoop(nil, fileCfg, "", "", "")
 	require.NoError(t, err)
 	require.IsType(t, &memory.Log{}, fileLoop.Memory)
@@ -134,7 +134,7 @@ contracts:
 			text := fmt.Sprintf(`%scontracts:
   - %s
 `, tc.yaml, contract)
-			require.NoError(t, os.WriteFile(path, []byte(text), 0o644))
+			require.NoError(t, os.WriteFile(path, []byte(text), 0o600))
 			loop, _, err := buildLoop(nil, path, "", "", "")
 			require.NoError(t, err)
 			live, ok := loop.Model.(*openai.Client)
@@ -151,7 +151,7 @@ func TestPackPrintsTheDeleteCall(t *testing.T) {
 	path := filepath.Join(dir, "veto.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(fmt.Sprintf(`contracts:
   - %s
-`, contract)), 0o644))
+`, contract)), 0o600))
 	loop, _, err := buildLoop(nil, path, "", "", "")
 	require.NoError(t, err)
 	text, err := packOutput(loop, "delete order 123", false)
@@ -176,7 +176,7 @@ func TestAuthSecretComesFromTheEnv(t *testing.T) {
 contracts:
   - %s
 `, contract)
-	require.NoError(t, os.WriteFile(path, []byte(text), 0o644))
+	require.NoError(t, os.WriteFile(path, []byte(text), 0o600))
 	t.Setenv("ORDER_TOKEN", "s3cret")
 	loop, cfg, err := buildLoop(nil, path, "", "", "")
 	require.NoError(t, err)
@@ -244,7 +244,7 @@ func TestExternalPolicyFailsClosed(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "veto.yaml")
 			require.NoError(t, os.WriteFile(path, []byte(fmt.Sprintf(`%scontracts:
   - %s
-`, tc.body, contract)), 0o644))
+`, tc.body, contract)), 0o600))
 			_, _, err := buildLoop(nil, path, "", "", "")
 			assert.ErrorContains(t, err, tc.want)
 		})
@@ -276,14 +276,14 @@ func TestDoctorReportsPinsAuthAndPing(t *testing.T) {
 	dir := t.TempDir()
 	spec := filepath.Join(dir, "api.yaml")
 	body := strings.ReplaceAll(securedSpec, "http://example.test", up.URL)
-	require.NoError(t, os.WriteFile(spec, []byte(body), 0o644))
+	require.NoError(t, os.WriteFile(spec, []byte(body), 0o600))
 	conf := filepath.Join(dir, "veto.yaml")
 	text := fmt.Sprintf(`auth:
   bearerAuth: ORDER_TOKEN
 contracts:
   - %s
 `, spec)
-	require.NoError(t, os.WriteFile(conf, []byte(text), 0o644))
+	require.NoError(t, os.WriteFile(conf, []byte(text), 0o600))
 	t.Setenv("VETO_TOKEN_DIR", t.TempDir())
 	t.Setenv("ORDER_TOKEN", "")
 	secured, loaded, err := buildLoop(nil, conf, "", "", "")
@@ -304,11 +304,11 @@ contracts:
 
 	downSpec := filepath.Join(dir, "down.yaml")
 	down := strings.ReplaceAll(securedSpec, "http://example.test", "http://127.0.0.1:1")
-	require.NoError(t, os.WriteFile(downSpec, []byte(down), 0o644))
+	require.NoError(t, os.WriteFile(downSpec, []byte(down), 0o600))
 	downConf := filepath.Join(dir, "down.yaml.conf")
 	require.NoError(t, os.WriteFile(downConf, []byte(fmt.Sprintf(`contracts:
   - %s
-`, downSpec)), 0o644))
+`, downSpec)), 0o600))
 	downLoop, downCfg, err := buildLoop(nil, downConf, "", "", "")
 	require.NoError(t, err)
 	blocked := doctorBlockers(context.Background(), downLoop.Catalog, downCfg, nil, true)
@@ -360,7 +360,7 @@ func TestPreviewDoesNotCallUpstreamOrTokenURL(t *testing.T) {
 	t.Setenv("PREVIEW_SECRET", secret)
 	dir := t.TempDir()
 	spec := filepath.Join(dir, "api.yaml")
-	require.NoError(t, os.WriteFile(spec, []byte(strings.ReplaceAll(previewSpec, "http://upstream.example", up.URL)), 0o644))
+	require.NoError(t, os.WriteFile(spec, []byte(strings.ReplaceAll(previewSpec, "http://upstream.example", up.URL)), 0o600))
 	conf := filepath.Join(dir, "veto.yaml")
 	text := fmt.Sprintf(`auth:
   bearerAuth:
@@ -371,7 +371,7 @@ func TestPreviewDoesNotCallUpstreamOrTokenURL(t *testing.T) {
 contracts:
   - %s
 `, tokenSrv.URL, spec)
-	require.NoError(t, os.WriteFile(conf, []byte(text), 0o644))
+	require.NoError(t, os.WriteFile(conf, []byte(text), 0o600))
 	loop, _, err := buildLoop(nil, conf, "", "", "")
 	require.NoError(t, err)
 	rt := loop.Runtime()
@@ -420,19 +420,19 @@ contracts:
 	sent, err := rt.Invoke(context.Background(), runtime.Request{Operation: "orders.create", Arguments: args})
 	require.NoError(t, err)
 	assert.Equal(t, "ok", sent.Status)
-	assert.Greater(t, tokenHits.Load(), int32(0))
-	assert.Greater(t, upstreamHits.Load(), int32(0))
+	assert.Positive(t, tokenHits.Load())
+	assert.Positive(t, upstreamHits.Load())
 }
 
 func loadDoctorCatalog(t *testing.T, body string) *catalog.Catalog {
 	t.Helper()
 	dir := t.TempDir()
 	spec := filepath.Join(dir, "api.yaml")
-	require.NoError(t, os.WriteFile(spec, []byte(body), 0o644))
+	require.NoError(t, os.WriteFile(spec, []byte(body), 0o600))
 	conf := filepath.Join(dir, "veto.yaml")
 	require.NoError(t, os.WriteFile(conf, []byte(fmt.Sprintf(`contracts:
   - %s
-`, spec)), 0o644))
+`, spec)), 0o600))
 	loop, _, err := buildLoop(nil, conf, "", "", "")
 	require.NoError(t, err)
 	return loop.Catalog

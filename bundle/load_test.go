@@ -17,10 +17,10 @@ func TestBundleRejectsClientSecret(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, bundle.Release()) })
 	dir := t.TempDir()
 	body := "contracts:\n  - orders.yaml\nauth:\n  job:\n    client_secret: super-secret-value\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "bundle.yaml"), []byte(body), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "bundle.yaml"), []byte(body), 0o600))
 	_, err := bundle.Load(dir)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "client_secret")
+	require.ErrorContains(t, err, "client_secret")
 
 	zipPath := filepath.Join(t.TempDir(), "secret.zip")
 	require.NoError(t, zipDir(zipPath, dir))
@@ -49,7 +49,7 @@ func TestBundleRejectsTokenURLAndBaseURL(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
-			require.NoError(t, os.WriteFile(filepath.Join(dir, "bundle.yaml"), []byte(tc.body), 0o644))
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "bundle.yaml"), []byte(tc.body), 0o600))
 			_, err := bundle.Load(dir)
 			require.Error(t, err)
 			assert.ErrorContains(t, err, tc.want)
@@ -82,10 +82,10 @@ func TestBundleRejectsDeploymentFields(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
-			require.NoError(t, os.WriteFile(filepath.Join(dir, "bundle.yaml"), []byte(tc.body), 0o644))
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "bundle.yaml"), []byte(tc.body), 0o600))
 			_, err := bundle.Load(dir)
 			require.Error(t, err)
-			assert.ErrorContains(t, err, tc.want)
+			require.ErrorContains(t, err, tc.want)
 			assert.ErrorContains(t, err, "unsupported bundle field")
 		})
 	}
@@ -94,7 +94,7 @@ func TestBundleRejectsDeploymentFields(t *testing.T) {
 func TestBundleRejectsPathsOutsideTheRoot(t *testing.T) {
 	dir := t.TempDir()
 	outside := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(outside, "outside.yaml"), []byte("openapi: 3.0.3\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(outside, "outside.yaml"), []byte("openapi: 3.0.3\n"), 0o600))
 	require.NoError(t, os.Symlink(outside, filepath.Join(dir, "linked")))
 	cases := []string{
 		"contracts:\n  - ../outside.yaml\n",
@@ -102,14 +102,14 @@ func TestBundleRejectsPathsOutsideTheRoot(t *testing.T) {
 		"relations_file: /etc/passwd\n",
 	}
 	for _, body := range cases {
-		require.NoError(t, os.WriteFile(filepath.Join(dir, "bundle.yaml"), []byte(body), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "bundle.yaml"), []byte(body), 0o600))
 		_, err := bundle.Load(dir)
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "escapes the bundle")
+		require.ErrorContains(t, err, "escapes the bundle")
 	}
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "cases"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "cases"), 0o750))
 	require.NoError(t, os.Symlink(filepath.Join(outside, "outside.yaml"), filepath.Join(dir, "cases", "leak.yaml")))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "bundle.yaml"), []byte("cases:\n  - cases\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "bundle.yaml"), []byte("cases:\n  - cases\n"), 0o600))
 	_, err := bundle.Load(dir)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "escapes the bundle")
@@ -118,9 +118,9 @@ func TestBundleRejectsPathsOutsideTheRoot(t *testing.T) {
 func TestBundleZipReadsTheInnerDirectory(t *testing.T) {
 	parent := t.TempDir()
 	inner := filepath.Join(parent, "orders-customers")
-	require.NoError(t, os.MkdirAll(filepath.Join(inner, "cases"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(inner, "bundle.yaml"), []byte("cases:\n  - cases\n"), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(inner, "cases", "one.yaml"), []byte("name: catalog\ninput: surface\n"), 0o644))
+	require.NoError(t, os.MkdirAll(filepath.Join(inner, "cases"), 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(inner, "bundle.yaml"), []byte("cases:\n  - cases\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(inner, "cases", "one.yaml"), []byte("name: catalog\ninput: surface\n"), 0o600))
 	zipPath := filepath.Join(t.TempDir(), "bundle.zip")
 	require.NoError(t, zipDir(zipPath, parent))
 	loaded, err := bundle.Load(zipPath)
@@ -130,7 +130,16 @@ func TestBundleZipReadsTheInnerDirectory(t *testing.T) {
 	assert.True(t, strings.HasSuffix(loaded.Config.Cases[0], "cases"))
 }
 
-func zipDir(dest, root string) error {
+func zipDir(dest, root string) (err error) {
+	fsys, err := os.OpenRoot(root)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if cerr := fsys.Close(); err == nil && cerr != nil {
+			err = cerr
+		}
+	}()
 	f, err := os.Create(dest)
 	if err != nil {
 		return err
@@ -152,7 +161,7 @@ func zipDir(dest, root string) error {
 			_, err = w.Create(name + "/")
 			return err
 		}
-		body, err := os.ReadFile(p)
+		body, err := fsys.ReadFile(name)
 		if err != nil {
 			return err
 		}

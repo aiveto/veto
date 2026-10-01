@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -38,12 +39,7 @@ func jsonHelp(w io.Writer, root *cobra.Command, args []string) (bool, error) {
 }
 
 func wantsHelpJSON(args []string) bool {
-	for _, a := range args {
-		if a == "--help-json" {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(args, "--help-json")
 }
 
 func targetCommand(root *cobra.Command, args []string) *cobra.Command {
@@ -83,10 +79,5 @@ func describeCommand(cmd *cobra.Command) commandDoc {
 }
 
 func annotationRequired(f *pflag.Flag) bool {
-	for _, v := range f.Annotations[cobra.BashCompOneRequiredFlag] {
-		if v == "true" {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(f.Annotations[cobra.BashCompOneRequiredFlag], "true")
 }

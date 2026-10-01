@@ -31,9 +31,9 @@ func TestInitWritesStarterAndRefusesOverwrite(t *testing.T) {
 	t.Run("refuses to overwrite veto.yaml", func(t *testing.T) {
 		dir := t.TempDir()
 		kept := []byte("keep: true\n")
-		require.NoError(t, os.WriteFile(filepath.Join(dir, "veto.yaml"), kept, 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "veto.yaml"), kept, 0o600))
 		err := writeStarter(dir, []string{"orders.yaml"})
-		assert.ErrorContains(t, err, "veto.yaml already exists")
+		require.ErrorContains(t, err, "veto.yaml already exists")
 		got, readErr := os.ReadFile(filepath.Join(dir, "veto.yaml"))
 		require.NoError(t, readErr)
 		assert.Equal(t, kept, got)
@@ -44,7 +44,7 @@ func TestInitWritesStarterAndRefusesOverwrite(t *testing.T) {
 	t.Run("leaves an existing relations file", func(t *testing.T) {
 		dir := t.TempDir()
 		kept := []byte("relations:\n  - schema: Order\n    field: customerId\n    to: customers.get\n")
-		require.NoError(t, os.WriteFile(filepath.Join(dir, "relations.yaml"), kept, 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "relations.yaml"), kept, 0o600))
 		require.NoError(t, writeStarter(dir, []string{"orders.yaml", "customers.yaml"}))
 		got, err := os.ReadFile(filepath.Join(dir, "relations.yaml"))
 		require.NoError(t, err)

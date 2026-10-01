@@ -43,7 +43,7 @@ func TestInvokeDeleteRequiresApprovalBeforeHTTP(t *testing.T) {
 	assert.Equal(t, "confirmation_required", first.Status)
 	assert.Equal(t, int32(0), hits.Load())
 	_, err = srv.Invoke(ctx, "orders.delete", map[string]string{"id": "123"}, first.ApprovalID)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, int32(0), hits.Load())
 	approved, err := loop.State.Approve(first.ApprovalID)
 	require.NoError(t, err)
@@ -53,7 +53,7 @@ func TestInvokeDeleteRequiresApprovalBeforeHTTP(t *testing.T) {
 	assert.Equal(t, "ok", second.Status)
 	assert.Equal(t, int32(1), hits.Load())
 	_, err = srv.Invoke(ctx, "orders.delete", map[string]string{"id": "123"}, approved)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, int32(1), hits.Load())
 	raw, err := json.Marshal(first)
 	require.NoError(t, err)
@@ -80,7 +80,7 @@ func TestInvokeJSONCarriesCodeAndRetryable(t *testing.T) {
 		Calls:     &calls,
 	}
 	missing, err := srv.Invoke(context.Background(), "orders.get", nil, "")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, "missing_param", missing.Code)
 	got, err := srv.Invoke(context.Background(), "orders.get", map[string]string{"id": "9"}, "")
 	require.NoError(t, err)
@@ -113,7 +113,7 @@ func TestInvokeDiscoveryOnlyDoesNotCallHTTP(t *testing.T) {
 	calls := loop.Runtime()
 	srv := &mcpserver.Server{Catalog: cat, Semantics: sem, Calls: &calls}
 	got, err := srv.Invoke(context.Background(), "orders.get", map[string]string{"id": "1"}, "")
-	assert.ErrorContains(t, err, "discovery-only")
+	require.ErrorContains(t, err, "discovery-only")
 	assert.Equal(t, "not_callable", got.Code)
 	assert.Equal(t, int32(0), hits.Load())
 	direct, err := loop.Invoke(context.Background(), "orders.delete", map[string]string{"id": "1"}, "")
@@ -122,6 +122,6 @@ func TestInvokeDiscoveryOnlyDoesNotCallHTTP(t *testing.T) {
 	op = cat.ByID("orders.delete")
 	op.Exposure = catalog.ExposureDiscovery
 	_, err = loop.Invoke(context.Background(), "orders.delete", map[string]string{"id": "1"}, "")
-	assert.ErrorContains(t, err, "discovery-only")
+	require.ErrorContains(t, err, "discovery-only")
 	assert.Equal(t, int32(0), hits.Load())
 }

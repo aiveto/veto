@@ -22,7 +22,7 @@ func TestOpenAIEmptyBaseURLUsesDefaultHost(t *testing.T) {
 
 func TestOpenAIRequiresKeyAndPack(t *testing.T) {
 	_, err := openai.New("", "", "")
-	assert.ErrorContains(t, err, "API key")
+	require.ErrorContains(t, err, "API key")
 	m, err := openai.New("http://127.0.0.1", "test-key", "")
 	require.NoError(t, err)
 	_, err = m.Complete(context.Background(), agent.Request{UserMessage: "delete order 123"})
@@ -64,5 +64,5 @@ func TestOpenAICoercesNumberAndObjectParams(t *testing.T) {
 	got, err := m.Complete(context.Background(), agent.Request{UserMessage: "create", Context: "index: orders.create"})
 	require.NoError(t, err)
 	assert.Equal(t, "123", got.Params["id"])
-	assert.Equal(t, `{"name":"kit"}`, got.Params["body"])
+	assert.JSONEq(t, `{"name":"kit"}`, got.Params["body"])
 }

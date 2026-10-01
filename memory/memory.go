@@ -2,7 +2,7 @@ package memory
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"slices"
 	"strings"
 	"sync"
@@ -10,9 +10,9 @@ import (
 
 type (
 	Item struct {
-		ID      string
-		Content string
-		Tags    []string
+		ID      string   `json:"ID"`
+		Content string   `json:"Content"`
+		Tags    []string `json:"Tags"`
 	}
 
 	LocalMap struct {
@@ -31,7 +31,7 @@ func (m *LocalMap) Store(ctx context.Context, item Item) error {
 		return err
 	}
 	if item.ID == "" {
-		return fmt.Errorf("memory item id required")
+		return errors.New("memory item id required")
 	}
 	m.mu.Lock()
 	if _, ok := m.items[item.ID]; !ok {

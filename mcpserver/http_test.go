@@ -102,13 +102,13 @@ func TestHTTPTwoCallersDoNotShareApprovalsOrTokens(t *testing.T) {
 	grace := dialMCP(t, endpoint, graceRT)
 	listed, err := ada.ListTools(context.Background(), nil)
 	require.NoError(t, err)
-	var names []string
+	names := make([]string, 0, len(listed.Tools))
 	for _, tool := range listed.Tools {
 		names = append(names, tool.Name)
 	}
 	assert.ElementsMatch(t, []string{"capabilities_search", "capabilities_describe", "capabilities_invoke"}, names)
 
-	previewText := callTool(t, ada, "capabilities_invoke", map[string]any{
+	previewText := callTool(t, ada, map[string]any{
 		"operation_id": "orders.delete",
 		"params":       map[string]any{"id": "123"},
 		"preview":      true,
@@ -117,7 +117,7 @@ func TestHTTPTwoCallersDoNotShareApprovalsOrTokens(t *testing.T) {
 	assert.NotContains(t, previewText, adaSecret)
 	assert.Equal(t, int32(0), hits.Load())
 
-	pendingText := callTool(t, ada, "capabilities_invoke", map[string]any{
+	pendingText := callTool(t, ada, map[string]any{
 		"operation_id": "orders.delete",
 		"params":       map[string]any{"id": "123"},
 	})
@@ -126,7 +126,7 @@ func TestHTTPTwoCallersDoNotShareApprovalsOrTokens(t *testing.T) {
 	assert.NotEmpty(t, pending.ApprovalID)
 	assert.Equal(t, int32(0), hits.Load())
 
-	again := callTool(t, ada, "capabilities_invoke", map[string]any{
+	again := callTool(t, ada, map[string]any{
 		"operation_id": "orders.delete",
 		"params":       map[string]any{"id": "123"},
 		"approval_id":  pending.ApprovalID,
@@ -134,7 +134,7 @@ func TestHTTPTwoCallersDoNotShareApprovalsOrTokens(t *testing.T) {
 	assert.Contains(t, again, "invalid approval")
 	assert.Equal(t, int32(0), hits.Load())
 
-	stolen := callTool(t, grace, "capabilities_invoke", map[string]any{
+	stolen := callTool(t, grace, map[string]any{
 		"operation_id": "orders.delete",
 		"params":       map[string]any{"id": "123"},
 		"approval_id":  pending.ApprovalID,
@@ -144,7 +144,7 @@ func TestHTTPTwoCallersDoNotShareApprovalsOrTokens(t *testing.T) {
 	assert.NotContains(t, stolen, pending.ApprovalID)
 	assert.Equal(t, int32(0), hits.Load())
 
-	gracePending := decodeInvoke(t, callTool(t, grace, "capabilities_invoke", map[string]any{
+	gracePending := decodeInvoke(t, callTool(t, grace, map[string]any{
 		"operation_id": "orders.delete",
 		"params":       map[string]any{"id": "123"},
 	}))
@@ -155,7 +155,7 @@ func TestHTTPTwoCallersDoNotShareApprovalsOrTokens(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEqual(t, pending.ApprovalID, approved)
 	assert.True(t, strings.HasPrefix(approved, "v1."))
-	cross := callTool(t, grace, "capabilities_invoke", map[string]any{
+	cross := callTool(t, grace, map[string]any{
 		"operation_id": "orders.delete",
 		"params":       map[string]any{"id": "123"},
 		"approval_id":  approved,
@@ -167,7 +167,7 @@ func TestHTTPTwoCallersDoNotShareApprovalsOrTokens(t *testing.T) {
 	assert.NotContains(t, cross, adaSecret)
 	assert.Equal(t, int32(0), hits.Load())
 
-	adaGet := callTool(t, ada, "capabilities_invoke", map[string]any{
+	adaGet := callTool(t, ada, map[string]any{
 		"operation_id": "orders.get",
 		"params":       map[string]any{"id": "123"},
 		"token":        userAda,
@@ -175,7 +175,7 @@ func TestHTTPTwoCallersDoNotShareApprovalsOrTokens(t *testing.T) {
 	assert.Contains(t, adaGet, `"status":"ok"`)
 	assert.NotContains(t, adaGet, userAda)
 	assert.NotContains(t, adaGet, graceSecret)
-	graceGet := callTool(t, grace, "capabilities_invoke", map[string]any{
+	graceGet := callTool(t, grace, map[string]any{
 		"operation_id": "orders.get",
 		"params":       map[string]any{"id": "123"},
 		"token":        userGrace,
@@ -189,7 +189,7 @@ func TestHTTPTwoCallersDoNotShareApprovalsOrTokens(t *testing.T) {
 	mu.Unlock()
 	assert.Equal(t, []string{"Bearer " + userAda, "Bearer " + userGrace}, gotAuths)
 
-	ran := decodeInvoke(t, callTool(t, ada, "capabilities_invoke", map[string]any{
+	ran := decodeInvoke(t, callTool(t, ada, map[string]any{
 		"operation_id": "orders.delete",
 		"params":       map[string]any{"id": "123"},
 		"approval_id":  approved,
@@ -207,9 +207,11 @@ func TestHTTPTwoCallersDoNotShareApprovalsOrTokens(t *testing.T) {
 
 	for _, sp := range rec.Spans() {
 		blob := sp.Name
+		var blobSb210 strings.Builder
 		for k, v := range sp.Attrs {
-			blob += " " + k + "=" + v
+			blobSb210.WriteString(" " + k + "=" + v)
 		}
+		blob += blobSb210.String()
 		assert.NotContains(t, blob, adaSecret)
 		assert.NotContains(t, blob, graceSecret)
 		assert.NotContains(t, blob, userAda)
@@ -230,7 +232,7 @@ func TestIdentitiesReadNamedEnvVars(t *testing.T) {
 		{ID: "grace", Token: "secret-grace"},
 	}, got)
 	_, err = mcpserver.Identities(map[string]string{"ada": "MISSING_CALLER_TOKEN"}, os.Getenv)
-	assert.ErrorContains(t, err, "unset")
+	require.ErrorContains(t, err, "unset")
 	assert.NotContains(t, err.Error(), "secret-ada")
 }
 
@@ -269,10 +271,10 @@ func dialMCP(t *testing.T, endpoint string, rt http.RoundTripper) *mcp.ClientSes
 	return session
 }
 
-func callTool(t *testing.T, session *mcp.ClientSession, name string, args map[string]any) string {
+func callTool(t *testing.T, session *mcp.ClientSession, args map[string]any) string {
 	t.Helper()
 	res, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-		Name:      name,
+		Name:      "capabilities_invoke",
 		Arguments: args,
 	})
 	require.NoError(t, err)
@@ -314,7 +316,7 @@ func postMCP(t *testing.T, endpoint, body, caller string, session ...string) (in
 func loadSpec(t *testing.T, spec string) *catalog.Catalog {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "openapi.yaml")
-	require.NoError(t, os.WriteFile(path, []byte(spec), 0o644))
+	require.NoError(t, os.WriteFile(path, []byte(spec), 0o600))
 	cat, err := openapi.Load(context.Background(), path)
 	require.NoError(t, err)
 	return cat

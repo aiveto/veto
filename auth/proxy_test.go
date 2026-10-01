@@ -37,16 +37,16 @@ func TestRoundTripperWithoutProxyStillRuns(t *testing.T) {
 	var called bool
 	next := roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		called = true
-		return nil, errString("stopped")
+		return nil, stringError("stopped")
 	})
 	client := auth.WithEnvProxy(&http.Client{Transport: next})
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://127.0.0.1/orders", nil)
 	require.NoError(t, err)
 	resp, err := client.Transport.RoundTrip(req)
 	if resp != nil && resp.Body != nil {
-		assert.NoError(t, resp.Body.Close())
+		require.NoError(t, resp.Body.Close())
 	}
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.True(t, called)
 }
 
@@ -54,6 +54,6 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
-type errString string
+type stringError string
 
-func (e errString) Error() string { return string(e) }
+func (e stringError) Error() string { return string(e) }

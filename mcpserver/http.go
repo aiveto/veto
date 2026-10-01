@@ -65,7 +65,7 @@ func Handler(srv *Server, opt Options, ids []Identity) (http.Handler, error) {
 // names maps a caller id to an environment variable. The credential values are not returned in errors.
 func Identities(names map[string]string, getenv func(string) string) ([]Identity, error) {
 	if len(names) == 0 {
-		return nil, fmt.Errorf("caller credential required")
+		return nil, errors.New("caller credential required")
 	}
 	if getenv == nil {
 		getenv = func(string) string { return "" }
@@ -73,7 +73,7 @@ func Identities(names map[string]string, getenv func(string) string) ([]Identity
 	out := make([]Identity, 0, len(names))
 	for id, env := range names {
 		if id == "" || env == "" {
-			return nil, fmt.Errorf("caller credential required")
+			return nil, errors.New("caller credential required")
 		}
 		token := getenv(env)
 		if token == "" {
@@ -89,12 +89,12 @@ func Identities(names map[string]string, getenv func(string) string) ([]Identity
 
 func checkIdentities(ids []Identity) error {
 	if len(ids) == 0 {
-		return fmt.Errorf("caller credential required")
+		return errors.New("caller credential required")
 	}
 	seen := map[string]string{}
 	for _, id := range ids {
 		if id.ID == "" || id.Token == "" {
-			return fmt.Errorf("caller credential required")
+			return errors.New("caller credential required")
 		}
 		if other, ok := seen[id.Token]; ok {
 			return fmt.Errorf("caller %s uses the same credential as %s", id.ID, other)

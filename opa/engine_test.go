@@ -31,7 +31,7 @@ reason := "refund over limit" if {
 
 func TestRefundLimitKeepsBuiltinUnderTheLimit(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "refund.rego")
-	require.NoError(t, os.WriteFile(path, []byte(refundRego), 0o644))
+	require.NoError(t, os.WriteFile(path, []byte(refundRego), 0o600))
 	eng, err := New(context.Background(), path, "", policy.Builtin{Allow: map[string]bool{"pay.refund": true}})
 	require.NoError(t, err)
 	eng.Principal = "ada"
@@ -127,7 +127,7 @@ decision := "deny" if {
 
 func TestInputUsesCallFacts(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "facts.rego")
-	require.NoError(t, os.WriteFile(path, []byte(factsRego), 0o644))
+	require.NoError(t, os.WriteFile(path, []byte(factsRego), 0o600))
 	eng, err := New(context.Background(), path, "", policy.Builtin{})
 	require.NoError(t, err)
 

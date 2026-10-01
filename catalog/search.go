@@ -9,8 +9,8 @@ const hitLimit = 8
 
 type (
 	Match struct {
-		Operation Operation
-		Related   []string
+		Operation Operation `json:"Operation"`
+		Related   []string  `json:"Related"`
 	}
 
 	scored struct {
@@ -56,10 +56,7 @@ func pageHits(cat *Catalog, hits []scored, offset, limit int) []Match {
 	if offset > len(hits) {
 		return nil
 	}
-	end := offset + limit
-	if end > len(hits) {
-		end = len(hits)
-	}
+	end := min(offset+limit, len(hits))
 	out := make([]Match, 0, end-offset)
 	for _, h := range hits[offset:end] {
 		out = append(out, hit(cat, h.op))
@@ -89,7 +86,7 @@ func scoreOp(cat *Catalog, op Operation, q string, syns []string) int {
 	if usesSchema(cat, op.ID, q) || relationMatch(cat, op.ID, q) {
 		score += 40
 	}
-	for _, tok := range strings.Fields(q) {
+	for tok := range strings.FieldsSeq(q) {
 		if len(tok) < 3 {
 			continue
 		}

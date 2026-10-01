@@ -15,8 +15,9 @@ import (
 )
 
 func TestSearchCapsAndPrefersExactID(t *testing.T) {
-	ops := []catalog.Operation{{ID: "item.get", Name: "Get item", Description: "fetch one"}}
-	for i := 0; i < 20; i++ {
+	ops := make([]catalog.Operation, 0, 21)
+	ops = append(ops, catalog.Operation{ID: "item.get", Name: "Get item", Description: "fetch one"})
+	for i := range 20 {
 		ops = append(ops, catalog.Operation{
 			ID:          fmt.Sprintf("widget.%02d", i),
 			Description: "mentions item.get once",
@@ -54,8 +55,8 @@ func TestTagsAndPathNounAreSearchable(t *testing.T) {
 }
 
 func TestSearchPageReturnsTheNextWindow(t *testing.T) {
-	var ops []catalog.Operation
-	for i := 0; i < 10; i++ {
+	ops := make([]catalog.Operation, 0, 10)
+	for i := range 10 {
 		ops = append(ops, catalog.Operation{
 			ID:          fmt.Sprintf("item.%02d", i),
 			Description: "mentions item.get once",

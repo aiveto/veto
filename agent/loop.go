@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/flow"
@@ -87,7 +88,7 @@ type (
 
 func New(cat *catalog.Catalog, sem Notes, exec Executor) (*Loop, error) {
 	if cat == nil {
-		return nil, fmt.Errorf("catalog required")
+		return nil, errors.New("catalog required")
 	}
 	if sem == nil {
 		sem = semantics.NewDerived(cat)
@@ -189,7 +190,8 @@ func (l *Loop) Run(ctx context.Context, userText string) (Outcome, error) {
 	} else if call.Code != "" {
 		summary = fmt.Sprintf("%s code=%s retryable=%t", call.Status, call.Code, call.Retryable)
 	}
-	followTurns := append(turns, runctx.Turn{Role: "tool", Content: summary + " " + call.OperationID})
+	followTurns := slices.Clone(turns)
+	followTurns = append(followTurns, runctx.Turn{Role: "tool", Content: summary + " " + call.OperationID})
 	follow := l.Packs.Build(l.Catalog, followTurns, described, l.Semantics, pending)
 	text := summary
 	if l.Memory != nil {
@@ -270,7 +272,7 @@ func (l *Loop) runFlow(ctx context.Context, resp Response) (Call, error) {
 		return call.Status, call.Body, nil
 	}}
 	results, err := runner.Run(ctx, def, resp.Params)
-	if stopped, ok := errors.AsType[flow.Stopped](err); ok {
+	if stopped, ok := errors.AsType[flow.StoppedError](err); ok {
 		if paused.ApprovalID != "" && (stopped.Operation == "" || stopped.Operation == paused.OperationID) {
 			paused.Status = stopped.Status
 			return paused, nil

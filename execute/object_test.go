@@ -6,6 +6,7 @@ import (
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/execute"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCheckParamsRequiresAJSONObject(t *testing.T) {
@@ -16,11 +17,11 @@ func TestCheckParamsRequiresAJSONObject(t *testing.T) {
 		}},
 	}
 	err := execute.CheckParams(op, map[string]string{"body": "not-json"})
-	assert.ErrorContains(t, err, "JSON object")
+	require.ErrorContains(t, err, "JSON object")
 	err = execute.CheckParams(op, map[string]string{"body": "[1]"})
-	assert.ErrorContains(t, err, "JSON object")
+	require.ErrorContains(t, err, "JSON object")
 	err = execute.CheckParams(op, map[string]string{"body": `{"a":1}{"b":2}`})
-	assert.ErrorContains(t, err, "JSON object")
+	require.ErrorContains(t, err, "JSON object")
 	assert.NoError(t, execute.CheckParams(op, map[string]string{"body": `{"a":1}`}))
 }
 

@@ -152,7 +152,7 @@ func open(bundlePath string) (string, string, error) {
 		return abs, "", nil
 	}
 	if !isZip(bundlePath) {
-		return "", "", fmt.Errorf("bundle is a directory or a zip archive")
+		return "", "", errors.New("bundle is a directory or a zip archive")
 	}
 	dest, err := extractZip(bundlePath)
 	if err != nil {
@@ -197,7 +197,7 @@ func extractZip(src string) (dest string, err error) {
 		}
 	}()
 	if len(r.File) > 4096 {
-		return "", fmt.Errorf("bundle archive is too large")
+		return "", errors.New("bundle archive is too large")
 	}
 	dest, err = os.MkdirTemp("", "veto-bundle-")
 	if err != nil {
@@ -219,15 +219,15 @@ func extractZip(src string) (dest string, err error) {
 			continue
 		}
 		if f.FileInfo().IsDir() || strings.HasSuffix(f.Name, "/") {
-			if err := os.MkdirAll(target, 0o755); err != nil {
+			if err := os.MkdirAll(target, 0o750); err != nil {
 				return fail(err)
 			}
 			continue
 		}
 		if f.Mode()&os.ModeSymlink != 0 {
-			return fail(fmt.Errorf("bundle archive contains a symlink"))
+			return fail(errors.New("bundle archive contains a symlink"))
 		}
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(target), 0o750); err != nil {
 			return fail(err)
 		}
 		n, err := writeZipFile(f, target, total)
@@ -258,8 +258,10 @@ func zipTarget(dest, name string) (string, bool, error) {
 }
 
 func writeZipFile(f *zip.File, target string, total int64) (n int64, err error) {
-	if int64(f.UncompressedSize64) > maxBundleBytes || total+int64(f.UncompressedSize64) > maxBundleBytes {
-		return 0, fmt.Errorf("bundle archive is too large")
+	size := f.UncompressedSize64
+	limit := uint64(maxBundleBytes)
+	if total < 0 || size > limit || uint64(total) > limit-size {
+		return 0, errors.New("bundle archive is too large")
 	}
 	rc, err := f.Open()
 	if err != nil {
@@ -270,7 +272,7 @@ func writeZipFile(f *zip.File, target string, total int64) (n int64, err error) 
 			err = cerr
 		}
 	}()
-	out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		return 0, err
 	}
@@ -283,7 +285,7 @@ func writeZipFile(f *zip.File, target string, total int64) (n int64, err error) 
 		return 0, closeErr
 	}
 	if total+n > maxBundleBytes {
-		return 0, fmt.Errorf("bundle archive is too large")
+		return 0, errors.New("bundle archive is too large")
 	}
 	return n, nil
 }
@@ -312,7 +314,7 @@ func locate(root string) (string, error) {
 			return child, nil
 		}
 	}
-	return "", fmt.Errorf("bundle manifest not found")
+	return "", errors.New("bundle manifest not found")
 }
 
 func findManifest(root string) (string, error) {
@@ -323,7 +325,7 @@ func findManifest(root string) (string, error) {
 			return candidate, nil
 		}
 	}
-	return "", fmt.Errorf("bundle manifest not found")
+	return "", errors.New("bundle manifest not found")
 }
 
 type manifest struct {
@@ -361,7 +363,7 @@ func manifestFields(n *yaml.Node) error {
 		return nil
 	}
 	if n.Kind != yaml.MappingNode {
-		return fmt.Errorf("bundle manifest must be a mapping")
+		return errors.New("bundle manifest must be a mapping")
 	}
 	known := map[string]bool{"contracts": true, "relations_file": true, "cases": true}
 	for i := 0; i+1 < len(n.Content); i += 2 {
@@ -415,7 +417,7 @@ func confineOne(root, ref string) (string, error) {
 
 func confine(root, ref string) (string, error) {
 	if strings.TrimSpace(ref) == "" {
-		return "", fmt.Errorf("bundle path is empty")
+		return "", errors.New("bundle path is empty")
 	}
 	if filepath.IsAbs(ref) {
 		return "", fmt.Errorf("bundle path %q escapes the bundle", ref)
@@ -432,7 +434,7 @@ func confine(root, ref string) (string, error) {
 		rootAbs = resolved
 	}
 	cur := rootAbs
-	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+	for part := range strings.SplitSeq(rel, string(filepath.Separator)) {
 		if part == "" || part == "." {
 			continue
 		}
@@ -501,19 +503,32 @@ func inside(root, path string) bool {
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-func scanExtra(root, manifest string, contracts []string) error {
+func scanExtra(root, manifest string, contracts []string) (err error) {
 	skip := map[string]bool{manifest: true}
 	for _, name := range contracts {
 		skip[name] = true
 	}
-	return filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
+	fsys, err := os.OpenRoot(root)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if cerr := fsys.Close(); err == nil && cerr != nil {
+			err = cerr
+		}
+	}()
+	return filepath.WalkDir(root, func(p string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
 		}
 		if d.IsDir() || !isYAML(d.Name()) || skip[p] {
 			return nil
 		}
-		data, err := os.ReadFile(p)
+		rel, relErr := filepath.Rel(root, p)
+		if relErr != nil {
+			return relErr
+		}
+		data, err := fsys.ReadFile(filepath.ToSlash(rel))
 		if err != nil {
 			return err
 		}
@@ -586,7 +601,7 @@ func walkSecrets(n *yaml.Node) error {
 				return fmt.Errorf("bundle contains %s", name)
 			}
 			if _, ok := baseURLKeys[key]; ok {
-				return fmt.Errorf("bundle contains an environment base URL")
+				return errors.New("bundle contains an environment base URL")
 			}
 			if err := walkSecrets(n.Content[i+1]); err != nil {
 				return err
@@ -594,6 +609,8 @@ func walkSecrets(n *yaml.Node) error {
 		}
 	case yaml.AliasNode:
 		return walkSecrets(n.Alias)
+	case yaml.ScalarNode:
+		return nil
 	}
 	return nil
 }

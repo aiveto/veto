@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -96,27 +97,30 @@ type (
 )
 
 func main() {
-	defer func() {
-		if err := bundle.Release(); err != nil {
-			fmt.Fprintf(os.Stderr, "bundle: %v\n", err)
-		}
-	}()
 	root, err := newRoot()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "veto: %v\n", err)
-		os.Exit(1)
+		exitMain(1)
 	}
 	handled, err := jsonHelp(os.Stdout, root, os.Args[1:])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "help: %v\n", err)
-		os.Exit(1)
+		exitMain(1)
 	}
 	if handled {
-		return
+		exitMain(0)
 	}
 	if err := root.Execute(); err != nil {
-		os.Exit(1)
+		exitMain(1)
 	}
+	exitMain(0)
+}
+
+func exitMain(code int) {
+	if err := bundle.Release(); err != nil {
+		fmt.Fprintf(os.Stderr, "bundle: %v\n", err)
+	}
+	os.Exit(code)
 }
 
 func newRoot() (*cobra.Command, error) {
@@ -132,10 +136,7 @@ func newRoot() (*cobra.Command, error) {
 	if err != nil {
 		return nil, err
 	}
-	checkCmd, err := newCheckCommand()
-	if err != nil {
-		return nil, err
-	}
+	checkCmd := newCheckCommand()
 	root := &cobra.Command{
 		Use:          "veto",
 		SilenceUsage: true,
@@ -226,7 +227,7 @@ func runPreview(cmd previewCmd) {
 
 func paramArgs(pairs []string) (map[string]any, error) {
 	if len(pairs) == 0 {
-		return nil, nil
+		return map[string]any{}, nil
 	}
 	out := make(map[string]any, len(pairs))
 	for _, pair := range pairs {
@@ -389,7 +390,8 @@ func newReplayCommand() *cobra.Command {
 }
 
 func runValidate(cmd validateCmd) {
-	_, contracts, relations, agent, err := resolve(cmd.config, cmd.contract, cmd.relations, cmd.agent)
+	src, err := resolve(cmd.config, cmd.contract, cmd.relations, cmd.agent)
+	contracts, relations, agent := src.contracts, src.relations, src.agent
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "validate failed: %v\n", err)
 		os.Exit(1)
@@ -410,7 +412,8 @@ func runValidate(cmd validateCmd) {
 }
 
 func runGenerate(cmd generateCmd) {
-	_, contracts, relations, agent, err := resolve(cmd.config, cmd.contract, cmd.relations, cmd.agent)
+	src, err := resolve(cmd.config, cmd.contract, cmd.relations, cmd.agent)
+	contracts, relations, agent := src.contracts, src.relations, src.agent
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "generate: %v\n", err)
 		os.Exit(1)
@@ -450,14 +453,18 @@ func runServe(cmd serveCmd, c *cobra.Command) {
 		fmt.Fprintf(os.Stderr, "serve: %v\n", err)
 		os.Exit(1)
 	}
-	defer func() {
+	finish := func() {
 		if err := stop(context.Background()); err != nil {
 			fmt.Fprintf(os.Stderr, "serve: %v\n", err)
 		}
-	}()
+	}
+	fail := func() {
+		finish()
+		os.Exit(1)
+	}
 	if err := mcpserver.ValidatePins(loop.Catalog, cmd.pin); err != nil {
 		fmt.Fprintf(os.Stderr, "serve: %v\n", err)
-		os.Exit(1)
+		fail()
 	}
 	calls := loop.Runtime()
 	srv := &mcpserver.Server{
@@ -470,12 +477,12 @@ func runServe(cmd serveCmd, c *cobra.Command) {
 		ids, err := mcpserver.Identities(cfg.Callers, os.Getenv)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "serve: %v\n", err)
-			os.Exit(1)
+			fail()
 		}
 		handler, err := mcpserver.Handler(srv, opt, ids)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "serve: %v\n", err)
-			os.Exit(1)
+			fail()
 		}
 		addr := cmd.addr
 		if addr == "" {
@@ -485,21 +492,23 @@ func runServe(cmd serveCmd, c *cobra.Command) {
 		if !stdio {
 			if err := mcpserver.Serve(context.Background(), addr, handler); err != nil {
 				fmt.Fprintf(os.Stderr, "serve: %v\n", err)
-				os.Exit(1)
+				fail()
 			}
+			finish()
 			return
 		}
 		go func() {
 			if err := mcpserver.Serve(context.Background(), addr, handler); err != nil {
 				fmt.Fprintf(os.Stderr, "serve: %v\n", err)
-				os.Exit(1)
+				fail()
 			}
 		}()
 	}
 	if err := mcpserver.RunStdio(context.Background(), srv, opt); err != nil {
 		fmt.Fprintf(os.Stderr, "serve: %v\n", err)
-		os.Exit(1)
+		fail()
 	}
+	finish()
 }
 
 func runEval(cmd evalCmd) {
@@ -513,15 +522,17 @@ func runEval(cmd evalCmd) {
 		fmt.Fprintf(os.Stderr, "eval: %v\n", err)
 		os.Exit(1)
 	}
-	defer func() {
+	finish := func() {
 		if err := stop(context.Background()); err != nil {
 			fmt.Fprintf(os.Stderr, "eval: %v\n", err)
 		}
-	}()
+	}
 	if err := runCases(loop, cmd.cases); err != nil {
 		fmt.Fprintf(os.Stderr, "eval failed: %v\n", err)
+		finish()
 		os.Exit(1)
 	}
+	finish()
 }
 
 func runCases(loop *agent.Loop, paths []string) error {
@@ -589,15 +600,19 @@ func runReplay(cmd replayCmd) {
 		fmt.Fprintf(os.Stderr, "replay: %v\n", err)
 		os.Exit(1)
 	}
-	defer func() {
+	finish := func() {
 		if stopErr := rec.Stop(context.Background()); stopErr != nil {
 			fmt.Fprintf(os.Stderr, "replay: %v\n", stopErr)
 		}
-	}()
+	}
+	fail := func() {
+		finish()
+		os.Exit(1)
+	}
 	loop, cfg, err := buildLoop(cmd.contract, cmd.config, cmd.agent, cmd.relations, cmd.baseURL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "replay: %v\n", err)
-		os.Exit(1)
+		fail()
 	}
 	redact := cfg.Redact()
 	if cmd.keepSensitive {
@@ -611,14 +626,15 @@ func runReplay(cmd replayCmd) {
 	}
 	if _, err := loop.Run(context.Background(), cmd.message); err != nil {
 		fmt.Fprintf(os.Stderr, "replay: %v\n", err)
-		os.Exit(1)
+		fail()
 	}
 	text, err := finishReplay(rec.Spans(), redact, cfg.TraceFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "replay: %v\n", err)
-		os.Exit(1)
+		fail()
 	}
 	fmt.Print(text)
+	finish()
 }
 
 func finishReplay(spans []telemetry.Span, redact bool, traceFile string) (string, error) {
@@ -727,7 +743,7 @@ func applyAgent(cat *catalog.Catalog, path string) error {
 
 func loadCatalog(contracts []string, relationsPath string) (*catalog.Catalog, error) {
 	if len(contracts) == 0 {
-		return nil, fmt.Errorf("contract required")
+		return nil, errors.New("contract required")
 	}
 	parts := make([]*catalog.Catalog, 0, len(contracts))
 	for _, path := range contracts {
@@ -758,17 +774,24 @@ func loadCatalog(contracts []string, relationsPath string) (*catalog.Catalog, er
 	return cat, nil
 }
 
-func resolve(configPath string, contracts []string, relations, agent string) (config.File, []string, string, string, error) {
+type sources struct {
+	cfg       config.File
+	contracts []string
+	relations string
+	agent     string
+}
+
+func resolve(configPath string, contracts []string, relations, agent string) (sources, error) {
 	return resolveBundle(configPath, "", contracts, relations, agent)
 }
 
-func resolveBundle(configPath, bundlePath string, contracts []string, relations, agent string) (config.File, []string, string, string, error) {
+func resolveBundle(configPath, bundlePath string, contracts []string, relations, agent string) (sources, error) {
 	cfg := config.Defaults()
 	loadedConfig := false
 	if configPath != "" {
 		loaded, err := config.Load(configPath)
 		if err != nil {
-			return config.File{}, nil, "", "", err
+			return sources{}, err
 		}
 		cfg = loaded
 		loadedConfig = true
@@ -779,7 +802,7 @@ func resolveBundle(configPath, bundlePath string, contracts []string, relations,
 	if bundlePath != "" {
 		shared, err := bundle.Load(bundlePath)
 		if err != nil {
-			return config.File{}, nil, "", "", err
+			return sources{}, err
 		}
 		if loadedConfig {
 			cfg = overlayBundle(cfg, shared.Config)
@@ -796,7 +819,7 @@ func resolveBundle(configPath, bundlePath string, contracts []string, relations,
 	if agent == "" {
 		agent = cfg.AgentFile
 	}
-	return cfg, contracts, relations, agent, nil
+	return sources{cfg: cfg, contracts: contracts, relations: relations, agent: agent}, nil
 }
 
 func overlayBundle(deploy, shared config.File) config.File {
@@ -834,10 +857,14 @@ func buildLoop(contracts []string, configPath, agentPath, relationsPath, baseURL
 }
 
 func buildLoopBundle(contracts []string, configPath, bundlePath, agentPath, relationsPath, baseURL string) (*agent.Loop, config.File, error) {
-	cfg, contracts, relationsPath, agentPath, err := resolveBundle(configPath, bundlePath, contracts, relationsPath, agentPath)
+	src, err := resolveBundle(configPath, bundlePath, contracts, relationsPath, agentPath)
 	if err != nil {
 		return nil, config.File{}, err
 	}
+	cfg := src.cfg
+	contracts = src.contracts
+	relationsPath = src.relations
+	agentPath = src.agent
 	cat, err := loadCatalog(contracts, relationsPath)
 	if err != nil {
 		return nil, config.File{}, err

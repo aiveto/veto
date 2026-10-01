@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -18,7 +19,7 @@ type Log struct {
 
 func NewLog(path string) (*Log, error) {
 	if path == "" {
-		return nil, fmt.Errorf("memory file required")
+		return nil, errors.New("memory file required")
 	}
 	l := &Log{path: path, inner: NewLocalMap()}
 	f, err := os.Open(path)

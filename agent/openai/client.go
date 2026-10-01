@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -42,7 +43,7 @@ type (
 // An empty base URL uses the OpenAI API.
 func New(baseURL, apiKey, name string) (*Client, error) {
 	if strings.TrimSpace(apiKey) == "" {
-		return nil, fmt.Errorf("openai model requires an API key")
+		return nil, errors.New("openai model requires an API key")
 	}
 	if baseURL == "" {
 		baseURL = "https://api.openai.com/v1"
@@ -57,7 +58,7 @@ func (c *Client) Complete(ctx context.Context, req agent.Request) (agent.Respons
 	span := telemetry.StartSpan(ctx, "model.request")
 	defer span.End()
 	if strings.TrimSpace(req.Context) == "" {
-		return agent.Response{}, fmt.Errorf("openai model requires a context pack")
+		return agent.Response{}, errors.New("openai model requires a context pack")
 	}
 	if c.HTTP == nil {
 		c.HTTP = http.DefaultClient
@@ -97,7 +98,7 @@ func (c *Client) Complete(ctx context.Context, req agent.Request) (agent.Respons
 		return agent.Response{}, fmt.Errorf("parse model response: %w", err)
 	}
 	if len(parsed.Choices) == 0 {
-		return agent.Response{}, fmt.Errorf("model returned no choices")
+		return agent.Response{}, errors.New("model returned no choices")
 	}
 	out, err := parseReply(parsed.Choices[0].Message.Content)
 	if err != nil {

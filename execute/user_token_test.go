@@ -172,7 +172,7 @@ func TestMissingUserTokenSkipsUpstream(t *testing.T) {
 		}}, Dir: dir, HTTP: idp.Client()}),
 	}).InvokeHTTPResult(context.Background(), loadSpec(t, approvalsSpec).ByID("approvals.list"), nil)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "user token is unset")
+	require.ErrorContains(t, err, "user token is unset")
 	assert.NotContains(t, err.Error(), "app-token")
 	assert.Equal(t, int32(0), tokenHits.Load())
 	assert.Equal(t, int32(0), upstreamHits.Load())
@@ -227,7 +227,7 @@ func TestContractUserHeaderAndWorkforceStayApart(t *testing.T) {
 			}}, Dir: t.TempDir(), HTTP: tokenSrv.Client()}),
 		}).InvokeHTTPResult(context.Background(), loadSpec(t, bearerSpec).ByID("orders.get"), map[string]string{"id": "1"})
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "user token is unset")
+		require.ErrorContains(t, err, "user token is unset")
 		assert.NotContains(t, err.Error(), "super-secret")
 		assert.Equal(t, int32(0), tokenHits.Load())
 		assert.Equal(t, int32(0), upstreamHits.Load())
@@ -309,7 +309,7 @@ func jwtSubject(tok string) string {
 func splitDot(s string) []string {
 	var out []string
 	start := 0
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		if s[i] == '.' {
 			out = append(out, s[start:i])
 			start = i + 1

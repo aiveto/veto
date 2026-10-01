@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -50,16 +51,16 @@ func Login(ctx context.Context, opt LoginOptions) error {
 		return err
 	}
 	if scheme.ClientID == "" {
-		return fmt.Errorf("client id is unset")
+		return errors.New("client id is unset")
 	}
 	if scheme.TokenURL == "" {
-		return fmt.Errorf("token url is unset")
+		return errors.New("token url is unset")
 	}
 	if opt.Device {
 		return deviceLogin(ctx, opt, scheme)
 	}
 	if scheme.AuthorizationURL == "" {
-		return fmt.Errorf("authorization url is unset")
+		return errors.New("authorization url is unset")
 	}
 	return codeLogin(ctx, opt, scheme)
 }
@@ -93,7 +94,7 @@ func OpenBrowser(ctx context.Context, raw string) error {
 // SetToken stores a token the operator already holds. The file mode is 0600.
 func SetToken(dir, scheme, token string) error {
 	if strings.TrimSpace(token) == "" {
-		return fmt.Errorf("token is empty")
+		return errors.New("token is empty")
 	}
 	if dir == "" {
 		dir = DefaultTokenDir()
@@ -130,12 +131,12 @@ func codeLogin(ctx context.Context, opt LoginOptions, scheme Scheme) error {
 	if err != nil {
 		return err
 	}
-	ctx, cap := withOAuthClient(ctx, opt.HTTP)
+	ctx, captured := withOAuthClient(ctx, opt.HTTP)
 	tok, err := cfg.Exchange(ctx, code, oauth2.VerifierOption(verifier))
 	if err != nil {
 		return fmt.Errorf("token endpoint: %s", Redact(err.Error(), []string{secret, code, verifier}, nil))
 	}
-	parsed, err := capturedToken(tok, cap.take())
+	parsed, err := capturedToken(tok, captured.take())
 	if err != nil {
 		return err
 	}
@@ -144,11 +145,11 @@ func codeLogin(ctx context.Context, opt LoginOptions, scheme Scheme) error {
 
 func deviceLogin(ctx context.Context, opt LoginOptions, scheme Scheme) error {
 	if scheme.DeviceAuthorizationURL == "" {
-		return fmt.Errorf("device authorization endpoint is unset")
+		return errors.New("device authorization endpoint is unset")
 	}
 	secret := secretFromEnv(scheme.ClientSecretEnv)
 	cfg := oauthConfig(scheme, "", secret)
-	ctx, cap := withOAuthClient(ctx, opt.HTTP)
+	ctx, captured := withOAuthClient(ctx, opt.HTTP)
 	var opts []oauth2.AuthCodeOption
 	if secret != "" {
 		opts = append(opts, oauth2.SetAuthURLParam("client_secret", secret))
@@ -167,11 +168,11 @@ func deviceLogin(ctx context.Context, opt LoginOptions, scheme Scheme) error {
 	tok, err := cfg.DeviceAccessToken(ctx, dev)
 	if err != nil {
 		if ctx.Err() != nil {
-			return fmt.Errorf("login timed out")
+			return errors.New("login timed out")
 		}
 		return fmt.Errorf("token endpoint: %s", Redact(err.Error(), []string{secret, dev.DeviceCode}, nil))
 	}
-	parsed, err := capturedToken(tok, cap.take())
+	parsed, err := capturedToken(tok, captured.take())
 	if err != nil {
 		return err
 	}
@@ -185,7 +186,7 @@ func saveMinted(dir string, scheme Scheme, tok tokenResponse, requested []string
 	}
 	stored := absorb(storedToken{}, tok, scheme, scopes, expiryFrom(time.Now(), tok.ExpiresIn), scheme.TokenURL, scheme.ClientID)
 	if stored.RefreshToken == "" && stored.AccessToken == "" {
-		return fmt.Errorf("token endpoint rejected the request")
+		return errors.New("token endpoint rejected the request")
 	}
 	return writeToken(dir, scheme.Name, stored)
 }
@@ -210,7 +211,7 @@ func waitForCode(ctx context.Context, redirect, state string, open func(listen s
 		if r.URL.Query().Get("state") != state {
 			http.Error(w, "state mismatch", http.StatusBadRequest)
 			select {
-			case failed <- fmt.Errorf("login state mismatch"):
+			case failed <- errors.New("login state mismatch"):
 			default:
 			}
 			return
@@ -218,7 +219,7 @@ func waitForCode(ctx context.Context, redirect, state string, open func(listen s
 		if r.URL.Query().Get("error") != "" {
 			http.Error(w, "login failed", http.StatusBadRequest)
 			select {
-			case failed <- fmt.Errorf("login was denied"):
+			case failed <- errors.New("login was denied"):
 			default:
 			}
 			return
@@ -227,7 +228,7 @@ func waitForCode(ctx context.Context, redirect, state string, open func(listen s
 		if code == "" {
 			http.Error(w, "missing code", http.StatusBadRequest)
 			select {
-			case failed <- fmt.Errorf("login returned no code"):
+			case failed <- errors.New("login returned no code"):
 			default:
 			}
 			return
@@ -254,7 +255,7 @@ func waitForCode(ctx context.Context, redirect, state string, open func(listen s
 	}
 	select {
 	case <-ctx.Done():
-		return "", fmt.Errorf("login timed out")
+		return "", errors.New("login timed out")
 	case err := <-failed:
 		return "", err
 	case code := <-got:

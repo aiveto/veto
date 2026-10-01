@@ -38,8 +38,9 @@ func TestMissingParamStaysStructuredOnTheToolResult(t *testing.T) {
 				return
 			}
 			require.NotEmpty(t, tool.Content)
-			text := tool.Content[0].(*mcp.TextContent).Text
-			assert.Contains(t, text, tc.text)
+			text, ok := tool.Content[0].(*mcp.TextContent)
+			require.True(t, ok)
+			assert.Contains(t, text.Text, tc.text)
 		})
 	}
 }
@@ -52,15 +53,17 @@ func TestInvokeErrorReturnsTheSanitizedCause(t *testing.T) {
 	require.NotNil(t, tool)
 	assert.True(t, tool.IsError)
 	require.NotEmpty(t, tool.Content)
-	text := tool.Content[0].(*mcp.TextContent).Text
-	assert.Contains(t, text, "connection refused")
-	assert.Contains(t, text, `"error"`)
-	assert.NotContains(t, text, secret)
+	text, ok := tool.Content[0].(*mcp.TextContent)
+	require.True(t, ok)
+	assert.Contains(t, text.Text, "connection refused")
+	assert.Contains(t, text.Text, `"error"`)
+	assert.NotContains(t, text.Text, secret)
 
 	stored, _, err := invokeToolResult(InvokeResult{Status: "error", Error: "api_key=" + secret}, nil)
 	require.NoError(t, err)
 	require.NotEmpty(t, stored.Content)
-	storedText := stored.Content[0].(*mcp.TextContent).Text
-	assert.Contains(t, storedText, "api_key=REDACTED")
-	assert.NotContains(t, storedText, secret)
+	storedText, ok := stored.Content[0].(*mcp.TextContent)
+	require.True(t, ok)
+	assert.Contains(t, storedText.Text, "api_key=REDACTED")
+	assert.NotContains(t, storedText.Text, secret)
 }

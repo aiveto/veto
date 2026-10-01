@@ -35,25 +35,25 @@ paths:
       responses:
         "200": {description: ok}
 `
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "api.yaml"), []byte(spec), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "api.yaml"), []byte(spec), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "agent.yaml"), []byte(`operations:
   - operation: orders.get
     permissions: [orders.read]
-`), 0o644))
+`), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.rego"), []byte(`package veto
 
 import rego.v1
 
 default decision := "confirmation"
 default reason := ""
-`), 0o644))
+`), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "veto.yaml"), []byte(`policy: opa
 policy_file: policy.rego
 permissions: []
 agent_file: agent.yaml
 contracts:
   - api.yaml
-`), 0o644))
+`), 0o600))
 
 	loop, _, err := buildLoop(nil, filepath.Join(dir, "veto.yaml"), "", "", "")
 	require.NoError(t, err)

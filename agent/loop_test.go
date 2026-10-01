@@ -2,7 +2,7 @@ package agent_test
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -83,7 +83,7 @@ type capture struct{ saw string }
 
 func (c *capture) Complete(ctx context.Context, req agent.Request) (agent.Response, error) {
 	c.saw = req.Context
-	return agent.Response{}, fmt.Errorf("stop")
+	return agent.Response{}, errors.New("stop")
 }
 
 func TestRecentTurnsStayInThePack(t *testing.T) {
@@ -92,11 +92,11 @@ func TestRecentTurnsStayInThePack(t *testing.T) {
 	loop, err := agent.New(cat, nil, nil)
 	require.NoError(t, err)
 	require.NoError(t, loop.Memory.Store(context.Background(), memory.Item{ID: "old", Content: "earlier turn about widgets"}))
-	cap := &capture{}
-	loop.Model = cap
+	model := &capture{}
+	loop.Model = model
 	_, err = loop.Run(context.Background(), "brand new question")
-	assert.Error(t, err)
-	assert.Contains(t, cap.saw, "earlier turn about widgets")
+	require.Error(t, err)
+	assert.Contains(t, model.saw, "earlier turn about widgets")
 }
 
 func TestLoopShowsStableHTTPCode(t *testing.T) {
@@ -241,7 +241,7 @@ func TestAgentCannotApproveItsOwnCall(t *testing.T) {
 	assert.False(t, strings.HasPrefix(out.ApprovalID, "v1."))
 	assert.NotNil(t, first.State.Pending(out.ApprovalID))
 	_, err = first.Invoke(context.Background(), "orders.delete", map[string]string{"id": "123"}, out.ApprovalID)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, int32(0), hits.Load())
 	approver, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
 	require.NoError(t, err)
@@ -256,7 +256,7 @@ func TestAgentCannotApproveItsOwnCall(t *testing.T) {
 	assert.Equal(t, "ok", resumed.Status)
 	assert.Equal(t, int32(1), hits.Load())
 	_, err = first.Invoke(context.Background(), "orders.delete", map[string]string{"id": "123"}, approved)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, int32(1), hits.Load())
 }
 
@@ -346,6 +346,6 @@ func filepathRego(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "deny.rego")
 	body := []byte("package veto\n\nimport rego.v1\n\ndefault decision := \"allow\"\ndefault reason := \"\"\n\ndecision := \"deny\" if {\n\tinput.operation == \"orders.delete\"\n}\n")
-	require.NoError(t, os.WriteFile(path, body, 0o644))
+	require.NoError(t, os.WriteFile(path, body, 0o600))
 	return path
 }
