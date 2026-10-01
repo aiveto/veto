@@ -1,8 +1,8 @@
 # veto
 
-The model proposes. Veto decides. Your API executes.
+Veto turns existing OpenAPI services into three tools for an agent.
 
-Point veto at the OpenAPI you already have. The model gets three tools: search, describe, and invoke. Auth, approval, and relations are checked before the API sees the request. A delete waits until a person says yes. The model never receives the OpenAPI file.
+Search, describe, and invoke. Auth, approval, and relations are checked before the API sees the request. Replay and drift checks read the recorded decision.
 
 ```text
 API contracts
@@ -21,6 +21,8 @@ The API call
      ↓
 Trace and test
 ```
+
+The model proposes. Veto decides. Your API executes.
 
 ## Three tools
 
