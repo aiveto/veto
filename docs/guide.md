@@ -487,6 +487,8 @@ Approval nonces are local files. `VETO_APPROVAL_SECRET` signs the yes. `VETO_APP
 
 Token files are local. `token_dir` and `VETO_TOKEN_DIR` name that directory. They are not a remote session store.
 
+Invoke allows 16 calls in one second in this process, counted per caller. The next call stops before policy, a token URL, and upstream HTTP. That limit stays on.
+
 ```text
 agent host
     |  stdio MCP

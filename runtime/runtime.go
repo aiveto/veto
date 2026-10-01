@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/aiveto/veto/auth"
 	"github.com/aiveto/veto/catalog"
@@ -75,6 +76,7 @@ type (
 		State   *policy.State
 		Exec    Executor
 		Notify  policy.Notifier
+		now     func() time.Time
 	}
 )
 
@@ -84,6 +86,14 @@ func (rt Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 		ctx = context.Background()
 	}
 	caller := requestCaller(ctx, req)
+	if !allowInvoke(rt.State, caller, rt.clock()) {
+		return rt.record(ctx, Result{
+			Status:      "limited",
+			OperationID: req.Operation,
+			Code:        "invoke_limited",
+			Error:       "invoke limit",
+		}), nil
+	}
 	ctx = auth.WithCaller(ctx, caller)
 	op := rt.operation(req.Operation)
 	if op == nil {
@@ -234,6 +244,13 @@ func (rt Runtime) Preview(ctx context.Context, req Request) (Preview, error) {
 		out.Decision = string(decision)
 	}
 	return out, nil
+}
+
+func (rt Runtime) clock() time.Time {
+	if rt.now != nil {
+		return rt.now()
+	}
+	return time.Now()
 }
 
 func requestCaller(ctx context.Context, req Request) string {
