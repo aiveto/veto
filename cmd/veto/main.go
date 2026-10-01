@@ -711,8 +711,6 @@ func applyProviders(loop *agent.Loop, cfg config.File) error {
 			eng.Principal = cfg.Caller
 		}
 		loop.Policy = eng
-	case "spicedb":
-		return fmt.Errorf("policy provider %q is not in this slice", cfg.Policy)
 	default:
 		return fmt.Errorf("policy provider %q is not in this slice", cfg.Policy)
 	}

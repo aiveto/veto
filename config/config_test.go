@@ -37,9 +37,6 @@ func TestKnownProviderKeysLoad(t *testing.T) {
 		{name: "openai host", body: "model: openai\nmodel_base_url: http://127.0.0.1:9/v1\n", want: config.File{ModelBaseURL: "http://127.0.0.1:9/v1"}},
 		{name: "otlp and trace file", body: "trace_export: otlp\ntrace_file: trace.json\n", want: config.File{TraceExport: "otlp", TraceFile: "trace.json"}},
 		{name: "opa", body: "policy: opa\n", want: config.File{Policy: "opa"}},
-		{name: "spicedb", body: "policy: spicedb\n", want: config.File{Policy: "spicedb"}},
-		{name: "temporal", body: "execution: temporal\n", want: config.File{Execution: "temporal", Decision: "default"}},
-		{name: "jev", body: "decision: jev\n", want: config.File{Execution: "in-process", Decision: "jev"}},
 		{name: "memory file", body: "memory: file\nmemory_file: turns.log\n", want: config.File{Memory: "file", MemoryFile: "turns.log"}},
 	}
 	for _, tc := range cases {
@@ -105,6 +102,9 @@ func TestUnusableProviderKeysFail(t *testing.T) {
 	}{
 		{name: "memory file without a path", body: "memory: file\n", want: "memory_file"},
 		{name: "subagents", body: "subagents: on\n", want: "subagents"},
+		{name: "spicedb", body: "policy: spicedb\n", want: "not implemented"},
+		{name: "temporal", body: "execution: temporal\n", want: "not implemented"},
+		{name: "jev", body: "decision: jev\n", want: "not implemented"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
