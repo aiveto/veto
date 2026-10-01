@@ -692,8 +692,10 @@ func (p extraProvider) Resolve(ctx context.Context, in credentials.Request) (cre
 	}
 	if len(in.Scopes) == 0 {
 		in.Scopes = p.a.Scopes
-		if cfg, ok := p.r.schemes[p.a.Name]; ok && len(cfg.Scopes) > 0 {
-			in.Scopes = cfg.Scopes
+		if len(in.Scopes) == 0 {
+			if cfg, ok := p.r.schemes[p.a.Name]; ok {
+				in.Scopes = cfg.Scopes
+			}
 		}
 	}
 	if in.Audience == "" {
