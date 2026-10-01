@@ -94,4 +94,4 @@ Approvals and tokens are files on the machine that issued them. Two machines tha
 
 Your host owns the model. Your API still authenticates the caller and enforces its own authorization.
 
-[Setup guide](docs/guide.md) | [Current limits](docs/guide.md#limits) | [Apache-2.0](LICENSE)
+[Setup guide](docs/guide.md) | [Current limits](docs/guide.md#limits)
