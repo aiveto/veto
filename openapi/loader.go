@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/aiveto/veto/catalog"
@@ -51,25 +52,19 @@ func Load(ctx context.Context, path string) (*catalog.Catalog, error) {
 
 	var raw []rawLink
 	seenUse := map[string]bool{}
-	for path, item := range doc.Paths.Map() {
-		if item == nil {
-			continue
+	drafts := draftOperations(doc)
+	usedID := map[string]bool{}
+	for _, d := range drafts {
+		servers := operationServers(doc, d.item, d.op)
+		operation := mapOperation(d.method, d.path, d.group, servers, d.item, d.op)
+		operation.ID = takeID(operation.ID, usedID)
+		operation.Requirements = operationSecurity(doc, d.op)
+		if len(operation.Requirements) > 0 {
+			operation.Auth = operation.Requirements[0]
 		}
-		group := pathGroup(path)
-		for method, op := range item.Operations() {
-			if op == nil {
-				continue
-			}
-			operation := mapOperation(method, path, group, serverURL(doc), op)
-			operation.Servers = serverList(doc)
-			operation.Requirements = operationSecurity(doc, op)
-			if len(operation.Requirements) > 0 {
-				operation.Auth = operation.Requirements[0]
-			}
-			cat.Operations = append(cat.Operations, operation)
-			collectUses(operation.ID, op, &cat.Uses, seenUse)
-			raw = append(raw, collectLinks(operation.ID, op)...)
-		}
+		cat.Operations = append(cat.Operations, operation)
+		collectUses(operation.ID, d.item, d.op, &cat.Uses, seenUse)
+		raw = append(raw, collectLinks(operation.ID, d.op)...)
 	}
 	links, err := resolveLinks(doc, cat.Operations, raw)
 	if err != nil {
@@ -121,6 +116,54 @@ func nonEmpty(v any) bool {
 	}
 }
 
+type drafted struct {
+	method string
+	path   string
+	group  string
+	item   *openapi3.PathItem
+	op     *openapi3.Operation
+}
+
+func draftOperations(doc *openapi3.T) []drafted {
+	if doc == nil || doc.Paths == nil {
+		return nil
+	}
+	var out []drafted
+	for path, item := range doc.Paths.Map() {
+		if item == nil {
+			continue
+		}
+		group := pathGroup(path)
+		for method, op := range item.Operations() {
+			if op == nil {
+				continue
+			}
+			out = append(out, drafted{method: method, path: path, group: group, item: item, op: op})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].path != out[j].path {
+			return out[i].path < out[j].path
+		}
+		return out[i].method < out[j].method
+	})
+	return out
+}
+
+func takeID(id string, used map[string]bool) string {
+	if !used[id] {
+		used[id] = true
+		return id
+	}
+	for n := 2; ; n++ {
+		next := fmt.Sprintf("%s.%d", id, n)
+		if !used[next] {
+			used[next] = true
+			return next
+		}
+	}
+}
+
 func pathGroup(path string) string {
 	m := pathNoun.FindStringSubmatch(path)
 	if len(m) > 1 {
@@ -129,20 +172,30 @@ func pathGroup(path string) string {
 	return ""
 }
 
-func serverURL(doc *openapi3.T) string {
-	list := serverList(doc)
-	if len(list) == 0 {
-		return ""
-	}
-	return list[0].URL
-}
-
 func serverList(doc *openapi3.T) []catalog.Server {
 	if doc == nil {
 		return nil
 	}
+	return serversFrom(doc.Servers)
+}
+
+func operationServers(doc *openapi3.T, item *openapi3.PathItem, op *openapi3.Operation) []catalog.Server {
+	if op != nil && op.Servers != nil {
+		if list := serversFrom(*op.Servers); len(list) > 0 {
+			return list
+		}
+	}
+	if item != nil {
+		if list := serversFrom(item.Servers); len(list) > 0 {
+			return list
+		}
+	}
+	return serverList(doc)
+}
+
+func serversFrom(list openapi3.Servers) []catalog.Server {
 	var out []catalog.Server
-	for _, s := range doc.Servers {
+	for _, s := range list {
 		if s == nil || s.URL == "" {
 			continue
 		}
@@ -151,10 +204,37 @@ func serverList(doc *openapi3.T) []catalog.Server {
 	return out
 }
 
-func mapOperation(method, path, group, base string, op *openapi3.Operation) catalog.Operation {
+func fallbackID(method, path, group string) string {
+	method = strings.ToLower(method)
+	trimmed := strings.Trim(path, "/")
+	if trimmed == "" {
+		name := group
+		if name == "" {
+			name = "root"
+		}
+		return name + "." + method
+	}
+	var b strings.Builder
+	for i, part := range strings.Split(trimmed, "/") {
+		if i > 0 {
+			b.WriteByte('.')
+		}
+		if len(part) >= 2 && part[0] == '{' && part[len(part)-1] == '}' {
+			b.WriteString("by.")
+			b.WriteString(part[1 : len(part)-1])
+			continue
+		}
+		b.WriteString(part)
+	}
+	b.WriteByte('.')
+	b.WriteString(method)
+	return strings.ReplaceAll(b.String(), " ", ".")
+}
+
+func mapOperation(method, path, group string, servers []catalog.Server, item *openapi3.PathItem, op *openapi3.Operation) catalog.Operation {
 	id := op.OperationID
 	if id == "" {
-		id = fmt.Sprintf("%s.%s", group, strings.ToLower(method))
+		id = fallbackID(method, path, group)
 	}
 	id = strings.ReplaceAll(id, " ", ".")
 	name := op.Summary
@@ -167,24 +247,10 @@ func mapOperation(method, path, group, base string, op *openapi3.Operation) cata
 	}
 	kind := kindFromMethod(strings.ToUpper(method))
 	side, confirm := sideEffectFor(id, name, strings.ToUpper(method))
-
-	var params []catalog.Param
-	for _, p := range op.Parameters {
-		if p == nil || p.Value == nil {
-			continue
-		}
-		pv := p.Value
-		params = append(params, catalog.Param{
-			Name:        pv.Name,
-			In:          pv.In,
-			Required:    pv.Required,
-			Description: pv.Description,
-			Schema:      schemaJSON(pv.Schema),
-			Default:     schemaDefault(pv.Schema),
-		})
-	}
-	if body, ok := bodyParam(op); ok {
-		params = append(params, body)
+	params := mergeParams(item, op)
+	base := ""
+	if len(servers) > 0 {
+		base = servers[0].URL
 	}
 
 	respSummary := ""
@@ -207,8 +273,63 @@ func mapOperation(method, path, group, base string, op *openapi3.Operation) cata
 		SideEffect:           side,
 		RequiresConfirmation: confirm,
 		BaseURL:              base,
+		Servers:              servers,
 		Tags:                 append([]string(nil), op.Tags...),
 		ResponseFields:       responseFields(op),
+	}
+}
+
+func mergeParams(item *openapi3.PathItem, op *openapi3.Operation) []catalog.Param {
+	type key struct {
+		in   string
+		name string
+	}
+	var order []key
+	merged := map[key]*openapi3.Parameter{}
+	add := func(list openapi3.Parameters) {
+		for _, p := range list {
+			if p == nil || p.Value == nil || p.Value.Name == "" {
+				continue
+			}
+			k := key{in: p.Value.In, name: p.Value.Name}
+			if _, ok := merged[k]; !ok {
+				order = append(order, k)
+			}
+			merged[k] = p.Value
+		}
+	}
+	if item != nil {
+		add(item.Parameters)
+	}
+	if op != nil {
+		add(op.Parameters)
+	}
+	var out []catalog.Param
+	for _, k := range order {
+		out = append(out, mapParam(merged[k]))
+	}
+	if op != nil {
+		if body, ok := bodyParam(op); ok {
+			out = append(out, body)
+		}
+	}
+	return out
+}
+
+func mapParam(pv *openapi3.Parameter) catalog.Param {
+	style, explode := "", false
+	if sm, err := pv.SerializationMethod(); err == nil {
+		style, explode = sm.Style, sm.Explode
+	}
+	return catalog.Param{
+		Name:        pv.Name,
+		In:          pv.In,
+		Required:    pv.Required,
+		Description: pv.Description,
+		Schema:      schemaJSON(pv.Schema),
+		Default:     schemaDefault(pv.Schema),
+		Style:       style,
+		Explode:     explode,
 	}
 }
 
@@ -337,18 +458,25 @@ func resolveOperationRef(doc *openapi3.T, ops []catalog.Operation, ref string) (
 	return "", fmt.Errorf("operationRef %q does not resolve", ref)
 }
 
-func collectUses(opID string, op *openapi3.Operation, uses *[]catalog.SchemaUse, seen map[string]bool) {
+func collectUses(opID string, item *openapi3.PathItem, op *openapi3.Operation, uses *[]catalog.SchemaUse, seen map[string]bool) {
 	var names []string
 	visited := map[*openapi3.SchemaRef]bool{}
-	for _, p := range op.Parameters {
+	var params openapi3.Parameters
+	if item != nil {
+		params = append(params, item.Parameters...)
+	}
+	if op != nil {
+		params = append(params, op.Parameters...)
+	}
+	for _, p := range params {
 		if p != nil && p.Value != nil {
 			collectSchema(p.Value.Schema, &names, visited)
 		}
 	}
-	if op.RequestBody != nil && op.RequestBody.Value != nil {
+	if op != nil && op.RequestBody != nil && op.RequestBody.Value != nil {
 		collectContent(op.RequestBody.Value.Content, &names, visited)
 	}
-	if op.Responses != nil {
+	if op != nil && op.Responses != nil {
 		for _, ref := range op.Responses.Map() {
 			if ref != nil && ref.Value != nil {
 				collectContent(ref.Value.Content, &names, visited)

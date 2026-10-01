@@ -32,7 +32,7 @@ type (
 	invokeArgs struct {
 		OperationID string         `json:"operation_id" jsonschema:"operation id"`
 		Params      map[string]any `json:"params,omitempty" jsonschema:"parameters; strings, or a JSON object for body"`
-		ApprovalID  string         `json:"approval_id,omitempty" jsonschema:"approval id from confirmation"`
+		ApprovalID  string         `json:"approval_id,omitempty" jsonschema:"approved id from veto approve; a pending id does not run the call"`
 		Token       string         `json:"token,omitempty" jsonschema:"user token for this call when the scheme source is invoke"`
 	}
 )
@@ -76,7 +76,7 @@ func register(server *mcp.Server, srv *Server, opt Options) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "capabilities_invoke",
-		Description: "Invoke an operation through policy and HTTP. params values are strings. params.body may be a JSON object and is sent as the request body. confirmation_required includes approval_id. Send that id on the next invoke to resume. Without an approval secret the pending call stays in this process. With one, the id is a signed token. A consumed nonce is kept on this machine until the token expires.",
+		Description: "Invoke an operation through policy and HTTP. params values are strings. params.body may be a JSON object and is sent as the request body. confirmation_required includes a pending id. That id does not run the call. veto approve records the approval and prints the id a later invoke accepts once.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args invokeArgs) (*mcp.CallToolResult, any, error) {
 		return invokeCall(ctx, srv, args)
 	})

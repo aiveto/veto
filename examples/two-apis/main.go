@@ -227,7 +227,11 @@ func deleteOrder(ctx context.Context, loop *agent.Loop, orders *served) error {
 	if held.Status != "confirmation_required" || len(orders.hits) != before {
 		return fmt.Errorf("delete went out before yes")
 	}
-	sent, err := loop.Invoke(ctx, "orders.delete", map[string]string{"id": "123"}, held.ApprovalID)
+	approved, err := loop.State.Approve(held.ApprovalID)
+	if err != nil {
+		return err
+	}
+	sent, err := loop.Invoke(ctx, "orders.delete", map[string]string{"id": "123"}, approved)
 	if err != nil {
 		return err
 	}
