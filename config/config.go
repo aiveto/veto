@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aiveto/veto/internal/yamlfile"
 	"gopkg.in/yaml.v3"
 )
 
@@ -75,12 +76,23 @@ func Load(path string) (File, error) {
 		return File{}, fmt.Errorf("read config: %w", err)
 	}
 	cfg := Defaults()
+	if err := yamlfile.Prepare(data); err != nil {
+		return File{}, fmt.Errorf("parse config: %w", err)
+	}
 	if err := rejectUnknown(data); err != nil {
 		return File{}, fmt.Errorf("parse config: %w", err)
 	}
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
 	if err := dec.Decode(&cfg); err != nil && !errors.Is(err, io.EOF) {
+		return File{}, fmt.Errorf("parse config: %w", err)
+	}
+	var extra yaml.Node
+	err = dec.Decode(&extra)
+	if err == nil {
+		return File{}, fmt.Errorf("parse config: %w", errors.New("extra document"))
+	}
+	if !errors.Is(err, io.EOF) {
 		return File{}, fmt.Errorf("parse config: %w", err)
 	}
 	cfg.applyDefaults()

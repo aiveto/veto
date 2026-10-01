@@ -49,7 +49,32 @@ func moduleVersion() string {
 	if !ok {
 		return "v0.0.0"
 	}
-	v := info.Main.Version
+	return versionFrom(info)
+}
+
+const vetoModulePath = "github.com/aiveto/veto"
+
+// versionFrom uses the veto module's own version. A host program's version is not a veto release.
+func versionFrom(info *debug.BuildInfo) string {
+	if info == nil {
+		return "v0.0.0"
+	}
+	if info.Main.Path == vetoModulePath {
+		return releaseVersion(info.Main.Version)
+	}
+	for _, dep := range info.Deps {
+		if dep == nil || dep.Path != vetoModulePath {
+			continue
+		}
+		if dep.Replace != nil {
+			return releaseVersion(dep.Replace.Version)
+		}
+		return releaseVersion(dep.Version)
+	}
+	return "v0.0.0"
+}
+
+func releaseVersion(v string) string {
 	if len(v) < 2 || v[0] != 'v' || !strings.Contains(v, ".") || strings.Contains(v, "devel") {
 		return "v0.0.0"
 	}

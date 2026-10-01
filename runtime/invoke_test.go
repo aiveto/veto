@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/openapi"
 	"github.com/aiveto/veto/policy"
+	"github.com/aiveto/veto/result"
 	"github.com/aiveto/veto/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -153,6 +155,41 @@ func TestInvokeRejectsUnserializable(t *testing.T) {
 	assert.Equal(t, int32(0), hits.Load())
 }
 
+func TestConcurrentFirstInvokeSharesTheGate(t *testing.T) {
+	cat := &catalog.Catalog{Operations: []catalog.Operation{{
+		ID: "orders.get", Method: http.MethodGet, PathTemplate: "/orders/{id}",
+		Params: []catalog.Param{{Name: "id", In: "path", Required: true}},
+	}}}
+	cat.Finalize()
+	rt := &runtime.Runtime{Catalog: cat, State: policy.NewState(), Exec: allowExec{}}
+	const n = 32
+	var ready sync.WaitGroup
+	ready.Add(n)
+	start := make(chan struct{})
+	errCh := make(chan error, n)
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for range n {
+		go func() {
+			defer wg.Done()
+			ready.Done()
+			<-start
+			_, err := rt.Invoke(context.Background(), runtime.Request{
+				Operation: "orders.get",
+				Arguments: runtime.FromStrings(map[string]string{"id": "1"}),
+			})
+			errCh <- err
+		}()
+	}
+	ready.Wait()
+	close(start)
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		require.NoError(t, err)
+	}
+}
+
 func TestMissingParamSkipsHTTP(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
@@ -166,6 +203,12 @@ func TestMissingParamSkipsHTTP(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, "missing_param", out.Code)
 	assert.Equal(t, int32(0), hits.Load())
+}
+
+type allowExec struct{}
+
+func (allowExec) InvokeHTTPResult(context.Context, *catalog.Operation, map[string]string) (result.HTTPResult, error) {
+	return result.HTTPResult{Status: http.StatusOK, Body: "{}", Code: "ok"}, nil
 }
 
 type callerHook struct {

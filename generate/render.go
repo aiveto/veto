@@ -2,7 +2,6 @@ package generate
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"go/format"
 	"go/token"
@@ -299,8 +298,8 @@ type (
 )
 
 func Render(module string, cat *catalog.Catalog) (Files, error) {
-	if module == "" {
-		return Files{}, errors.New("module path required")
+	if err := validModule(module); err != nil {
+		return Files{}, err
 	}
 	views := views(cat)
 	sdk, err := render("sdk", sdkTmpl, map[string]any{"Ops": views})
@@ -322,13 +321,13 @@ func views(cat *catalog.Catalog) []opView {
 	ops := append([]catalog.Operation(nil), cat.Operations...)
 	sort.Slice(ops, func(i, j int) bool { return ops[i].ID < ops[j].ID })
 	usedCmd := map[string]int{}
-	usedGo := map[string]int{}
+	usedGo := map[string]int{"New": 1, "Calls": 1}
 	out := make([]opView, 0, len(ops))
 	for _, op := range ops {
 		goName := unique(usedGo, goName(op.ID))
 		cmd := unique(usedCmd, commandName(op.ID))
 		params := make([]paramView, 0, len(op.Params))
-		usedArg := map[string]int{"ctx": 1, "approvalID": 1, "c": 1}
+		usedArg := reservedArgs()
 		for _, p := range op.Params {
 			params = append(params, paramView{
 				Name:        p.Name,
@@ -367,6 +366,36 @@ func views(cat *catalog.Catalog) []opView {
 		})
 	}
 	return out
+}
+
+func reservedArgs() map[string]int {
+	names := []string{
+		"ctx", "approvalID", "c", "args", "fs", "helpJSON", "confirm",
+		"call", "err", "approved", "aerr", "enc", "os", "fmt", "json",
+		"flag", "context", "sdk", "runtime", "http", "catalog", "execute",
+		"policy", "client", "finish", "usage", "status", "httpStatus",
+	}
+	out := make(map[string]int, len(names))
+	for _, name := range names {
+		out[name] = 1
+	}
+	return out
+}
+
+func validModule(path string) error {
+	if strings.ContainsAny(path, " \t\r\n\"'`\\;") || strings.Contains(path, "..") {
+		return fmt.Errorf("module path %q is not valid", path)
+	}
+	first, rest, ok := strings.Cut(path, "/")
+	if !ok || first == "" || rest == "" || !strings.Contains(first, ".") {
+		return fmt.Errorf("module path %q is not valid", path)
+	}
+	for part := range strings.SplitSeq(path, "/") {
+		if part == "" || part == "." || part == ".." {
+			return fmt.Errorf("module path %q is not valid", path)
+		}
+	}
+	return nil
 }
 
 func unique(seen map[string]int, name string) string {

@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -67,6 +68,47 @@ func TestPageFollowStillWalksWhenFieldsAreSet(t *testing.T) {
 	assert.JSONEq(t, `[{"id":"1"},{"id":"2"}]`, got.Body)
 	assert.NotContains(t, got.Body, "name")
 	assert.NotContains(t, got.Body, "next")
+}
+
+func TestPageFollowDoesNotHideALaterFailure(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "spec.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(pageSpec), 0o600))
+	cat, err := openapi.Load(context.Background(), path)
+	require.NoError(t, err)
+	op := cat.ByID("orders.list")
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("cursor") == "b" {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":"down"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"items":[{"id":"1"}],"next":"b"}`))
+	}))
+	defer ts.Close()
+	_, err = execute.Client{BaseURL: ts.URL, FollowPages: 5}.InvokeHTTPResult(context.Background(), op, nil)
+	require.ErrorContains(t, err, "http 503")
+}
+
+func TestPageFollowStopsAtTheByteBudget(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "spec.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(pageSpec), 0o600))
+	cat, err := openapi.Load(context.Background(), path)
+	require.NoError(t, err)
+	op := cat.ByID("orders.list")
+	pad := strings.Repeat("x", 200)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("cursor") == "b" {
+			_, _ = w.Write([]byte(`{"items":[{"id":"` + pad + `b"}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"items":[{"id":"` + pad + `a"}],"next":"b"}`))
+	}))
+	defer ts.Close()
+	got, err := execute.Client{BaseURL: ts.URL, FollowPages: 5, MaxBody: 260}.InvokeHTTPResult(context.Background(), op, nil)
+	require.NoError(t, err)
+	assert.True(t, got.Truncated)
+	assert.Contains(t, got.Body, pad+"a")
+	assert.NotContains(t, got.Body, pad+"b")
 }
 
 const pageSpec = `openapi: 3.0.3

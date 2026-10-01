@@ -187,6 +187,22 @@ func TestLoadRejectsDuplicateFieldsAndAliasCycles(t *testing.T) {
 	require.ErrorContains(t, err, "alias cycle")
 }
 
+func TestLoadRejectsASecondDocument(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "veto.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("contracts: [orders.yaml]\n---\npolicy: opa\npolicy_file: rules.rego\n"), 0o600))
+	_, err := config.Load(path)
+	require.ErrorContains(t, err, "extra document")
+
+	require.NoError(t, os.WriteFile(path, []byte("contracts: [orders.yaml]\n---\n"), 0o600))
+	_, err = config.Load(path)
+	require.ErrorContains(t, err, "extra document")
+
+	require.NoError(t, os.WriteFile(path, []byte("contracts: [orders.yaml]\n---\n: [\n"), 0o600))
+	_, err = config.Load(path)
+	require.Error(t, err)
+}
+
 func TestLoadKeepsASharedAnchor(t *testing.T) {
 	body := "auth:\n  a: &login\n    source: login\n    client_id: veto\n    issuer: https://idp.example\n  b: *login\n"
 	path := filepath.Join(t.TempDir(), "veto.yaml")

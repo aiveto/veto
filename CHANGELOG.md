@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The first concurrent invoke on one runtime shares one limiter. A generated client does not race while creating it.
+- Generated names avoid the SDK field `Calls`, the CLI locals, and an invalid module path. The required veto version is veto's own module version, not the program that embedded it.
+- A second YAML document in `veto.yaml` or a bundle manifest is an error. Alias graphs are counted before they expand.
+- A later page that fails does not return the first page as a successful list. Collected pages stay inside the response byte limit.
 - `semantics.yaml` rejects an unknown field, a repeated field, a missing operation, a repeated operation, and an alias that loops. `veto.yaml` rejects a repeated field and an alias that loops.
 - Scripted replay reads the whole id in `delete order`, so `10abc` stays `10abc`.
 - Invoke allows 16 calls in one second in this process, counted per caller. The next call stops before policy, a token URL, and upstream HTTP. That limit stays on.
