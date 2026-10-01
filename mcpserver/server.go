@@ -68,6 +68,14 @@ func (s *Server) Invoke(ctx context.Context, operationID string, params map[stri
 	})
 }
 
+// Preview runs the shared runtime and stops before a token URL and upstream HTTP.
+func (s *Server) Preview(ctx context.Context, req runtime.Request) (runtime.Preview, error) {
+	if s == nil || s.Calls == nil {
+		return runtime.Preview{}, fmt.Errorf("runtime required")
+	}
+	return s.Calls.Preview(ctx, req)
+}
+
 // Call runs one typed invoke. It does not use the agent loop.
 func (s *Server) Call(ctx context.Context, req runtime.Request) (InvokeResult, error) {
 	if s == nil || s.Calls == nil {

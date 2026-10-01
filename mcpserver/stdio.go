@@ -36,6 +36,7 @@ type (
 		Params      map[string]any `json:"params,omitempty" jsonschema:"parameters; strings, or a JSON object for body"`
 		ApprovalID  string         `json:"approval_id,omitempty" jsonschema:"approved id from veto approve; a pending id does not run the call"`
 		Token       string         `json:"token,omitempty" jsonschema:"user token for this call when the scheme source is invoke"`
+		Preview     bool           `json:"preview,omitempty" jsonschema:"resolve, validate, and check policy, then stop before a token URL and upstream HTTP"`
 	}
 )
 
@@ -78,7 +79,7 @@ func register(server *mcp.Server, srv *Server, opt Options) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "capabilities_invoke",
-		Description: "Invoke an operation through policy and HTTP. params values are strings. params.body may be a JSON object and is sent as the request body. confirmation_required includes a pending id. That id does not run the call. veto approve records the approval and prints the id a later invoke accepts once.",
+		Description: "Invoke an operation through policy and HTTP. params values are strings. params.body may be a JSON object and is sent as the request body. confirmation_required includes a pending id. That id does not run the call. veto approve records the approval and prints the id a later invoke accepts once. preview stops before a token URL and before upstream HTTP.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args invokeArgs) (*mcp.CallToolResult, any, error) {
 		return invokeCall(ctx, srv, args)
 	})
@@ -118,6 +119,13 @@ func register(server *mcp.Server, srv *Server, opt Options) {
 }
 
 func invokeCall(ctx context.Context, srv *Server, args invokeArgs) (*mcp.CallToolResult, any, error) {
+	if args.Preview {
+		out, err := srv.Preview(ctx, runtime.Request{
+			Operation: args.OperationID,
+			Arguments: args.Params,
+		})
+		return previewToolResult(out, err)
+	}
 	ctx = auth.WithUserToken(ctx, args.Token)
 	res, err := srv.Call(ctx, runtime.Request{
 		Operation: args.OperationID,
@@ -125,6 +133,21 @@ func invokeCall(ctx context.Context, srv *Server, args invokeArgs) (*mcp.CallToo
 		Approval:  args.ApprovalID,
 	})
 	return invokeToolResult(res, err)
+}
+
+func previewToolResult(out runtime.Preview, callErr error) (*mcp.CallToolResult, any, error) {
+	if callErr != nil {
+		return toolError(callErr)
+	}
+	b, err := json.Marshal(out)
+	if err != nil {
+		return toolError(err)
+	}
+	result, _, err := textResult(string(b))
+	if result != nil {
+		result.IsError = len(out.Errors) > 0
+	}
+	return result, nil, err
 }
 
 func invokeToolResult(res InvokeResult, callErr error) (*mcp.CallToolResult, any, error) {

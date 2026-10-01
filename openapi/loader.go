@@ -57,7 +57,12 @@ func Load(ctx context.Context, path string) (*catalog.Catalog, error) {
 	for _, d := range drafts {
 		servers := operationServers(doc, d.item, d.op)
 		operation := mapOperation(d.method, d.path, d.group, servers, d.item, d.op)
-		operation.ID = takeID(operation.ID, usedID)
+		natural := operation.ID
+		id, collided := takeID(natural, usedID)
+		operation.ID = id
+		if collided {
+			operation.IDCollision = natural
+		}
 		operation.Requirements = operationSecurity(doc, d.op)
 		if len(operation.Requirements) > 0 {
 			operation.Auth = operation.Requirements[0]
@@ -150,16 +155,16 @@ func draftOperations(doc *openapi3.T) []drafted {
 	return out
 }
 
-func takeID(id string, used map[string]bool) string {
+func takeID(id string, used map[string]bool) (string, bool) {
 	if !used[id] {
 		used[id] = true
-		return id
+		return id, false
 	}
 	for n := 2; ; n++ {
 		next := fmt.Sprintf("%s.%d", id, n)
 		if !used[next] {
 			used[next] = true
-			return next
+			return next, true
 		}
 	}
 }
@@ -233,11 +238,14 @@ func fallbackID(method, path, group string) string {
 
 func mapOperation(method, path, group string, servers []catalog.Server, item *openapi3.PathItem, op *openapi3.Operation) catalog.Operation {
 	id := op.OperationID
-	if id == "" {
+	fallback := false
+	if strings.TrimSpace(id) == "" {
 		id = fallbackID(method, path, group)
+		fallback = true
 	}
 	id = strings.ReplaceAll(id, " ", ".")
-	name := op.Summary
+	summary := strings.TrimSpace(op.Summary)
+	name := summary
 	if name == "" {
 		name = id
 	}
@@ -263,6 +271,8 @@ func mapOperation(method, path, group string, servers []catalog.Server, item *op
 	return catalog.Operation{
 		ID:                   id,
 		Name:                 name,
+		Summary:              summary,
+		IDFallback:           fallback,
 		Description:          desc,
 		Group:                group,
 		Kind:                 kind,

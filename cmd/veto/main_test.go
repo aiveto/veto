@@ -10,13 +10,16 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/aiveto/veto/agent/openai"
 	"github.com/aiveto/veto/catalog"
+	"github.com/aiveto/veto/config"
 	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/memory"
 	"github.com/aiveto/veto/policy"
+	"github.com/aiveto/veto/runtime"
 	"github.com/aiveto/veto/telemetry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -54,7 +57,7 @@ func TestHelpJSONStaysOffTheHumanHelpPath(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, got)
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &doc))
-	for _, name := range []string{"serve", "eval", "replay", "validate", "generate", "pack", "doctor", "check", "init", "approve"} {
+	for _, name := range []string{"serve", "eval", "replay", "validate", "generate", "pack", "doctor", "check", "init", "approve", "preview"} {
 		assert.Contains(t, doc.Commands, name)
 	}
 }
@@ -290,9 +293,14 @@ contracts:
 	assert.Contains(t, report, "ORDER_TOKEN is unset")
 	assert.NotContains(t, report, "ping ")
 	t.Setenv("ORDER_TOKEN", "s3cret")
-	set := strings.Join(doctorBlockers(context.Background(), secured.Catalog, loaded, nil, false), "\n")
+	setLines, setFail := doctorReport(context.Background(), secured.Catalog, loaded, nil, false)
+	set := strings.Join(setLines, "\n")
 	assert.NotContains(t, set, "s3cret")
 	assert.NotContains(t, set, "unset")
+	assert.NotContains(t, set, "missing auth")
+	assert.Contains(t, set, "ping: empty summary")
+	assert.False(t, setFail)
+	assert.Contains(t, report, "ping: missing auth bearerAuth")
 
 	downSpec := filepath.Join(dir, "down.yaml")
 	down := strings.ReplaceAll(securedSpec, "http://example.test", "http://127.0.0.1:1")
@@ -305,6 +313,129 @@ contracts:
 	require.NoError(t, err)
 	blocked := doctorBlockers(context.Background(), downLoop.Catalog, downCfg, nil, true)
 	assert.Contains(t, strings.Join(blocked, "\n"), "ping ")
+}
+
+func TestDoctorReportsCallRisks(t *testing.T) {
+	risks := loadDoctorCatalog(t, doctorRiskSpec)
+	lines, fail := doctorReport(context.Background(), risks, config.File{}, nil, false)
+	report := strings.Join(lines, "\n")
+	assert.True(t, fail)
+	assert.Contains(t, report, "orders.get: fallback id")
+	assert.Contains(t, report, "colliding id orders.get")
+	assert.Contains(t, report, "search.find: parameter session cannot be serialized")
+	assert.Contains(t, report, "labels.get: parameter id cannot be serialized: style matrix")
+	assert.Contains(t, report, "ping: empty summary")
+	assert.Contains(t, report, "items.create: weak summary")
+	assert.Contains(t, report, "items.delete: write requires approval")
+	assert.Contains(t, report, "ping: missing auth bearerAuth")
+
+	notes := loadDoctorCatalog(t, doctorNoteSpec)
+	noteLines, noteFail := doctorReport(context.Background(), notes, config.File{}, nil, false)
+	noteReport := strings.Join(noteLines, "\n")
+	assert.False(t, noteFail)
+	assert.Contains(t, noteReport, "orders.get: fallback id")
+	assert.Contains(t, noteReport, "orders.get: weak summary")
+	assert.Contains(t, noteReport, "items.delete: write requires approval")
+	assert.NotContains(t, noteReport, "missing auth")
+	assert.NotContains(t, noteReport, "colliding id")
+	assert.NotContains(t, noteReport, "cannot be serialized")
+}
+
+func TestPreviewDoesNotCallUpstreamOrTokenURL(t *testing.T) {
+	var tokenHits, upstreamHits atomic.Int32
+	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tokenHits.Add(1)
+		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "preview-access-token", "expires_in": 3600})
+	}))
+	defer tokenSrv.Close()
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamHits.Add(1)
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer up.Close()
+
+	const secret = "preview-client-secret"
+	const querySecret = "query-secret"
+	const bodySecret = "body-secret"
+	t.Setenv("PREVIEW_SECRET", secret)
+	dir := t.TempDir()
+	spec := filepath.Join(dir, "api.yaml")
+	require.NoError(t, os.WriteFile(spec, []byte(strings.ReplaceAll(previewSpec, "http://upstream.example", up.URL)), 0o644))
+	conf := filepath.Join(dir, "veto.yaml")
+	text := fmt.Sprintf(`auth:
+  bearerAuth:
+    source: client_credentials
+    token_url: %s
+    client_id: job
+    client_secret_env: PREVIEW_SECRET
+contracts:
+  - %s
+`, tokenSrv.URL, spec)
+	require.NoError(t, os.WriteFile(conf, []byte(text), 0o644))
+	loop, _, err := buildLoop(nil, conf, "", "", "")
+	require.NoError(t, err)
+	rt := loop.Runtime()
+	args, err := paramArgs([]string{"body={\"name\":\"ada\",\"password\":\"" + bodySecret + "\"}", "token=" + querySecret})
+	require.NoError(t, err)
+	out, err := rt.Preview(context.Background(), runtime.Request{Operation: "orders.create", Arguments: args})
+	require.NoError(t, err)
+	assert.Empty(t, out.Errors)
+	assert.Equal(t, "allow", out.Decision)
+	assert.False(t, out.ApprovalRequired)
+	assert.Equal(t, "orders.create", out.OperationID)
+	assert.Equal(t, http.MethodPost, out.Request.Method)
+	assert.Contains(t, out.Request.URL, up.URL)
+	assert.NotContains(t, out.Request.URL, tokenSrv.URL)
+	raw, err := json.Marshal(out)
+	require.NoError(t, err)
+	textOut := string(raw)
+	assert.NotContains(t, textOut, secret)
+	assert.NotContains(t, textOut, querySecret)
+	assert.NotContains(t, textOut, bodySecret)
+	assert.NotContains(t, textOut, "preview-access-token")
+	assert.Contains(t, textOut, "ada")
+	assert.Contains(t, out.Request.Body, "REDACTED")
+	assert.Equal(t, int32(0), tokenHits.Load())
+	assert.Equal(t, int32(0), upstreamHits.Load())
+
+	deleted, err := rt.Preview(context.Background(), runtime.Request{
+		Operation: "orders.delete",
+		Arguments: runtime.FromStrings(map[string]string{"id": "123"}),
+	})
+	require.NoError(t, err)
+	assert.Empty(t, deleted.Errors)
+	assert.Equal(t, "confirmation_required", deleted.Decision)
+	assert.True(t, deleted.ApprovalRequired)
+	assert.Equal(t, int32(0), tokenHits.Load())
+	assert.Equal(t, int32(0), upstreamHits.Load())
+
+	missing, err := rt.Preview(context.Background(), runtime.Request{Operation: "orders.get"})
+	require.NoError(t, err)
+	assert.Contains(t, strings.Join(missing.Errors, "\n"), "id required")
+	assert.Equal(t, "orders.get", missing.OperationID)
+	assert.NotEmpty(t, missing.Decision)
+	assert.Equal(t, int32(0), tokenHits.Load())
+	assert.Equal(t, int32(0), upstreamHits.Load())
+
+	sent, err := rt.Invoke(context.Background(), runtime.Request{Operation: "orders.create", Arguments: args})
+	require.NoError(t, err)
+	assert.Equal(t, "ok", sent.Status)
+	assert.Greater(t, tokenHits.Load(), int32(0))
+	assert.Greater(t, upstreamHits.Load(), int32(0))
+}
+
+func loadDoctorCatalog(t *testing.T, body string) *catalog.Catalog {
+	t.Helper()
+	dir := t.TempDir()
+	spec := filepath.Join(dir, "api.yaml")
+	require.NoError(t, os.WriteFile(spec, []byte(body), 0o644))
+	conf := filepath.Join(dir, "veto.yaml")
+	require.NoError(t, os.WriteFile(conf, []byte(fmt.Sprintf(`contracts:
+  - %s
+`, spec)), 0o644))
+	loop, _, err := buildLoop(nil, conf, "", "", "")
+	require.NoError(t, err)
+	return loop.Catalog
 }
 
 const securedSpec = `openapi: 3.0.3
@@ -320,6 +451,178 @@ paths:
       responses:
         "204":
           description: ok
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+security:
+  - bearerAuth: []
+`
+
+const doctorRiskSpec = `openapi: 3.0.3
+info:
+  title: risks
+  version: "1"
+servers:
+  - url: http://example.test
+paths:
+  /orders:
+    get:
+      summary: List orders for the account
+      responses:
+        "204":
+          description: ok
+  /orders/{id}:
+    get:
+      operationId: orders.get
+      summary: Get one order by its id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: ok
+  /items:
+    post:
+      operationId: items.create
+      summary: Create
+      responses:
+        "201":
+          description: created
+  /items/{id}:
+    delete:
+      operationId: items.delete
+      summary: Delete one item by its id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: ok
+  /search:
+    get:
+      operationId: search.find
+      summary: Find items that match a query
+      parameters:
+        - name: session
+          in: cookie
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ok
+  /labels/{id}:
+    get:
+      operationId: labels.get
+      summary: Get one label by its id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          style: matrix
+          schema:
+            type: string
+      responses:
+        "204":
+          description: ok
+  /ping:
+    get:
+      operationId: ping
+      responses:
+        "204":
+          description: ok
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+security:
+  - bearerAuth: []
+`
+
+const doctorNoteSpec = `openapi: 3.0.3
+info:
+  title: notes
+  version: "1"
+paths:
+  /orders:
+    get:
+      summary: List
+      responses:
+        "204":
+          description: ok
+  /items/{id}:
+    delete:
+      operationId: items.delete
+      summary: Delete one item by its id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+`
+
+const previewSpec = `openapi: 3.0.3
+info:
+  title: preview
+  version: "1"
+servers:
+  - url: http://upstream.example
+paths:
+  /orders:
+    post:
+      operationId: orders.create
+      summary: Create one order for a customer
+      parameters:
+        - name: token
+          in: query
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "201":
+          description: created
+  /orders/{id}:
+    get:
+      operationId: orders.get
+      summary: Get one order by its id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ok
+    delete:
+      operationId: orders.delete
+      summary: Delete one order by its id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: deleted
 components:
   securitySchemes:
     bearerAuth:
