@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -16,6 +17,7 @@ import (
 	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/flow"
 	"github.com/aiveto/veto/memory"
+	"github.com/aiveto/veto/opa"
 	"github.com/aiveto/veto/openapi"
 	"github.com/aiveto/veto/policy"
 	"github.com/aiveto/veto/runctx"
@@ -175,7 +177,7 @@ func TestLoopRunsNamedFlow(t *testing.T) {
 	assert.Equal(t, int32(2), hits.Load())
 }
 
-func TestSignedApprovalResumesOnAnotherLoop(t *testing.T) {
+func TestAgentCannotApproveItsOwnCall(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
 	var hits atomic.Int32
@@ -194,22 +196,115 @@ func TestSignedApprovalResumesOnAnotherLoop(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "confirmation_required", out.Status)
 	assert.Equal(t, "confirm orders.delete id=123", out.Text)
-	assert.True(t, strings.HasPrefix(out.ApprovalID, "v1."))
-	assert.Nil(t, first.State.Pending(out.ApprovalID))
+	assert.NotEmpty(t, out.ApprovalID)
+	assert.False(t, strings.HasPrefix(out.ApprovalID, "v1."))
+	assert.NotNil(t, first.State.Pending(out.ApprovalID))
+	_, err = first.Invoke(context.Background(), "orders.delete", map[string]string{"id": "123"}, out.ApprovalID)
+	assert.Error(t, err)
 	assert.Equal(t, int32(0), hits.Load())
-	second, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
+	approver, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
 	require.NoError(t, err)
-	second.State.SetNonceDir(dir)
-	require.NoError(t, second.State.SetSigner(secret, time.Hour))
-	resumed, err := second.Invoke(context.Background(), "orders.delete", map[string]string{"id": "123"}, out.ApprovalID)
+	approver.State.SetNonceDir(dir)
+	require.NoError(t, approver.State.SetSigner(secret, time.Hour))
+	approved, err := approver.State.Approve(out.ApprovalID)
+	require.NoError(t, err)
+	assert.NotEqual(t, out.ApprovalID, approved)
+	assert.True(t, strings.HasPrefix(approved, "v1."))
+	resumed, err := first.Invoke(context.Background(), "orders.delete", map[string]string{"id": "123"}, approved)
 	require.NoError(t, err)
 	assert.Equal(t, "ok", resumed.Status)
 	assert.Equal(t, int32(1), hits.Load())
-	third, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
-	require.NoError(t, err)
-	third.State.SetNonceDir(dir)
-	require.NoError(t, third.State.SetSigner(secret, time.Hour))
-	_, err = third.Invoke(context.Background(), "orders.delete", map[string]string{"id": "123"}, out.ApprovalID)
+	_, err = first.Invoke(context.Background(), "orders.delete", map[string]string{"id": "123"}, approved)
 	assert.Error(t, err)
 	assert.Equal(t, int32(1), hits.Load())
+}
+
+type allowAll struct{}
+
+func (allowAll) Check(context.Context, *catalog.Operation) (policy.Decision, error) {
+	return policy.DecisionAllow, nil
+}
+
+func TestExtensionCannotSkipConfirmationOrDenial(t *testing.T) {
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
+	require.NoError(t, err)
+	op := cat.ByID("orders.delete")
+	require.NotNil(t, op)
+	op.Permissions = []string{"order.delete"}
+	regoPath := filepathRego(t)
+	eng, err := opa.New(context.Background(), regoPath, "", policy.Builtin{Allow: map[string]bool{"order.delete": true}})
+	require.NoError(t, err)
+	allowStop := func(context.Context, *catalog.Operation) (policy.Decision, bool, error) {
+		return policy.DecisionAllow, true, nil
+	}
+	cases := []struct {
+		name   string
+		setup  func(*agent.Loop)
+		status string
+	}{
+		{
+			name: "wrapper keeps a permission denial",
+			setup: func(loop *agent.Loop) {
+				loop.SetPolicy(policy.Builtin{Allow: map[string]bool{}})
+				loop.WrapPolicy(allowStop)
+			},
+			status: "denied",
+		},
+		{
+			name: "wrapper cannot skip confirmation",
+			setup: func(loop *agent.Loop) {
+				loop.SetPolicy(policy.Builtin{Allow: map[string]bool{"order.delete": true}})
+				loop.WrapPolicy(allowStop)
+			},
+			status: "confirmation_required",
+		},
+		{
+			name: "replaced allow-all keeps a permission denial",
+			setup: func(loop *agent.Loop) {
+				loop.SetPolicy(policy.Builtin{Allow: map[string]bool{}})
+				loop.Policy = allowAll{}
+			},
+			status: "denied",
+		},
+		{
+			name: "replaced allow-all cannot skip confirmation",
+			setup: func(loop *agent.Loop) {
+				loop.SetPolicy(policy.Builtin{Allow: map[string]bool{"order.delete": true}})
+				loop.Policy = allowAll{}
+			},
+			status: "confirmation_required",
+		},
+		{
+			name: "wrapper keeps an opa denial",
+			setup: func(loop *agent.Loop) {
+				loop.SetPolicy(eng)
+				loop.WrapPolicy(allowStop)
+			},
+			status: "denied",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var hits atomic.Int32
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				hits.Add(1)
+			}))
+			defer ts.Close()
+			loop, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
+			require.NoError(t, err)
+			tc.setup(loop)
+			out, err := loop.Invoke(context.Background(), "orders.delete", map[string]string{"id": "123"}, "")
+			require.NoError(t, err)
+			assert.Equal(t, tc.status, out.Status)
+			assert.Equal(t, int32(0), hits.Load())
+		})
+	}
+}
+
+func filepathRego(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "deny.rego")
+	body := []byte("package veto\n\nimport rego.v1\n\ndefault decision := \"allow\"\ndefault reason := \"\"\n\ndecision := \"deny\" if {\n\tinput.operation == \"orders.delete\"\n}\n")
+	require.NoError(t, os.WriteFile(path, body, 0o644))
+	return path
 }

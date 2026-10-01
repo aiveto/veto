@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -40,10 +41,20 @@ type (
 		Params      map[string]string
 	}
 
+	confirmation struct {
+		ID          string            `json:"id"`
+		OperationID string            `json:"operation_id"`
+		Params      map[string]string `json:"params,omitempty"`
+		Status      string            `json:"status"`
+		Expiry      int64             `json:"expiry,omitempty"`
+		ApprovedID  string            `json:"approved_id,omitempty"`
+	}
+
 	// Consumed nonces are files in the signer directory. Two machines that share the secret and not that directory can each accept the token until expiry.
 	State struct {
 		mu       sync.Mutex
-		pending  map[string]PendingConfirmation
+		pending  map[string]confirmation
+		approved map[string]string
 		secret   []byte
 		nonceDir string
 		ttl      time.Duration
@@ -72,33 +83,97 @@ type (
 	}
 )
 
-func Wrap(around Around) Wrapped {
-	return Wrapped{next: Builtin{}, around: around}
+func Wrap(next Hook, around Around) Wrapped {
+	if next == nil {
+		next = Builtin{}
+	}
+	return Wrapped{next: next, around: around}
 }
 
 func (w Wrapped) Check(ctx context.Context, op *catalog.Operation) (Decision, error) {
+	var around Decision
+	stopped := false
 	if w.around != nil {
 		decision, stop, err := w.around(ctx, op)
 		if err != nil {
 			return decision, err
 		}
-		if stop && !allowNeedsConfirmation(decision, op) {
-			return decision, nil
+		around, stopped = decision, stop
+		if stop && decision == DecisionDeny {
+			return DecisionDeny, nil
 		}
 	}
 	next := w.next
 	if next == nil {
 		next = Builtin{}
 	}
-	return next.Check(ctx, op)
+	base, err := next.Check(ctx, op)
+	if err != nil {
+		return base, err
+	}
+	if base == DecisionDeny {
+		return DecisionDeny, nil
+	}
+	if base == DecisionConfirmationNeeded || (op != nil && op.RequiresConfirmation) {
+		return DecisionConfirmationNeeded, nil
+	}
+	if stopped {
+		if allowNeedsConfirmation(around, op) {
+			return DecisionConfirmationNeeded, nil
+		}
+		return around, nil
+	}
+	return base, nil
 }
 
 func allowNeedsConfirmation(decision Decision, op *catalog.Operation) bool {
 	return decision == DecisionAllow && op != nil && op.RequiresConfirmation
 }
 
+const (
+	statusPending  = "pending"
+	statusApproved = "approved"
+	statusConsumed = "consumed"
+)
+
 func NewState() *State {
-	return &State{pending: map[string]PendingConfirmation{}, now: time.Now}
+	return &State{
+		pending:  map[string]confirmation{},
+		approved: map[string]string{},
+		now:      time.Now,
+	}
+}
+
+// ApplyEnv points state at the approval directory serve and approve share.
+// A signing secret makes the approved id a token. The pending id stays a handle.
+func ApplyEnv(s *State) error {
+	if s == nil {
+		return fmt.Errorf("missing approval state")
+	}
+	dir := os.Getenv("VETO_APPROVAL_NONCE_DIR")
+	secret := os.Getenv("VETO_APPROVAL_SECRET")
+	if dir == "" && secret == "" {
+		var err error
+		dir, err = DefaultApprovalDir()
+		if err != nil {
+			return err
+		}
+	}
+	if dir != "" {
+		s.SetNonceDir(dir)
+	}
+	if secret != "" {
+		return s.SetSigner([]byte(secret), 0)
+	}
+	return nil
+}
+
+func DefaultApprovalDir() (string, error) {
+	root, err := os.UserConfigDir()
+	if err != nil {
+		return "", fmt.Errorf("approval dir: %w", err)
+	}
+	return filepath.Join(root, "veto", "approvals"), nil
 }
 
 func (s *State) SetNonceDir(dir string) {
@@ -148,15 +223,52 @@ func defaultNonceDir(secret []byte) (string, error) {
 	return filepath.Join(root, "veto", "approval-nonces", hex.EncodeToString(sum[:16])), nil
 }
 
+// RequestConfirmation records a pending call. The id it returns does not authorize HTTP.
 func (s *State) RequestConfirmation(opID string, params map[string]string) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if len(s.secret) > 0 {
-		return signApproval(s.secret, opID, params, s.deadline())
-	}
 	id := uuid.NewString()
-	s.pending[id] = PendingConfirmation{ID: id, OperationID: opID, Params: cloneParams(params)}
+	rec := confirmation{
+		ID:          id,
+		OperationID: opID,
+		Params:      cloneParams(params),
+		Status:      statusPending,
+	}
+	if len(s.secret) > 0 {
+		rec.Expiry = s.deadline().Unix()
+	}
+	_ = s.storeLocked(rec)
 	return id
+}
+
+// Approve records a separate decision. The returned id is what a later invoke accepts once.
+func (s *State) Approve(id string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rec, ok := s.loadLocked(id)
+	if !ok || rec.Status == statusConsumed || expired(rec, s.clock()) {
+		return "", fmt.Errorf("unknown approval")
+	}
+	if rec.Status == statusApproved && rec.ApprovedID != "" {
+		return rec.ApprovedID, nil
+	}
+	if rec.Status != statusPending {
+		return "", fmt.Errorf("unknown approval")
+	}
+	approved := uuid.NewString()
+	if len(s.secret) > 0 {
+		exp := s.deadline()
+		if rec.Expiry != 0 {
+			exp = time.Unix(rec.Expiry, 0)
+		}
+		approved = signApproval(s.secret, rec.OperationID, rec.Params, exp)
+	}
+	rec.Status = statusApproved
+	rec.ApprovedID = approved
+	if err := s.storeLocked(rec); err != nil {
+		return "", err
+	}
+	return approved, nil
 }
 
 func WithInput(ctx context.Context, in Input) context.Context {
@@ -174,26 +286,145 @@ func InputFrom(ctx context.Context) Input {
 func (s *State) ConsumeConfirmation(approvalID, opID string, params map[string]string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if len(s.secret) > 0 {
-		return s.consumeSigned(approvalID, opID, params, s.clock())
-	}
-	p, ok := s.pending[approvalID]
-	if !ok || p.OperationID != opID || !sameParams(p.Params, params) {
+	rec, ok := s.findApprovedLocked(approvalID)
+	if !ok || rec.Status != statusApproved || rec.ApprovedID != approvalID {
 		return false, nil
 	}
-	delete(s.pending, approvalID)
+	if rec.OperationID != opID || !sameParams(rec.Params, params) || expired(rec, s.clock()) {
+		return false, nil
+	}
+	if len(s.secret) > 0 {
+		ok, err := s.consumeSigned(approvalID, opID, params, s.clock())
+		if err != nil || !ok {
+			return ok, err
+		}
+	}
+	rec.Status = statusConsumed
+	if err := s.storeLocked(rec); err != nil {
+		return false, err
+	}
+	delete(s.approved, approvalID)
 	return true, nil
 }
 
 func (s *State) Pending(id string) *PendingConfirmation {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	p, ok := s.pending[id]
-	if !ok {
+	rec, ok := s.loadLocked(id)
+	if !ok || rec.Status != statusPending {
 		return nil
 	}
-	p.Params = cloneParams(p.Params)
-	return &p
+	return &PendingConfirmation{ID: rec.ID, OperationID: rec.OperationID, Params: cloneParams(rec.Params)}
+}
+
+func expired(rec confirmation, now time.Time) bool {
+	return rec.Expiry != 0 && !now.Before(time.Unix(rec.Expiry, 0))
+}
+
+func (s *State) storeLocked(rec confirmation) error {
+	if s.pending == nil {
+		s.pending = map[string]confirmation{}
+	}
+	if s.approved == nil {
+		s.approved = map[string]string{}
+	}
+	s.pending[rec.ID] = rec
+	if rec.ApprovedID != "" && rec.Status == statusApproved {
+		s.approved[rec.ApprovedID] = rec.ID
+	}
+	if s.nonceDir == "" {
+		return nil
+	}
+	if !plainID(rec.ID) {
+		return fmt.Errorf("approval id")
+	}
+	dir := filepath.Join(s.nonceDir, "confirmations")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("approval dir: %w", err)
+	}
+	body, err := json.Marshal(rec)
+	if err != nil {
+		return fmt.Errorf("approval: %w", err)
+	}
+	path := filepath.Join(dir, rec.ID+".json")
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, body, 0o600); err != nil {
+		return fmt.Errorf("approval: %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return fmt.Errorf("approval: %w", err)
+	}
+	return nil
+}
+
+func (s *State) loadLocked(id string) (confirmation, bool) {
+	if s.nonceDir != "" && plainID(id) {
+		if rec, ok := s.readFile(id); ok {
+			s.remember(rec)
+			return rec, true
+		}
+	}
+	rec, ok := s.pending[id]
+	return rec, ok
+}
+
+func (s *State) findApprovedLocked(approved string) (confirmation, bool) {
+	if approved == "" {
+		return confirmation{}, false
+	}
+	if s.nonceDir != "" {
+		entries, err := os.ReadDir(filepath.Join(s.nonceDir, "confirmations"))
+		if err != nil {
+			return confirmation{}, false
+		}
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+				continue
+			}
+			id := strings.TrimSuffix(entry.Name(), ".json")
+			rec, ok := s.readFile(id)
+			if ok && rec.ApprovedID == approved {
+				s.remember(rec)
+				return rec, true
+			}
+		}
+		return confirmation{}, false
+	}
+	id, ok := s.approved[approved]
+	if !ok {
+		return confirmation{}, false
+	}
+	rec, ok := s.pending[id]
+	return rec, ok
+}
+
+func (s *State) remember(rec confirmation) {
+	if s.pending == nil {
+		s.pending = map[string]confirmation{}
+	}
+	s.pending[rec.ID] = rec
+	if rec.ApprovedID != "" && rec.Status == statusApproved {
+		if s.approved == nil {
+			s.approved = map[string]string{}
+		}
+		s.approved[rec.ApprovedID] = rec.ID
+	}
+}
+
+func (s *State) readFile(id string) (confirmation, bool) {
+	body, err := os.ReadFile(filepath.Join(s.nonceDir, "confirmations", id+".json"))
+	if err != nil {
+		return confirmation{}, false
+	}
+	var rec confirmation
+	if err := json.Unmarshal(body, &rec); err != nil || rec.ID != id {
+		return confirmation{}, false
+	}
+	return rec, true
+}
+
+func plainID(id string) bool {
+	return plainNonce(id) && !strings.Contains(id, ".")
 }
 
 func (s *State) clock() time.Time {

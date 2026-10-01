@@ -16,6 +16,7 @@ import (
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/memory"
+	"github.com/aiveto/veto/policy"
 	"github.com/aiveto/veto/telemetry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -53,9 +54,28 @@ func TestHelpJSONStaysOffTheHumanHelpPath(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, got)
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &doc))
-	for _, name := range []string{"serve", "eval", "replay", "validate", "generate", "pack", "doctor", "check", "init"} {
+	for _, name := range []string{"serve", "eval", "replay", "validate", "generate", "pack", "doctor", "check", "init", "approve"} {
 		assert.Contains(t, doc.Commands, name)
 	}
+}
+
+func TestApproveRecordsAnIDTheCallerCannotMint(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("VETO_APPROVAL_NONCE_DIR", dir)
+	t.Setenv("VETO_APPROVAL_SECRET", "test-secret")
+	caller := policy.NewState()
+	require.NoError(t, policy.ApplyEnv(caller))
+	pending := caller.RequestConfirmation("orders.delete", map[string]string{"id": "123"})
+	approved, err := approveID(pending)
+	require.NoError(t, err)
+	assert.NotEqual(t, pending, approved)
+	assert.True(t, strings.HasPrefix(approved, "v1."))
+	ok, err := caller.ConsumeConfirmation(pending, "orders.delete", map[string]string{"id": "123"})
+	require.NoError(t, err)
+	assert.False(t, ok)
+	ok, err = caller.ConsumeConfirmation(approved, "orders.delete", map[string]string{"id": "123"})
+	require.NoError(t, err)
+	assert.True(t, ok)
 }
 
 func TestConfigIsTheCatalog(t *testing.T) {

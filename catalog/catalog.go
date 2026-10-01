@@ -52,6 +52,8 @@ type (
 		Schema      string
 		MediaType   string
 		Default     string
+		Style       string
+		Explode     bool
 	}
 
 	Operation struct {
