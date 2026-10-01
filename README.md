@@ -63,10 +63,9 @@ The tool names are `capabilities_search`, `capabilities_describe`, and `capabili
 
 ```bash
 veto init orders.yaml customers.yaml
-veto validate --config veto.yaml
 ```
 
-`validate` prints the operation count and the joins. `veto serve --stdio` speaks MCP on stdin. [Authenticated Streamable HTTP](docs/guide.md#remote-mcp) serves the same runtime to a remote client.
+`veto serve --stdio` speaks MCP on stdin. [Authenticated Streamable HTTP](docs/guide.md#remote-mcp) serves the same runtime to a remote client.
 
 Credentials come from the environment, OAuth, a caller-supplied token, token exchange, a command that returns headers, or a Go provider that signs the request. The agent does not perform that login. [Authentication](docs/guide.md#auth).
 
