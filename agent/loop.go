@@ -114,6 +114,16 @@ func (l *Loop) SetPolicy(hook policy.Hook) {
 	l.Policy = hook
 }
 
+func (l *Loop) SetFloor(hook policy.Hook) {
+	if l == nil {
+		return
+	}
+	if hook == nil {
+		hook = policy.Builtin{}
+	}
+	l.base = hook
+}
+
 func (l *Loop) WrapPolicy(around policy.Around) {
 	next := l.Policy
 	if next == nil {
