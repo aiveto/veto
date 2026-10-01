@@ -31,7 +31,6 @@ type (
 		Creds      *auth.Resolver
 		MaxBody    int64
 		Project    Projection
-		View       *View
 	}
 
 	Client struct {
@@ -52,17 +51,16 @@ func (c Client) UpstreamBase() string { return c.BaseURL }
 func (c Client) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, params map[string]string) (result.HTTPResult, error) {
 	project := c.projection(ctx)
 	follow := op != nil && c.FollowPages > 1 && len(op.Page) > 0
-	var view View
-	cfg := Config{
-		BaseURL: c.BaseURL, Client: c.HTTP, RecordBody: c.RecordBody, Auth: c.Auth, Creds: c.Creds, MaxBody: c.MaxBody,
-		Project: project, View: &view,
-	}
+	callProject := project
 	// Page cursors live on the raw body. Project the merged body after the walk.
 	if follow && len(project.Fields) > 0 {
-		cfg.Project = Projection{}
-		cfg.View = nil
+		callProject = Projection{}
 	}
-	resp, err := InvokeResponse(ctx, cfg, op, params)
+	cfg := Config{
+		BaseURL: c.BaseURL, Client: c.HTTP, RecordBody: c.RecordBody, Auth: c.Auth, Creds: c.Creds, MaxBody: c.MaxBody,
+		Project: callProject,
+	}
+	resp, view, err := invokeResponse(ctx, cfg, op, params)
 	if err != nil {
 		return result.HTTPResult{}, err
 	}
@@ -98,6 +96,11 @@ func (c Client) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, par
 }
 
 func InvokeResponse(ctx context.Context, cfg Config, op *catalog.Operation, params map[string]string) (*http.Response, error) {
+	resp, _, err := invokeResponse(ctx, cfg, op, params)
+	return resp, err
+}
+
+func invokeResponse(ctx context.Context, cfg Config, op *catalog.Operation, params map[string]string) (*http.Response, View, error) {
 	cfg.Client = auth.WithEnvProxy(cfg.Client)
 	span := telemetry.StartSpan(ctx, "execute.invoke")
 	defer span.End()
@@ -113,20 +116,20 @@ func InvokeResponse(ctx context.Context, cfg Config, op *catalog.Operation, para
 		base = op.BaseURL
 	}
 	if base == "" {
-		return nil, fmt.Errorf("operation %s has no server URL", op.ID)
+		return nil, View{}, fmt.Errorf("operation %s has no server URL", op.ID)
 	}
 
 	req, err := prepareRequest(ctx, base, op, params, true)
 	if err != nil {
-		return nil, err
+		return nil, View{}, err
 	}
 	refresh, creds, err := obtainAuth(ctx, cfg, op, req, false)
 	if err != nil {
-		return nil, err
+		return nil, View{}, err
 	}
 	secrets, queryKeys, err := applyCredentials(req, creds)
 	if err != nil {
-		return nil, err
+		return nil, View{}, err
 	}
 	if names := paramNames(params); names != "" {
 		span.SetAttributes(telemetry.Attr("params", names))
@@ -134,16 +137,16 @@ func InvokeResponse(ctx context.Context, cfg Config, op *catalog.Operation, para
 
 	resp, err := doRetry(cfg.Client, req, op)
 	if err != nil {
-		return nil, scrubTransport(err, secrets, queryKeys)
+		return nil, View{}, scrubTransport(err, secrets, queryKeys)
 	}
 	raw, cut, err := consumeBody(resp, cfg)
 	if err != nil {
-		return nil, err
+		return nil, View{}, err
 	}
 	if resp.StatusCode == http.StatusUnauthorized && refresh {
 		refreshed, rerr := retryUnauthorized(ctx, cfg, op, req, secrets, queryKeys)
 		if rerr != nil {
-			return nil, rerr
+			return nil, View{}, rerr
 		}
 		resp = refreshed.resp
 		raw = refreshed.raw
@@ -151,18 +154,15 @@ func InvokeResponse(ctx context.Context, cfg Config, op *catalog.Operation, para
 	}
 	body, view, err := shapeBody(resp.StatusCode, raw, cut, cfg)
 	if err != nil {
-		return nil, err
+		return nil, View{}, err
 	}
 	resp.Body = io.NopCloser(bytes.NewReader(body))
-	if cfg.View != nil {
-		*cfg.View = view
-	}
 	span.SetAttributes(telemetry.Attr("http.status", strconv.Itoa(resp.StatusCode)))
 	if cfg.RecordBody && len(body) > 0 {
 		recorded := redactBody(auth.Redact(string(body), secrets, queryKeys))
 		span.SetAttributes(telemetry.Attr("http.body", recorded))
 	}
-	return resp, nil
+	return resp, view, nil
 }
 
 type readResponse struct {
@@ -287,7 +287,6 @@ func retryAfter(resp *http.Response) (time.Duration, bool) {
 	return d, true
 }
 
-// A long Retry-After must not stall the call indefinitely.
 func capRetryWait(d time.Duration) time.Duration {
 	if d < 0 {
 		return 0
@@ -372,7 +371,6 @@ func classify(status int) (string, bool) {
 
 type idempotencyKey struct{}
 
-// WithIdempotency carries the caller's idempotency key onto the HTTP request.
 func WithIdempotency(ctx context.Context, key string) context.Context {
 	if ctx == nil {
 		ctx = context.Background()
@@ -383,7 +381,6 @@ func WithIdempotency(ctx context.Context, key string) context.Context {
 	return context.WithValue(ctx, idempotencyKey{}, key)
 }
 
-// IdempotencyFrom returns the key set by WithIdempotency.
 func IdempotencyFrom(ctx context.Context) string {
 	if ctx == nil {
 		return ""
@@ -392,12 +389,11 @@ func IdempotencyFrom(ctx context.Context) string {
 	return key
 }
 
-// CheckParams reports a missing required parameter before HTTP.
 func CheckParams(op *catalog.Operation, params map[string]string) error {
 	return requireParams(op, params)
 }
 
-// DraftRequest is the upstream request without credentials. strict checks stay on the real call.
+// The upstream request without credentials. Strict checks stay on the real call.
 func DraftRequest(ctx context.Context, base string, op *catalog.Operation, params map[string]string) (*http.Request, error) {
 	if op == nil {
 		return nil, fmt.Errorf("missing operation")
