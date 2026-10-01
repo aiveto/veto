@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"testing"
@@ -41,8 +42,9 @@ func TestBundleKeepsDeploymentAuth(t *testing.T) {
 auth:
   bearerAuth: ORDER_TOKEN
 `, strconv.Quote(dir))
-	require.NoError(t, os.WriteFile(cfgPath, []byte(body), 0o644))
-	cfg, contracts, relations, _, err := resolve(cfgPath, nil, "", "")
+	require.NoError(t, os.WriteFile(cfgPath, []byte(body), 0o600))
+	src, err := resolve(cfgPath, nil, "", "")
+	cfg, contracts, relations := src.cfg, src.contracts, src.relations
 	require.NoError(t, err)
 	assert.Equal(t, "ORDER_TOKEN", cfg.Auth["bearerAuth"].Env)
 	assert.Empty(t, cfg.Server)
@@ -52,14 +54,17 @@ auth:
 	require.Len(t, cfg.Cases, 1)
 	_, _, err = buildLoop(nil, cfgPath, "", "", "")
 	require.NoError(t, err)
-	checked := checkCmd{}
-	checked.config = cfgPath
+	checked := checkCmd{
+		config: cfgPath}
 	require.NoError(t, runChecked(checked))
 }
 
 func ordersCustomersBundle(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
+	fsys, err := os.OpenRoot(dir)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, fsys.Close()) })
 	for _, name := range []string{
 		"orders.yaml",
 		"customers.yaml",
@@ -72,9 +77,11 @@ func ordersCustomersBundle(t *testing.T) string {
 	} {
 		data, err := os.ReadFile(filepath.Join("../../testdata", name))
 		require.NoError(t, err)
-		dest := filepath.Join(dir, name)
-		require.NoError(t, os.MkdirAll(filepath.Dir(dest), 0o755))
-		require.NoError(t, os.WriteFile(dest, data, 0o644))
+		rel := filepath.ToSlash(name)
+		if parent := path.Dir(rel); parent != "." {
+			require.NoError(t, fsys.MkdirAll(parent, 0o750))
+		}
+		require.NoError(t, fsys.WriteFile(rel, data, 0o600))
 	}
 	manifest := `relations_file: relations.yaml
 contracts:
@@ -83,7 +90,7 @@ contracts:
 cases:
   - cases
 `
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "bundle.yaml"), []byte(manifest), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "bundle.yaml"), []byte(manifest), 0o600))
 	return dir
 }
 
@@ -95,7 +102,16 @@ func operationIDs(cat *catalog.Catalog) []string {
 	return ids
 }
 
-func zipTree(dest, root string) error {
+func zipTree(dest, root string) (err error) {
+	fsys, err := os.OpenRoot(root)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if cerr := fsys.Close(); err == nil && cerr != nil {
+			err = cerr
+		}
+	}()
 	f, err := os.Create(dest)
 	if err != nil {
 		return err
@@ -117,7 +133,7 @@ func zipTree(dest, root string) error {
 			_, err = w.Create(name + "/")
 			return err
 		}
-		body, err := os.ReadFile(p)
+		body, err := fsys.ReadFile(name)
 		if err != nil {
 			return err
 		}

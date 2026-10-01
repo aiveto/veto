@@ -16,7 +16,8 @@ import (
 func TestCheckAgainstSnapshot(t *testing.T) {
 	cfgPath := filepath.Join("..", "..", "testdata", "veto.yaml")
 	cases := filepath.Join("..", "..", "testdata", "cases")
-	_, contracts, relations, agentPath, err := resolve(cfgPath, nil, "", "")
+	src, err := resolve(cfgPath, nil, "", "")
+	contracts, relations, agentPath := src.contracts, src.relations, src.agent
 	require.NoError(t, err)
 	cat, err := loadCatalog(contracts, relations)
 	require.NoError(t, err)
@@ -25,8 +26,8 @@ func TestCheckAgainstSnapshot(t *testing.T) {
 	path := filepath.Join(dir, "surface.json")
 	body, err := json.Marshal(snapshotFile{Operations: catalog.Facts(cat)})
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(path, body, 0o644))
-	cmd := checkCmd{against: path, evalCmd: evalCmd{config: cfgPath, cases: []string{cases}}}
+	require.NoError(t, os.WriteFile(path, body, 0o600))
+	cmd := checkCmd{against: path, config: cfgPath, cases: []string{cases}}
 	require.NoError(t, diffAgainst(cmd, cat))
 	facts := catalog.Facts(cat)
 	facts["gone.get"] = catalog.OpFact{Referenced: true}
@@ -39,16 +40,16 @@ func TestCheckAgainstSnapshot(t *testing.T) {
 		}},
 	})
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(path, body, 0o644))
+	require.NoError(t, os.WriteFile(path, body, 0o600))
 	err = diffAgainst(cmd, cat)
-	assert.ErrorContains(t, err, "gone.get")
+	require.ErrorContains(t, err, "gone.get")
 	assert.ErrorContains(t, err, "delete-requires-confirmation")
 }
 
 func TestCheckAgainstGitRef(t *testing.T) {
 	dir := t.TempDir()
 	caseBody := []byte("name: get-order\ninput: get order\nexpect:\n  operation: orders.get\n")
-	require.NoError(t, os.Mkdir(filepath.Join(dir, "cases"), 0o755))
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "cases"), 0o750))
 	files := map[string]string{
 		"orders.yaml":    headSpec,
 		"agent.yaml":     "operations: []\n",
@@ -56,7 +57,7 @@ func TestCheckAgainstGitRef(t *testing.T) {
 		"cases/get.yaml": string(caseBody),
 	}
 	for name, body := range files {
-		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600))
 	}
 	git := func(args ...string) {
 		t.Helper()
@@ -75,31 +76,32 @@ func TestCheckAgainstGitRef(t *testing.T) {
 	git("add", ".")
 	git("commit", "-m", "baseline")
 
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "orders.yaml"), []byte(nextSpec), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "cases", "get.yaml"), []byte("name: get-order\ninput: get order\nexpect:\n  operation: orders.purge\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "orders.yaml"), []byte(nextSpec), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "cases", "get.yaml"), []byte("name: get-order\ninput: get order\nexpect:\n  operation: orders.purge\n"), 0o600))
 	cfgPath := filepath.Join(dir, "veto.yaml")
 	cases := filepath.Join(dir, "cases")
 	cat := loadChecked(t, cfgPath)
-	cmd := checkCmd{against: "HEAD", evalCmd: evalCmd{config: cfgPath, cases: []string{cases}}}
+	cmd := checkCmd{against: "HEAD", config: cfgPath, cases: []string{cases}}
 	err := diffAgainst(cmd, cat)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "customers.get")
-	assert.ErrorContains(t, err, "orders.purge")
-	assert.ErrorContains(t, err, "get-order")
+	require.ErrorContains(t, err, "customers.get")
+	require.ErrorContains(t, err, "orders.purge")
+	require.ErrorContains(t, err, "get-order")
 
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "agent.yaml"), []byte("operations:\n  - operation: orders.purge\n    confirmation: false\n"), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "cases", "get.yaml"), caseBody, 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "agent.yaml"), []byte("operations:\n  - operation: orders.purge\n    confirmation: false\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "cases", "get.yaml"), caseBody, 0o600))
 	cat = loadChecked(t, cfgPath)
 	err = diffAgainst(cmd, cat)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "customers.get")
+	require.ErrorContains(t, err, "customers.get")
 	assert.NotContains(t, err.Error(), "orders.purge")
 	assert.NotContains(t, err.Error(), "get-order")
 }
 
 func loadChecked(t *testing.T, cfgPath string) *catalog.Catalog {
 	t.Helper()
-	_, contracts, relations, agentPath, err := resolve(cfgPath, nil, "", "")
+	src, err := resolve(cfgPath, nil, "", "")
+	contracts, relations, agentPath := src.contracts, src.relations, src.agent
 	require.NoError(t, err)
 	cat, err := loadCatalog(contracts, relations)
 	require.NoError(t, err)

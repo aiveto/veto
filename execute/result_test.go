@@ -48,7 +48,7 @@ func TestHTTPResultCarriesCodeAndReplayOmitsBody(t *testing.T) {
 }
 
 func TestResponseCapOmitsParamValuesAndSetsToolAttributes(t *testing.T) {
-	assert.Equal(t, int64(1<<20), execute.DefaultMaxResponseBytes)
+	assert.Equal(t, execute.DefaultMaxResponseBytes, int64(1<<20))
 	cat := loadSpec(t, bodySpec)
 	op := cat.ByID("orders.get")
 	const secret = "param-value-secret"
@@ -97,7 +97,7 @@ func TestClientTimeoutEndsAHungCall(t *testing.T) {
 		Client:  &http.Client{Timeout: 30 * time.Millisecond},
 	}, op, map[string]string{"id": "1"})
 	if resp != nil && resp.Body != nil {
-		assert.NoError(t, resp.Body.Close())
+		require.NoError(t, resp.Body.Close())
 	}
 	assert.Error(t, err)
 }

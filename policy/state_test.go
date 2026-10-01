@@ -25,14 +25,14 @@ func TestConfirmationKeepsItsOwnParams(t *testing.T) {
 	got := s.Pending(id)
 	require.NotNil(t, got)
 	assert.Equal(t, "1", got.Params["id"])
-	assert.False(t, consumed(t, s, id, "orders.delete", map[string]string{"id": "1"}))
+	assert.False(t, consumed(t, s, id, map[string]string{"id": "1"}))
 	approved, err := s.Approve(id)
 	require.NoError(t, err)
 	assert.NotEqual(t, id, approved)
 	assert.Nil(t, s.Pending(approved))
-	assert.False(t, consumed(t, s, id, "orders.delete", map[string]string{"id": "1"}))
-	assert.True(t, consumed(t, s, approved, "orders.delete", map[string]string{"id": "1"}))
-	assert.False(t, consumed(t, s, approved, "orders.delete", map[string]string{"id": "1"}))
+	assert.False(t, consumed(t, s, id, map[string]string{"id": "1"}))
+	assert.True(t, consumed(t, s, approved, map[string]string{"id": "1"}))
+	assert.False(t, consumed(t, s, approved, map[string]string{"id": "1"}))
 }
 
 func TestSignedApprovalIsIssuedByApprove(t *testing.T) {
@@ -48,26 +48,26 @@ func TestSignedApprovalIsIssuedByApprove(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, strings.HasPrefix(approved, "v1."))
 	assert.Nil(t, issued.Pending(approved))
-	assert.False(t, consumed(t, issued, pending, "orders.delete", map[string]string{"id": "1"}))
+	assert.False(t, consumed(t, issued, pending, map[string]string{"id": "1"}))
 	params["id"] = "2"
 	other := withSigner(t, dir, []byte("secret"), now)
-	assert.False(t, consumed(t, other, approved, "orders.delete", params))
-	assert.True(t, consumed(t, other, approved, "orders.delete", map[string]string{"id": "1"}))
-	assert.False(t, consumed(t, other, approved, "orders.delete", map[string]string{"id": "1"}))
+	assert.False(t, consumed(t, other, approved, params))
+	assert.True(t, consumed(t, other, approved, map[string]string{"id": "1"}))
+	assert.False(t, consumed(t, other, approved, map[string]string{"id": "1"}))
 	restarted := withSigner(t, dir, []byte("secret"), now)
-	assert.False(t, consumed(t, restarted, approved, "orders.delete", map[string]string{"id": "1"}))
+	assert.False(t, consumed(t, restarted, approved, map[string]string{"id": "1"}))
 	other.now = func() time.Time { return time.Unix(1_000, 0).Add(time.Minute) }
 	fresh, err := issued.RequestConfirmation("orders.delete", map[string]string{"id": "1"})
 	require.NoError(t, err)
 	freshID, err := issued.Approve(fresh)
 	require.NoError(t, err)
-	assert.False(t, consumed(t, other, freshID, "orders.delete", map[string]string{"id": "1"}))
+	assert.False(t, consumed(t, other, freshID, map[string]string{"id": "1"}))
 	wrong := withSigner(t, dir, []byte("other"), now)
 	again, err := issued.RequestConfirmation("orders.delete", map[string]string{"id": "1"})
 	require.NoError(t, err)
 	token, err := issued.Approve(again)
 	require.NoError(t, err)
-	assert.False(t, consumed(t, wrong, token, "orders.delete", map[string]string{"id": "1"}))
+	assert.False(t, consumed(t, wrong, token, map[string]string{"id": "1"}))
 }
 
 func TestApproveOnAnotherStateIsTheOnlyWayToRun(t *testing.T) {
@@ -76,15 +76,15 @@ func TestApproveOnAnotherStateIsTheOnlyWayToRun(t *testing.T) {
 	caller.SetNonceDir(dir)
 	pending, err := caller.RequestConfirmation("orders.delete", map[string]string{"id": "9"})
 	require.NoError(t, err)
-	assert.False(t, consumed(t, caller, pending, "orders.delete", map[string]string{"id": "9"}))
+	assert.False(t, consumed(t, caller, pending, map[string]string{"id": "9"}))
 	approver := NewState()
 	approver.SetNonceDir(dir)
 	approved, err := approver.Approve(pending)
 	require.NoError(t, err)
 	assert.NotEqual(t, pending, approved)
-	assert.False(t, consumed(t, caller, pending, "orders.delete", map[string]string{"id": "9"}))
-	assert.True(t, consumed(t, caller, approved, "orders.delete", map[string]string{"id": "9"}))
-	assert.False(t, consumed(t, caller, approved, "orders.delete", map[string]string{"id": "9"}))
+	assert.False(t, consumed(t, caller, pending, map[string]string{"id": "9"}))
+	assert.True(t, consumed(t, caller, approved, map[string]string{"id": "9"}))
+	assert.False(t, consumed(t, caller, approved, map[string]string{"id": "9"}))
 }
 
 func TestRequestConfirmationReturnsTheStoreError(t *testing.T) {
@@ -115,13 +115,13 @@ func TestCallersDoNotShareApprovalIDsOrTokens(t *testing.T) {
 	graceToken, err := s.Approve(grace)
 	require.NoError(t, err)
 	assert.NotEqual(t, adaToken, graceToken)
-	assert.False(t, consumedFor(t, s, "grace", ada, "orders.delete", params))
-	assert.False(t, consumedFor(t, s, "grace", adaToken, "orders.delete", params))
-	assert.False(t, consumedFor(t, s, "ada", graceToken, "orders.delete", params))
-	assert.False(t, consumedFor(t, s, "", adaToken, "orders.delete", params))
-	assert.True(t, consumedFor(t, s, "ada", adaToken, "orders.delete", params))
-	assert.False(t, consumedFor(t, s, "ada", adaToken, "orders.delete", params))
-	assert.True(t, consumedFor(t, s, "grace", graceToken, "orders.delete", params))
+	assert.False(t, consumedFor(t, s, "grace", ada, params))
+	assert.False(t, consumedFor(t, s, "grace", adaToken, params))
+	assert.False(t, consumedFor(t, s, "ada", graceToken, params))
+	assert.False(t, consumedFor(t, s, "", adaToken, params))
+	assert.True(t, consumedFor(t, s, "ada", adaToken, params))
+	assert.False(t, consumedFor(t, s, "ada", adaToken, params))
+	assert.True(t, consumedFor(t, s, "grace", graceToken, params))
 }
 
 func TestDefaultNonceDirFollowsTheSecret(t *testing.T) {
@@ -138,7 +138,7 @@ func TestDefaultNonceDirFollowsTheSecret(t *testing.T) {
 
 func TestUnsignedApprovalIsOneUseAcrossStates(t *testing.T) {
 	params := map[string]string{"id": "1"}
-	for round := 0; round < 20; round++ {
+	for round := range 20 {
 		dir := t.TempDir()
 		issued := NewState()
 		issued.SetNonceDir(dir)
@@ -149,16 +149,14 @@ func TestUnsignedApprovalIsOneUseAcrossStates(t *testing.T) {
 		var wins atomic.Int32
 		var wg sync.WaitGroup
 		for range 24 {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				other := NewState()
 				other.SetNonceDir(dir)
 				ok, err := other.ConsumeFor("", approved, "orders.delete", params)
 				if err == nil && ok {
 					wins.Add(1)
 				}
-			}()
+			})
 		}
 		wg.Wait()
 		assert.Equal(t, int32(1), wins.Load(), "round %d", round)
@@ -191,9 +189,7 @@ func TestUnsignedApprovalIsOneUseAcrossProcesses(t *testing.T) {
 	var wg sync.WaitGroup
 	errCh := make(chan error, 8)
 	for range 8 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestUnsignedApprovalIsOneUseAcrossProcesses$", "-test.count=1")
 			cmd.Env = append(os.Environ(), "VETO_CLAIM_CHILD=1", "VETO_CLAIM_DIR="+dir, "VETO_CLAIM_ID="+approved)
 			err := cmd.Run()
@@ -206,7 +202,7 @@ func TestUnsignedApprovalIsOneUseAcrossProcesses(t *testing.T) {
 				return
 			}
 			errCh <- err
-		}()
+		})
 	}
 	wg.Wait()
 	close(errCh)
@@ -227,14 +223,14 @@ func withSigner(t *testing.T, dir string, secret []byte, now func() time.Time) *
 	return s
 }
 
-func consumed(t *testing.T, s *State, id, op string, params map[string]string) bool {
+func consumed(t *testing.T, s *State, id string, params map[string]string) bool {
 	t.Helper()
-	return consumedFor(t, s, "", id, op, params)
+	return consumedFor(t, s, "", id, params)
 }
 
-func consumedFor(t *testing.T, s *State, caller, id, op string, params map[string]string) bool {
+func consumedFor(t *testing.T, s *State, caller, id string, params map[string]string) bool {
 	t.Helper()
-	ok, err := s.ConsumeFor(caller, id, op, params)
+	ok, err := s.ConsumeFor(caller, id, "orders.delete", params)
 	require.NoError(t, err)
 	return ok
 }

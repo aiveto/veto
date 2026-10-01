@@ -23,7 +23,7 @@ func FromStrings(in map[string]string) map[string]any {
 // Strings stay as given. Objects and arrays become JSON text. Approval binds this same form.
 func wire(args map[string]any) (map[string]string, error) {
 	if len(args) == 0 {
-		return nil, nil
+		return map[string]string{}, nil
 	}
 	out := make(map[string]string, len(args))
 	for k, v := range args {

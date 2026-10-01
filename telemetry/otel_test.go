@@ -29,7 +29,7 @@ func TestOTLPExportDropsUnlistedAttributes(t *testing.T) {
 	stubs := mem.GetSpans()
 	require.NoError(t, tp.Shutdown(context.Background()))
 	require.Len(t, stubs, 1)
-	var keys []string
+	keys := make([]string, 0, len(stubs[0].Attributes))
 	for _, kv := range stubs[0].Attributes {
 		keys = append(keys, string(kv.Key)+"="+kv.Value.AsString())
 	}

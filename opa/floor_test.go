@@ -124,7 +124,7 @@ func TestGrantedPermissionStillConfirmsOnce(t *testing.T) {
 		Caller:    "ada",
 		Approval:  approved,
 	})
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, int32(1), hits.Load())
 }
 

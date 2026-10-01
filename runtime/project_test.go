@@ -24,7 +24,7 @@ func TestProjectedResponseKeepsNamedFieldsAndMarksTheCap(t *testing.T) {
 	one := fmt.Sprintf(`{"id":"0","name":"row","access_token":"%s","blob":"%s"}`, secret, blob)
 	var raw strings.Builder
 	raw.WriteByte('[')
-	for i := 0; i < 30; i++ {
+	for i := range 30 {
 		if i > 0 {
 			raw.WriteByte(',')
 		}
@@ -64,7 +64,7 @@ func TestProjectedResponseKeepsNamedFieldsAndMarksTheCap(t *testing.T) {
 	assert.Equal(t, "ok", out.Status)
 	assert.True(t, out.Truncated)
 	require.NotNil(t, out.Page)
-	assert.Greater(t, out.Page.Returned, 0)
+	assert.Positive(t, out.Page.Returned)
 	assert.Less(t, out.Page.Returned, 30)
 
 	var items []map[string]any
@@ -91,7 +91,7 @@ func TestProjectedResponseKeepsNamedFieldsAndMarksTheCap(t *testing.T) {
 		Exec:    execute.Client{BaseURL: ts.URL, MaxBody: maxBody, RecordBody: true},
 	}
 	_, err = plain.Invoke(context.Background(), runtime.Request{Operation: "orders.list"})
-	assert.ErrorContains(t, err, fmt.Sprintf("exceeds %d bytes", maxBody))
+	require.ErrorContains(t, err, fmt.Sprintf("exceeds %d bytes", maxBody))
 	assert.NotContains(t, spanText(t, rec2), secret)
 
 	small := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

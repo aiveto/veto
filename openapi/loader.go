@@ -2,6 +2,7 @@ package openapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -93,7 +94,7 @@ func rejectDocument(data []byte) error {
 		return fmt.Errorf("parse openapi: %w", err)
 	}
 	if nonEmpty(root["webhooks"]) {
-		return fmt.Errorf("webhooks are not loaded")
+		return errors.New("webhooks are not loaded")
 	}
 	paths, _ := root["paths"].(map[string]any)
 	for path, item := range paths {
@@ -439,7 +440,7 @@ func resolveLinks(doc *openapi3.T, ops []catalog.Operation, raw []rawLink) ([]ca
 
 func resolveOperationRef(doc *openapi3.T, ops []catalog.Operation, ref string) (string, error) {
 	if ref == "" {
-		return "", fmt.Errorf("link has no operationId or operationRef")
+		return "", errors.New("link has no operationId or operationRef")
 	}
 	if i := strings.IndexByte(ref, '#'); i > 0 {
 		return "", fmt.Errorf("operationRef %q points outside this document", ref)
@@ -541,11 +542,11 @@ func collectSchema(s *openapi3.SchemaRef, names *[]string, seen map[*openapi3.Sc
 
 func schemaName(ref string) string {
 	const marker = "/schemas/"
-	i := strings.LastIndex(ref, marker)
-	if i < 0 {
+	_, after, ok := strings.CutLast(ref, marker)
+	if !ok {
 		return ""
 	}
-	name := ref[i+len(marker):]
+	name := after
 	if slash := strings.Index(name, "/"); slash >= 0 {
 		name = name[:slash]
 	}

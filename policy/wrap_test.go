@@ -2,7 +2,7 @@ package policy
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -29,7 +29,7 @@ func TestWrapCallsBuiltinUnlessItStops(t *testing.T) {
 			return DecisionDeny, true, nil
 		}, want: DecisionDeny},
 		{name: "around error skips builtin", around: func(context.Context, *catalog.Operation) (Decision, bool, error) {
-			return "", false, fmt.Errorf("nope")
+			return "", false, errors.New("nope")
 		}, err: "nope"},
 		{name: "nil around is builtin", want: DecisionConfirmationNeeded},
 	}

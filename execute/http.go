@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -218,7 +219,7 @@ func doRetry(client *http.Client, req *http.Request, op *catalog.Operation) (*ht
 	}
 	var resp *http.Response
 	var err error
-	for try := 0; try < attempts; try++ {
+	for try := range attempts {
 		if try > 0 && req.GetBody != nil {
 			body, bodyErr := req.GetBody()
 			if bodyErr != nil {
@@ -393,7 +394,7 @@ func CheckParams(op *catalog.Operation, params map[string]string) error {
 // The upstream request without credentials. Strict checks stay on the real call.
 func DraftRequest(ctx context.Context, base string, op *catalog.Operation, params map[string]string) (*http.Request, error) {
 	if op == nil {
-		return nil, fmt.Errorf("missing operation")
+		return nil, errors.New("missing operation")
 	}
 	if base == "" {
 		base = op.BaseURL
@@ -488,7 +489,7 @@ func headerValue(p catalog.Param, params map[string]string) string {
 
 func requireParams(op *catalog.Operation, params map[string]string) error {
 	if op == nil {
-		return fmt.Errorf("missing operation")
+		return errors.New("missing operation")
 	}
 	for _, p := range op.Params {
 		if why := Unserializable(p); why != "" {
@@ -539,11 +540,11 @@ func ReadBody(resp *http.Response) (string, error) {
 	return readBody(resp, 0)
 }
 
-func readBody(resp *http.Response, max int64) (string, error) {
+func readBody(resp *http.Response, limit int64) (string, error) {
 	if resp == nil || resp.Body == nil {
 		return "", nil
 	}
-	b, err := readLimited(resp.Body, max)
+	b, err := readLimited(resp.Body, limit)
 	if closeErr := resp.Body.Close(); closeErr != nil && err == nil {
 		err = closeErr
 	}
@@ -553,35 +554,35 @@ func readBody(resp *http.Response, max int64) (string, error) {
 	return string(b), nil
 }
 
-func bodyLimit(max int64) int64 {
-	if max <= 0 {
+func bodyLimit(limit int64) int64 {
+	if limit <= 0 {
 		return DefaultMaxResponseBytes
 	}
-	return max
+	return limit
 }
 
-func readCapped(r io.Reader, max int64) ([]byte, bool, error) {
+func readCapped(r io.Reader, limit int64) ([]byte, bool, error) {
 	if r == nil {
 		return nil, false, nil
 	}
-	max = bodyLimit(max)
-	b, err := io.ReadAll(io.LimitReader(r, max+1))
+	limit = bodyLimit(limit)
+	b, err := io.ReadAll(io.LimitReader(r, limit+1))
 	if err != nil {
 		return nil, false, err
 	}
-	if int64(len(b)) > max {
-		return b[:max], true, nil
+	if int64(len(b)) > limit {
+		return b[:limit], true, nil
 	}
 	return b, false, nil
 }
 
-func readLimited(r io.Reader, max int64) ([]byte, error) {
-	b, cut, err := readCapped(r, max)
+func readLimited(r io.Reader, limit int64) ([]byte, error) {
+	b, cut, err := readCapped(r, limit)
 	if err != nil {
 		return nil, err
 	}
 	if cut {
-		return nil, fmt.Errorf("response exceeds %d bytes", bodyLimit(max))
+		return nil, fmt.Errorf("response exceeds %d bytes", bodyLimit(limit))
 	}
 	return b, nil
 }

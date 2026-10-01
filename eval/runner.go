@@ -2,6 +2,7 @@ package eval
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -125,7 +126,7 @@ func (r *Runner) Run(ctx context.Context, c *Case) error {
 	}
 	out, err := r.Loop.Run(ctx, c.Input)
 	if gate != nil && gate.hits != 0 {
-		return fmt.Errorf("http ran")
+		return errors.New("http ran")
 	}
 	if err != nil {
 		return err
@@ -144,7 +145,7 @@ func (r *Runner) checkPack(c *Case) error {
 		return nil
 	}
 	if r.Loop == nil || r.Loop.Packs == nil {
-		return fmt.Errorf("pack builder required")
+		return errors.New("pack builder required")
 	}
 	pack := r.Loop.Packs.Build(r.Loop.Catalog, []runctx.Turn{{Role: "user", Content: c.Input}}, nil, r.Loop.Semantics, nil)
 	text := pack.Index + "\n" + pack.Serialize()
@@ -169,7 +170,7 @@ func (r *Runner) checkPack(c *Case) error {
 func (g *httpGate) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, params map[string]string) (result.HTTPResult, error) {
 	g.hits++
 	if g.next == nil {
-		return result.HTTPResult{}, fmt.Errorf("http call")
+		return result.HTTPResult{}, errors.New("http call")
 	}
 	return g.next.InvokeHTTPResult(ctx, op, params)
 }

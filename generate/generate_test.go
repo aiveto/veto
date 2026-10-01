@@ -87,6 +87,6 @@ func TestGeneratedCLIHelpAndConfirm(t *testing.T) {
 	deny := exec.CommandContext(t.Context(), "go", "run", "./cli", "delete", "--id", "123")
 	deny.Dir = dir
 	out, err = deny.CombinedOutput()
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, string(out), "confirmation required")
 }

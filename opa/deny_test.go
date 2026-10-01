@@ -128,7 +128,7 @@ func TestMethodOrCallerDenySkipsHTTP(t *testing.T) {
 		Approval:  pending.ApprovalID,
 	}
 	_, err = rt.Invoke(context.Background(), again)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, int32(0), hits.Load())
 
 	approved, err := rt.State.Approve(pending.ApprovalID)
@@ -143,6 +143,6 @@ func TestMethodOrCallerDenySkipsHTTP(t *testing.T) {
 func writeRego(t *testing.T, src string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "policy.rego")
-	require.NoError(t, os.WriteFile(path, []byte(src), 0o644))
+	require.NoError(t, os.WriteFile(path, []byte(src), 0o600))
 	return path
 }

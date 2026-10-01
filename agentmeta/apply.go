@@ -1,6 +1,7 @@
 package agentmeta
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -39,7 +40,7 @@ func Load(path string) (File, error) {
 
 func Apply(cat *catalog.Catalog, f File) error {
 	if cat == nil {
-		return fmt.Errorf("missing catalog")
+		return errors.New("missing catalog")
 	}
 	cat.Finalize()
 	for _, e := range f.Operations {

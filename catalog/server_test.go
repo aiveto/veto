@@ -29,7 +29,7 @@ func TestFirstServerWinsUntilANameIsSelected(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "spec.yaml")
-			require.NoError(t, os.WriteFile(path, []byte(twoServers), 0o644))
+			require.NoError(t, os.WriteFile(path, []byte(twoServers), 0o600))
 			cat, err := openapi.Load(context.Background(), path)
 			require.NoError(t, err)
 			if tc.choose != nil {

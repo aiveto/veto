@@ -51,7 +51,7 @@ func TestFollowErrorsWhenTheFieldIsMissing(t *testing.T) {
 	loop, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
 	require.NoError(t, err)
 	_, err = loop.Follow(context.Background(), "orders.get", map[string]string{"id": "1"}, "")
-	assert.ErrorContains(t, err, "customerId")
+	require.ErrorContains(t, err, "customerId")
 	assert.Equal(t, 1, hits)
 }
 
@@ -78,7 +78,7 @@ func TestFollowDoesNotInventAnEdge(t *testing.T) {
 
 func TestFollowUsesLinkParameterMapping(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "spec.yaml")
-	require.NoError(t, os.WriteFile(path, []byte(linkSpec), 0o644))
+	require.NoError(t, os.WriteFile(path, []byte(linkSpec), 0o600))
 	cat, err := openapi.Load(context.Background(), path)
 	require.NoError(t, err)
 	var paths []string
@@ -162,7 +162,7 @@ func TestFollowPointerAndUnmappedLink(t *testing.T) {
 			require.NoError(t, err)
 			_, err = loop.Follow(context.Background(), "orders.get", map[string]string{"id": "1"}, "")
 			if tc.wantErr != "" {
-				assert.ErrorContains(t, err, tc.wantErr)
+				require.ErrorContains(t, err, tc.wantErr)
 			} else {
 				require.NoError(t, err)
 			}
@@ -179,7 +179,7 @@ func TestFollowPointerAndUnmappedLink(t *testing.T) {
 func TestFollowStopsAfterTheCallCap(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		cat.Links = append(cat.Links, catalog.OpLink{
 			From:   "orders.get",
 			To:     "orders.get",
@@ -191,7 +191,7 @@ func TestFollowStopsAfterTheCallCap(t *testing.T) {
 	loop, err := agent.New(cat, nil, countExec{hits: &hits, body: `{"id":"1"}`})
 	require.NoError(t, err)
 	calls, err := loop.Follow(context.Background(), "orders.get", map[string]string{"id": "1"}, "")
-	assert.ErrorContains(t, err, "follow stopped after 8")
+	require.ErrorContains(t, err, "follow stopped after 8")
 	assert.Len(t, calls, 8)
 	assert.Equal(t, 8, hits)
 }

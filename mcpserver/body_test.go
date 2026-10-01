@@ -38,7 +38,7 @@ func TestInvokeSendsObjectOrStringBody(t *testing.T) {
 			defer ts.Close()
 
 			path := filepath.Join(t.TempDir(), "spec.yaml")
-			require.NoError(t, os.WriteFile(path, []byte(versionBodySpec), 0o644))
+			require.NoError(t, os.WriteFile(path, []byte(versionBodySpec), 0o600))
 			cat, err := openapi.Load(context.Background(), path)
 			require.NoError(t, err)
 			loop, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})

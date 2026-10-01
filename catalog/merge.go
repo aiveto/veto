@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -69,12 +70,12 @@ func ParseRelations(data []byte) ([]Relation, error) {
 // A field name in a spec does not create an edge. This declaration does.
 func ApplyRelations(cat *Catalog, rels []Relation) error {
 	if cat == nil {
-		return fmt.Errorf("missing catalog")
+		return errors.New("missing catalog")
 	}
 	cat.Finalize()
 	for _, r := range rels {
 		if r.Schema == "" || r.Field == "" || r.To == "" {
-			return fmt.Errorf("relation needs schema, field, and to")
+			return errors.New("relation needs schema, field, and to")
 		}
 		if cat.ByID(r.To) == nil {
 			return fmt.Errorf("relation to unknown operation %q", r.To)

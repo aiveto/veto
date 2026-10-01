@@ -50,7 +50,7 @@ func TestNeighborCaseSelectsTheRelationAndDropsBilling(t *testing.T) {
 
 func threeAPIs(t *testing.T) *catalog.Catalog {
 	t.Helper()
-	var parts []*catalog.Catalog
+	parts := make([]*catalog.Catalog, 0, 3)
 	for _, path := range []string{"../testdata/orders.yaml", "../testdata/customers.yaml", "../testdata/billing.yaml"} {
 		cat, err := openapi.Load(context.Background(), path)
 		require.NoError(t, err)

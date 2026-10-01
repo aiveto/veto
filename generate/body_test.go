@@ -17,7 +17,7 @@ import (
 func TestGeneratedBodyParamReachesInvoke(t *testing.T) {
 	dir := t.TempDir()
 	spec := filepath.Join(dir, "spec.yaml")
-	require.NoError(t, os.WriteFile(spec, []byte(createSpec), 0o644))
+	require.NoError(t, os.WriteFile(spec, []byte(createSpec), 0o600))
 	cat, err := openapi.Load(context.Background(), spec)
 	require.NoError(t, err)
 	out := filepath.Join(dir, "gen")

@@ -1,7 +1,7 @@
 version: "2"
 
 run:
-  timeout: 5m
+  timeout: 10m
 
 issues:
   max-issues-per-linter: 0
@@ -10,17 +10,78 @@ issues:
 linters:
   default: standard
   enable:
+    - asasalint
+    - asciicheck
+    - bidichk
     - bodyclose
+    - canonicalheader
+    - containedctx
     - contextcheck
     - copyloopvar
+    - dogsled
+    - dupword
     - durationcheck
     - errchkjson
+    - errname
     - errorlint
+    - exhaustive
     - fatcontext
+    - forcetypeassert
+    - gocheckcompilerdirectives
+    - gocritic
+    - gosec
+    - intrange
+    - loggercheck
     - makezero
+    - mirror
+    - misspell
+    - modernize
+    - musttag
+    - nakedret
     - nilerr
     - nilnesserr
+    - nilnil
     - noctx
+    - nolintlint
+    - nosprintfhostport
+    - perfsprint
+    - prealloc
+    - predeclared
     - reassign
+    - recvcheck
+    - rowserrcheck
+    - sqlclosecheck
+    - testifylint
+    - thelper
     - unconvert
+    - unparam
+    - usestdlibvars
+    - usetesting
     - wastedassign
+  settings:
+    gosec:
+      # Operator paths, and commands taken from config (git, go, a browser, a webhook).
+      excludes:
+        - G304
+        - G204
+  exclusions:
+    rules:
+      # The OAuth token-type URN contains the word "token". It is not a secret.
+      - path: auth/resolver\.go
+        linters: [gosec]
+        text: "G101:"
+      # The token file has to persist the refresh token.
+      - path: auth/store\.go
+        linters: [gosec]
+        text: "G117:"
+      # A token directory needs the execute bit so the process can traverse it.
+      - path: auth/store\.go
+        linters: [gosec]
+        text: "G302:"
+      - path: _test\.go
+        linters: [gosec]
+        text: "G101:|G117:"
+      # The approval test re-executes this test binary. The argv is fixed.
+      - path: policy/state_test\.go
+        linters: [gosec]
+        text: "G702:"

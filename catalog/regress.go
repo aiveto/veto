@@ -34,15 +34,11 @@ func Facts(cat *Catalog) map[string]OpFact {
 			Confirmation: op.RequiresConfirmation,
 			Destructive:  op.SideEffect == SideEffectDestructive || op.Kind == KindDelete,
 			Referenced:   ref[op.ID],
-			Callable:     boolPtr(op.Exposure != ExposureDiscovery),
+			Callable:     new(op.Exposure != ExposureDiscovery),
 			Permissions:  perms,
 		}
 	}
 	return out
-}
-
-func boolPtr(v bool) *bool {
-	return &v
 }
 
 // confirmationChanged lists operations whose agent.yaml confirmation field changed on purpose.

@@ -14,7 +14,7 @@ import (
 
 func TestBearerSchemeAndExplicitOptOut(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "spec.yaml")
-	require.NoError(t, os.WriteFile(path, []byte(authSpec), 0o644))
+	require.NoError(t, os.WriteFile(path, []byte(authSpec), 0o600))
 	cat, err := openapi.Load(context.Background(), path)
 	require.NoError(t, err)
 	create := cat.ByID("orders.create")
@@ -58,7 +58,7 @@ func TestAPIKeyAndOAuthSchemes(t *testing.T) {
 func loadAuth(t *testing.T, spec string) *catalog.Catalog {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "spec.yaml")
-	require.NoError(t, os.WriteFile(path, []byte(spec), 0o644))
+	require.NoError(t, os.WriteFile(path, []byte(spec), 0o600))
 	cat, err := openapi.Load(context.Background(), path)
 	require.NoError(t, err)
 	return cat

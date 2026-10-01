@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -71,12 +72,12 @@ func runAuthLogin(cmd authLoginCmd) {
 		os.Exit(1)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
 	err = auth.Login(ctx, auth.LoginOptions{
 		Scheme: scheme,
 		Dir:    dir,
 		Device: cmd.device || !auth.HasBrowser(),
 	})
+	cancel()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "auth login: %v\n", err)
 		os.Exit(1)
@@ -113,10 +114,10 @@ func runAuthSet(cmd authSetCmd) {
 
 func configuredScheme(configPath, name string) (auth.Scheme, string, error) {
 	if configPath == "" {
-		return auth.Scheme{}, "", fmt.Errorf("config required")
+		return auth.Scheme{}, "", errors.New("config required")
 	}
 	if name == "" {
-		return auth.Scheme{}, "", fmt.Errorf("scheme required")
+		return auth.Scheme{}, "", errors.New("scheme required")
 	}
 	cfg, err := loadAuthConfig(configPath)
 	if err != nil {

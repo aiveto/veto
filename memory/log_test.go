@@ -43,7 +43,7 @@ func TestLogCanceledContextWritesNothing(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	err = log.Store(ctx, memory.Item{ID: "1", Content: "x"})
-	assert.ErrorIs(t, err, context.Canceled)
+	require.ErrorIs(t, err, context.Canceled)
 	_, err = os.Stat(path)
 	assert.ErrorIs(t, err, os.ErrNotExist)
 }

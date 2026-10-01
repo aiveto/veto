@@ -5,19 +5,20 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/aiveto/veto/catalog"
 )
 
-func followPages(ctx context.Context, cfg Config, op *catalog.Operation, params map[string]string, body string, cap int) (string, error) {
+func followPages(ctx context.Context, cfg Config, op *catalog.Operation, params map[string]string, body string, pageCap int) (string, error) {
 	items, ok := pageItems(body)
 	if !ok {
 		return body, nil
 	}
 	current := cloneParams(params)
 	seen := map[string]bool{}
-	for page := 1; page < cap; page++ {
+	for page := 1; page < pageCap; page++ {
 		next, ok := nextPage(op.Page, body)
 		if !ok {
 			break
@@ -27,9 +28,7 @@ func followPages(ctx context.Context, cfg Config, op *catalog.Operation, params 
 			break
 		}
 		seen[sig] = true
-		for k, v := range next {
-			current[k] = v
-		}
+		maps.Copy(current, next)
 		resp, err := InvokeResponse(ctx, cfg, op, current)
 		if err != nil {
 			return "", err
@@ -124,8 +123,6 @@ func jsonField(body, field string) (string, bool) {
 
 func cloneParams(in map[string]string) map[string]string {
 	out := make(map[string]string, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
+	maps.Copy(out, in)
 	return out
 }

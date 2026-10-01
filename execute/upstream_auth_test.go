@@ -72,7 +72,7 @@ func TestMissingCredentialSkipsHTTP(t *testing.T) {
 					HTTP:    tokenSrv.Client(),
 				}),
 			}).InvokeHTTPResult(context.Background(), op, map[string]string{"id": "1"})
-			assert.Error(t, err)
+			require.Error(t, err)
 			assert.NotContains(t, err.Error(), "WORKFORCE_SECRET")
 			assert.Equal(t, int32(0), tokenHits.Load())
 			assert.Equal(t, int32(0), upstreamHits.Load())
@@ -135,7 +135,7 @@ func TestQueryKeyIsScrubbedFromTheErrorAndTrace(t *testing.T) {
 		Auth:    map[string]string{"queryAuth": secret},
 	}, op, nil)
 	if resp != nil && resp.Body != nil {
-		assert.NoError(t, resp.Body.Close())
+		require.NoError(t, resp.Body.Close())
 	}
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), secret)
@@ -177,14 +177,12 @@ func TestParallelClientCredentialsHitTheTokenURLOnce(t *testing.T) {
 	var wg sync.WaitGroup
 	errCh := make(chan error, n)
 	for range n {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			_, err := client.InvokeHTTPResult(context.Background(), op, map[string]string{"id": "1"})
 			if err != nil {
 				errCh <- err
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	close(errCh)
@@ -394,9 +392,9 @@ func TestCommandHookFailuresSkipUpstream(t *testing.T) {
 				}}, Dir: t.TempDir()}),
 			}).InvokeHTTPResult(context.Background(), op, map[string]string{"id": "1"})
 			require.Error(t, err)
-			assert.ErrorContains(t, err, tc.want)
+			require.ErrorContains(t, err, tc.want)
 			assert.NotContains(t, err.Error(), "secret-stdout")
-			assert.Equal(t, int32(0), hits.Load())
+			require.Equal(t, int32(0), hits.Load())
 		})
 	}
 }
@@ -408,7 +406,7 @@ func finishCodeLogin(ctx context.Context, raw string) error {
 	}
 	q := u.Query()
 	if q.Get("code_challenge_method") != "S256" || q.Get("code_challenge") == "" {
-		return errString("missing pkce")
+		return stringError("missing pkce")
 	}
 	cb, err := url.Parse(q.Get("redirect_uri"))
 	if err != nil {
@@ -438,14 +436,14 @@ func finishCodeLogin(ctx context.Context, raw string) error {
 	return closeErr
 }
 
-type errString string
+type stringError string
 
-func (e errString) Error() string { return string(e) }
+func (e stringError) Error() string { return string(e) }
 
 type errTrip struct{}
 
 func (errTrip) RoundTrip(req *http.Request) (*http.Response, error) {
-	return nil, errString("Get \"" + req.URL.String() + "\": refused")
+	return nil, stringError("Get \"" + req.URL.String() + "\": refused")
 }
 
 const twoSchemeSpec = `openapi: 3.0.3

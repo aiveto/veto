@@ -42,7 +42,7 @@ func TestKnownProviderKeysLoad(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "veto.yaml")
-			require.NoError(t, os.WriteFile(path, []byte(tc.body), 0o644))
+			require.NoError(t, os.WriteFile(path, []byte(tc.body), 0o600))
 			cfg, err := config.Load(path)
 			require.NoError(t, err)
 			if tc.want.Model != "" {
@@ -74,7 +74,7 @@ func TestKnownProviderKeysLoad(t *testing.T) {
 func TestAuthSourcesKeepTheEnvShorthand(t *testing.T) {
 	body := "token_dir: tokens\nauth:\n  bearerAuth: ORDER_TOKEN\n  user:\n    source: login\n    client_id: veto\n    issuer: https://idp.example\n    scopes: [orders.read]\n    auth_token: app_token\n    user_token: person_token\n    user_header: X-User-Token\n  upstream:\n    source: token_exchange\n    token_url: https://idp.example/token\n    client_id: veto\n    client_secret_env: VETO_SECRET\n    audience: https://api.example\n    scopes: [orders.read]\n    subject: invoke\n  workforce:\n    source: client_credentials\n    token_url: https://idp.example/token\n    client_id: job\n    client_secret_env: WORKFORCE_SECRET\n    audience: https://api.example\n  sig:\n    source: command\n    command: /usr/local/bin/veto-sig\n    timeout: 5s\n"
 	path := filepath.Join(t.TempDir(), "veto.yaml")
-	require.NoError(t, os.WriteFile(path, []byte(body), 0o644))
+	require.NoError(t, os.WriteFile(path, []byte(body), 0o600))
 	cfg, err := config.Load(path)
 	require.NoError(t, err)
 	assert.Equal(t, "ORDER_TOKEN", cfg.Auth["bearerAuth"].Env)
@@ -97,30 +97,30 @@ func TestAuthSourcesKeepTheEnvShorthand(t *testing.T) {
 func TestApprovalWebhookIsACommandOrURL(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "veto.yaml")
-	require.NoError(t, os.WriteFile(path, []byte("approval_webhook: https://hooks.example/pending\n"), 0o644))
+	require.NoError(t, os.WriteFile(path, []byte("approval_webhook: https://hooks.example/pending\n"), 0o600))
 	cfg, err := config.Load(path)
 	require.NoError(t, err)
 	assert.Equal(t, "https://hooks.example/pending", cfg.ApprovalWebhook.URL)
 	assert.Empty(t, cfg.ApprovalWebhook.Command)
 
-	require.NoError(t, os.WriteFile(path, []byte("approval_webhook: ./bin/notify\n"), 0o644))
+	require.NoError(t, os.WriteFile(path, []byte("approval_webhook: ./bin/notify\n"), 0o600))
 	cfg, err = config.Load(path)
 	require.NoError(t, err)
 	assert.Equal(t, []string{filepath.Join(dir, "bin/notify")}, cfg.ApprovalWebhook.Command)
 
-	require.NoError(t, os.WriteFile(path, []byte("approval_webhook:\n  - /usr/local/bin/notify\n"), 0o644))
+	require.NoError(t, os.WriteFile(path, []byte("approval_webhook:\n  - /usr/local/bin/notify\n"), 0o600))
 	cfg, err = config.Load(path)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"/usr/local/bin/notify"}, cfg.ApprovalWebhook.Command)
 
-	require.NoError(t, os.WriteFile(path, []byte("approval_webhook: ftp://hooks.example/pending\n"), 0o644))
+	require.NoError(t, os.WriteFile(path, []byte("approval_webhook: ftp://hooks.example/pending\n"), 0o600))
 	_, err = config.Load(path)
 	assert.ErrorContains(t, err, "approval_webhook")
 }
 
 func TestCallersNameEnvVars(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "veto.yaml")
-	require.NoError(t, os.WriteFile(path, []byte("callers:\n  ada: ADA_CALLER_TOKEN\n  grace: GRACE_CALLER_TOKEN\n"), 0o644))
+	require.NoError(t, os.WriteFile(path, []byte("callers:\n  ada: ADA_CALLER_TOKEN\n  grace: GRACE_CALLER_TOKEN\n"), 0o600))
 	cfg, err := config.Load(path)
 	require.NoError(t, err)
 	assert.Equal(t, "ADA_CALLER_TOKEN", cfg.Callers["ada"])
@@ -129,14 +129,14 @@ func TestCallersNameEnvVars(t *testing.T) {
 
 func TestResponseFieldsLoad(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "veto.yaml")
-	require.NoError(t, os.WriteFile(path, []byte("response_fields: [id, name]\nresponse_limit: 20\n"), 0o644))
+	require.NoError(t, os.WriteFile(path, []byte("response_fields: [id, name]\nresponse_limit: 20\n"), 0o600))
 	cfg, err := config.Load(path)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"id", "name"}, cfg.ResponseFields)
 	assert.Equal(t, 20, cfg.ResponseLimit)
 
 	path = filepath.Join(t.TempDir(), "veto.yaml")
-	require.NoError(t, os.WriteFile(path, []byte("response_limit: -1\n"), 0o644))
+	require.NoError(t, os.WriteFile(path, []byte("response_limit: -1\n"), 0o600))
 	_, err = config.Load(path)
 	assert.ErrorContains(t, err, "response_limit")
 }
@@ -156,7 +156,7 @@ func TestUnusableProviderKeysFail(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "veto.yaml")
-			require.NoError(t, os.WriteFile(path, []byte(tc.body), 0o644))
+			require.NoError(t, os.WriteFile(path, []byte(tc.body), 0o600))
 			_, err := config.Load(path)
 			assert.ErrorContains(t, err, tc.want)
 		})
@@ -165,11 +165,11 @@ func TestUnusableProviderKeysFail(t *testing.T) {
 
 func TestUnknownConfigField(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "veto.yaml")
-	require.NoError(t, os.WriteFile(path, []byte("polciy: builtin\n"), 0o644))
+	require.NoError(t, os.WriteFile(path, []byte("polciy: builtin\n"), 0o600))
 	_, err := config.Load(path)
-	assert.ErrorContains(t, err, `unknown config field "polciy"`)
+	require.ErrorContains(t, err, `unknown config field "polciy"`)
 
-	require.NoError(t, os.WriteFile(path, []byte("auth:\n  bearer:\n    source: env\n    env: TOKEN\n    nope: 1\n"), 0o644))
+	require.NoError(t, os.WriteFile(path, []byte("auth:\n  bearer:\n    source: env\n    env: TOKEN\n    nope: 1\n"), 0o600))
 	_, err = config.Load(path)
 	assert.ErrorContains(t, err, `unknown config field "nope"`)
 }
