@@ -45,6 +45,9 @@ func New(baseURL string, httpClient *http.Client) (*Client, error) {
 				Method: {{quote .Method}},
 				PathTemplate: {{quote .Path}},
 				Description: {{quote .Description}},
+				Group: {{quote .Group}},
+				Kind: {{.KindLit}},
+				Tags: {{list .Tags}},
 				SideEffect: {{.SideConst}},
 				RequiresConfirmation: {{.Confirm}},
 				Permissions: {{list .Permissions}},
@@ -265,6 +268,9 @@ type (
 		Method      string
 		Path        string
 		Description string
+		Group       string
+		KindLit     string
+		Tags        []string
 		SideEffect  string
 		SideConst   string
 		Confirm     bool
@@ -322,7 +328,7 @@ func views(cat *catalog.Catalog) []opView {
 		goName := unique(usedGo, goName(op.ID))
 		cmd := unique(usedCmd, commandName(op.ID))
 		params := make([]paramView, 0, len(op.Params))
-		usedArg := map[string]int{}
+		usedArg := map[string]int{"ctx": 1, "approvalID": 1, "c": 1}
 		for _, p := range op.Params {
 			params = append(params, paramView{
 				Name:        p.Name,
@@ -344,6 +350,9 @@ func views(cat *catalog.Catalog) []opView {
 			Method:      op.Method,
 			Path:        op.PathTemplate,
 			Description: op.Description,
+			Group:       op.Group,
+			KindLit:     kindLit(op.Kind),
+			Tags:        op.Tags,
 			SideEffect:  string(op.SideEffect),
 			SideConst:   sideConst(op.SideEffect),
 			Confirm:     op.RequiresConfirmation,
@@ -365,8 +374,13 @@ func unique(seen map[string]int, name string) string {
 		seen[name] = 1
 		return name
 	}
-	seen[name]++
-	return fmt.Sprintf("%s%d", name, seen[name])
+	for i := 2; ; i++ {
+		next := fmt.Sprintf("%s%d", name, i)
+		if seen[next] == 0 {
+			seen[next] = 1
+			return next
+		}
+	}
 }
 
 func goName(id string) string {
@@ -419,6 +433,23 @@ func export(s string) string {
 	return string(r)
 }
 
+func kindLit(k catalog.Kind) string {
+	switch k {
+	case catalog.KindRead:
+		return "catalog.KindRead"
+	case catalog.KindCreate:
+		return "catalog.KindCreate"
+	case catalog.KindUpdate:
+		return "catalog.KindUpdate"
+	case catalog.KindDelete:
+		return "catalog.KindDelete"
+	case catalog.KindAction:
+		return "catalog.KindAction"
+	default:
+		return "catalog.Kind(" + strconv.Quote(string(k)) + ")"
+	}
+}
+
 func exposureLit(s string) string {
 	switch s {
 	case catalog.ExposureDirect:
@@ -455,13 +486,15 @@ func reqLit(groups [][]catalog.Auth) string {
 }
 
 func authLit(a catalog.Auth) string {
-	return fmt.Sprintf("catalog.Auth{Name: %s, Header: %s, Query: %s, Kind: %s, Scopes: %s, UserHeader: %s}",
+	return fmt.Sprintf("catalog.Auth{Name: %s, Header: %s, Query: %s, Kind: %s, Scopes: %s, UserHeader: %s, Type: %s, Scheme: %s}",
 		strconv.Quote(a.Name),
 		strconv.Quote(a.Header),
 		strconv.Quote(a.Query),
 		strconv.Quote(a.Kind),
 		quoteList(a.Scopes),
 		strconv.Quote(a.UserHeader),
+		strconv.Quote(a.Type),
+		strconv.Quote(a.Scheme),
 	)
 }
 

@@ -2,6 +2,8 @@ package agentmeta_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/aiveto/veto/agentmeta"
@@ -58,4 +60,13 @@ func TestUnknownOperationRefused(t *testing.T) {
 	require.NoError(t, err)
 	err = agentmeta.Apply(cat, agentmeta.File{Operations: []agentmeta.Entry{{Operation: "missing"}}})
 	assert.Error(t, err)
+}
+
+func TestLoadRejectsAMisspelledConfirmation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "agent.yaml")
+	body := "operations:\n  - operation: orders.delete\n    confirmaton: true\n"
+	require.NoError(t, os.WriteFile(path, []byte(body), 0o600))
+	_, err := agentmeta.Load(path)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "confirmaton")
 }

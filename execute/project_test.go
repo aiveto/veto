@@ -63,16 +63,36 @@ func FuzzProjectPage(f *testing.F) {
 	})
 }
 
+func TestProjectRejectsCorruptJSONWhenTheBodyIsComplete(t *testing.T) {
+	raw := []byte(`{"id":1,"broken":NOT_JSON}`)
+	body, page, truncated, err := projectBody(raw, Projection{Fields: []string{"id"}}, false, 1<<20)
+	require.Error(t, err)
+	assert.Nil(t, body)
+	assert.Nil(t, page)
+	assert.False(t, truncated)
+	body, _, truncated, err = projectBody(raw, Projection{Fields: []string{"id"}}, true, 1<<20)
+	require.NoError(t, err)
+	assert.True(t, truncated)
+	assert.JSONEq(t, `{"id":1}`, string(body))
+}
+
 func FuzzProjectDecode(f *testing.F) {
 	f.Add([]byte(`[{"id":"a"}]`))
 	f.Add([]byte(`{"id":"a"}`))
 	f.Add([]byte(`{"id":`))
+	f.Add([]byte(`{"id":1,"broken":NOT_JSON}`))
+	f.Add([]byte(`{"id":1} trailing`))
 	f.Add([]byte(`not-json`))
 	f.Add([]byte{})
 	f.Fuzz(func(t *testing.T, raw []byte) {
-		_, _, err := decodeContainer(raw)
-		if err != nil && len(raw) == 0 {
-			require.Error(t, err)
+		for _, cut := range []bool{false, true} {
+			_, partial, err := decodeContainer(raw, cut)
+			if err != nil {
+				continue
+			}
+			if !cut && partial {
+				t.Fatal("partial decode of a complete body")
+			}
 		}
 	})
 }

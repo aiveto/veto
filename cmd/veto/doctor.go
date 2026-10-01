@@ -53,7 +53,7 @@ func runDoctor(cmd doctorCmd) {
 	if err != nil {
 		releaseBundles()
 		fmt.Fprintf(os.Stderr, "doctor: %v\n", err)
-		os.Exit(1)
+		exitMain(1)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.Timeout)
 	lines, fail := doctorReport(ctx, loop.Catalog, cfg, cmd.pin, cmd.ping)
@@ -67,7 +67,7 @@ func runDoctor(cmd doctorCmd) {
 	}
 	if fail {
 		releaseBundles()
-		os.Exit(1)
+		exitMain(1)
 	}
 }
 
@@ -173,7 +173,7 @@ func missingAuth(op catalog.Operation, names config.Sources, dir string) string 
 
 func groupReady(group []catalog.Auth, names config.Sources, dir string) bool {
 	if len(group) == 0 {
-		return false
+		return true
 	}
 	for _, a := range group {
 		if !schemeReady(a, names, dir) {
@@ -184,6 +184,9 @@ func groupReady(group []catalog.Auth, names config.Sources, dir string) bool {
 }
 
 func schemeReady(a catalog.Auth, names config.Sources, dir string) bool {
+	if src, ok := names[a.Name]; ok && len(sourceBlockers(a.Name, src, dir)) == 0 {
+		return true
+	}
 	if a.Kind == "unsupported" || (a.Kind == "apiKey" && a.Header == "" && a.Query == "") {
 		return false
 	}
@@ -240,6 +243,9 @@ func authBlockers(cat *catalog.Catalog, names config.Sources, dir string) []stri
 	seen := map[string]bool{}
 	var out []string
 	for _, op := range cat.Operations {
+		if missingAuth(op, names, dir) == "" {
+			continue
+		}
 		for _, a := range op.AuthSchemes() {
 			if a.Name == "" || seen[a.Name] {
 				continue
@@ -329,6 +335,9 @@ func pingServers(ctx context.Context, client *http.Client, cat *catalog.Catalog)
 		if err != nil {
 			out = append(out, fmt.Sprintf("ping %s: %v", raw, err))
 			continue
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			out = append(out, fmt.Sprintf("ping %s: status %d", raw, resp.StatusCode))
 		}
 		if err := resp.Body.Close(); err != nil {
 			out = append(out, fmt.Sprintf("ping %s: %v", raw, err))

@@ -1,8 +1,10 @@
 package catalog
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 
@@ -61,10 +63,71 @@ func Merge(parts ...*Catalog) (*Catalog, error) {
 
 func ParseRelations(data []byte) ([]Relation, error) {
 	var f relationFile
-	if err := yaml.Unmarshal(data, &f); err != nil {
+	if err := decodeStrict(data, &f); err != nil {
 		return nil, fmt.Errorf("parse relations: %w", err)
 	}
 	return f.Relations, nil
+}
+
+func decodeStrict(data []byte, out any) error {
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	var doc yaml.Node
+	if err := dec.Decode(&doc); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		return err
+	}
+	var extra yaml.Node
+	err := dec.Decode(&extra)
+	if err == nil {
+		return errors.New("extra document")
+	}
+	if !errors.Is(err, io.EOF) {
+		return err
+	}
+	if err := rejectDup(&doc, map[*yaml.Node]struct{}{}); err != nil {
+		return err
+	}
+	known := yaml.NewDecoder(bytes.NewReader(data))
+	known.KnownFields(true)
+	return known.Decode(out)
+}
+
+func rejectDup(n *yaml.Node, active map[*yaml.Node]struct{}) error {
+	if n == nil {
+		return nil
+	}
+	if _, seen := active[n]; seen {
+		return errors.New("yaml alias cycle")
+	}
+	active[n] = struct{}{}
+	defer delete(active, n)
+	switch n.Kind {
+	case yaml.DocumentNode, yaml.SequenceNode:
+		for _, child := range n.Content {
+			if err := rejectDup(child, active); err != nil {
+				return err
+			}
+		}
+	case yaml.MappingNode:
+		keys := map[string]struct{}{}
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			key := n.Content[i].Value
+			if _, ok := keys[key]; ok {
+				return fmt.Errorf("duplicate field %q", key)
+			}
+			keys[key] = struct{}{}
+			if err := rejectDup(n.Content[i+1], active); err != nil {
+				return err
+			}
+		}
+	case yaml.AliasNode:
+		return rejectDup(n.Alias, active)
+	case yaml.ScalarNode:
+		return nil
+	}
+	return nil
 }
 
 // A field name in a spec does not create an edge. This declaration does.

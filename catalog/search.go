@@ -47,7 +47,7 @@ func SearchPage(cat *Catalog, query string, synonyms map[string][]string, offset
 }
 
 func pageHits(cat *Catalog, hits []scored, offset, limit int) []Match {
-	if limit <= 0 {
+	if limit <= 0 || limit > hitLimit {
 		limit = hitLimit
 	}
 	if offset < 0 {
@@ -56,9 +56,12 @@ func pageHits(cat *Catalog, hits []scored, offset, limit int) []Match {
 	if offset > len(hits) {
 		return nil
 	}
-	end := min(offset+limit, len(hits))
-	out := make([]Match, 0, end-offset)
-	for _, h := range hits[offset:end] {
+	remain := len(hits) - offset
+	if limit > remain {
+		limit = remain
+	}
+	out := make([]Match, 0, limit)
+	for _, h := range hits[offset : offset+limit] {
 		out = append(out, hit(cat, h.op))
 	}
 	return out

@@ -50,6 +50,19 @@ func TestConfirmationStopsTheNextStep(t *testing.T) {
 	assert.Equal(t, []string{"orders.get", "orders.delete"}, called)
 }
 
+func TestParseRejectsUnknownFieldsAndExtraDocuments(t *testing.T) {
+	_, err := flow.Parse([]byte("name: get\nsteps:\n  - operation: orders.get\n    confirmaton: true\n"))
+	require.Error(t, err)
+	_, err = flow.Parse([]byte("name: get\nname: again\nsteps: []\n"))
+	require.Error(t, err)
+	_, err = flow.Parse([]byte("name: get\nsteps: [orders.get]\n---\nname: other\n"))
+	require.Error(t, err)
+	def, err := flow.Parse([]byte("name: get\nsteps:\n  - orders.get\n"))
+	require.NoError(t, err)
+	require.Len(t, def.Steps, 1)
+	assert.Equal(t, "orders.get", def.Steps[0].Operation)
+}
+
 func clone(in map[string]string) map[string]string {
 	out := make(map[string]string, len(in))
 	maps.Copy(out, in)

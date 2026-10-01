@@ -23,6 +23,16 @@ func TestGeneratedClientKeepsExposureAuthAndIdempotency(t *testing.T) {
 			Params: []catalog.Param{{Name: "id", In: "path", Required: true}},
 		},
 		{ID: "orders.create", Method: http.MethodPost, PathTemplate: "/orders", Idempotency: "key", Retry: "1"},
+		{
+			ID: "orders.tagged", Method: http.MethodGet, PathTemplate: "/tagged",
+			Group: "orders", Kind: catalog.KindCreate, Tags: []string{"order"},
+			Params: []catalog.Param{
+				{Name: "ctx", In: "query"},
+				{Name: "ctx2", In: "query"},
+				{Name: "approvalID", In: "query"},
+				{Name: "c", In: "query"},
+			},
+		},
 	}}
 	cat.Finalize()
 	dir := t.TempDir()
@@ -97,6 +107,10 @@ func TestGeneratedCatalogMatchesTheRuntime(t *testing.T) {
 	create := c.Calls.Catalog.ByID("orders.create")
 	if create == nil || create.Idempotency != "key" || create.Retry != "1" {
 		t.Fatalf("create %+v", create)
+	}
+	tagged := c.Calls.Catalog.ByID("orders.tagged")
+	if tagged == nil || tagged.Group != "orders" || tagged.Kind != "create" || len(tagged.Tags) != 1 || tagged.Tags[0] != "order" {
+		t.Fatalf("tagged %+v", tagged)
 	}
 	del := c.Calls.Catalog.ByID("orders.delete")
 	if del == nil || !del.RequiresConfirmation || len(del.Permissions) != 1 || del.Permissions[0] != "orders.delete" {

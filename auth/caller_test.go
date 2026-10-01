@@ -28,23 +28,22 @@ func (p *seqProvider) Resolve(context.Context, credentials.Request) (credentials
 	}, nil
 }
 
-func TestCachedTokensStayWithTheCaller(t *testing.T) {
+func TestProviderOutputIsNotReused(t *testing.T) {
 	src := &seqProvider{}
 	r := auth.New(auth.Options{})
 	r.SetProvider("userAuth", src)
 	p, ok := r.Provider(catalog.Auth{Name: "userAuth"})
 	require.True(t, ok)
-	ada := auth.WithCaller(context.Background(), "ada")
-	grace := auth.WithCaller(context.Background(), "grace")
-	first, err := p.Resolve(ada, credentials.Request{Scheme: "userAuth"})
+	ada := auth.WithCaller(t.Context(), "ada")
+	grace := auth.WithCaller(t.Context(), "grace")
+	first, err := p.Resolve(ada, credentials.Request{Scheme: "userAuth", URL: "http://a.example"})
 	require.NoError(t, err)
-	second, err := p.Resolve(ada, credentials.Request{Scheme: "userAuth"})
+	second, err := p.Resolve(ada, credentials.Request{Scheme: "userAuth", URL: "http://b.example"})
 	require.NoError(t, err)
-	other, err := p.Resolve(grace, credentials.Request{Scheme: "userAuth"})
+	other, err := p.Resolve(grace, credentials.Request{Scheme: "userAuth", URL: "http://c.example"})
 	require.NoError(t, err)
 	assert.Equal(t, "Bearer token-ada", first.Headers["Authorization"])
-	assert.Equal(t, "Bearer token-ada", second.Headers["Authorization"])
-	assert.Equal(t, "Bearer token-grace", other.Headers["Authorization"])
-	assert.NotContains(t, other.Headers["Authorization"], "token-ada")
-	assert.Equal(t, int32(2), src.n.Load())
+	assert.Equal(t, "Bearer token-grace", second.Headers["Authorization"])
+	assert.NotEqual(t, first.Headers["Authorization"], other.Headers["Authorization"])
+	assert.Equal(t, int32(3), src.n.Load())
 }

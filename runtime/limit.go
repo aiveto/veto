@@ -3,8 +3,6 @@ package runtime
 import (
 	"sync"
 	"time"
-
-	"github.com/aiveto/veto/policy"
 )
 
 // allowInvoke is the in-process cap on Invoke. It has no off switch.
@@ -13,40 +11,69 @@ import (
 const (
 	invokePerWindow = 16
 	invokeWindow    = time.Second
+	invokeCallers   = 256
 )
 
-type gateKey struct {
-	state  *policy.State
-	caller string
+// InvokeGate is the per-runtime invoke cap. Zero Per, Window, and Max use 16 calls per second and 256 callers.
+type InvokeGate struct {
+	Per    int
+	Window time.Duration
+	Max    int
+
+	mu sync.Mutex
+	by map[string]*callerWindow
 }
 
-type window struct {
-	mu    sync.Mutex
+type callerWindow struct {
 	start time.Time
 	n     int
 }
 
-var gates sync.Map
-
-func allowInvoke(state *policy.State, caller string, now time.Time) bool {
-	v, _ := gates.LoadOrStore(gateKey{state: state, caller: caller}, &window{})
-	w, ok := v.(*window)
-	if !ok {
-		return false
+func (g *InvokeGate) allow(caller string, now time.Time) (bool, time.Duration) {
+	if g == nil {
+		return true, 0
 	}
-	return w.allow(now)
-}
-
-func (w *window) allow(now time.Time) bool {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if w.start.IsZero() || now.Sub(w.start) >= invokeWindow {
+	per := g.Per
+	if per <= 0 {
+		per = invokePerWindow
+	}
+	window := g.Window
+	if window <= 0 {
+		window = invokeWindow
+	}
+	maxCallers := g.Max
+	if maxCallers <= 0 {
+		maxCallers = invokeCallers
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.by == nil {
+		g.by = map[string]*callerWindow{}
+	}
+	w := g.by[caller]
+	if w == nil {
+		g.evict(now, window)
+		if len(g.by) >= maxCallers {
+			return false, window
+		}
+		w = &callerWindow{start: now}
+		g.by[caller] = w
+	}
+	if w.start.IsZero() || now.Sub(w.start) >= window {
 		w.start = now
 		w.n = 0
 	}
-	if w.n >= invokePerWindow {
-		return false
+	if w.n >= per {
+		return false, max(window-now.Sub(w.start), 0)
 	}
 	w.n++
-	return true
+	return true, 0
+}
+
+func (g *InvokeGate) evict(now time.Time, window time.Duration) {
+	for caller, w := range g.by {
+		if w == nil || w.start.IsZero() || now.Sub(w.start) >= window {
+			delete(g.by, caller)
+		}
+	}
 }

@@ -246,9 +246,7 @@ func (s *State) RequestFor(caller, opID string, params map[string]string) (strin
 		Status:      statusPending,
 		Caller:      caller,
 	}
-	if len(s.secret) > 0 {
-		rec.Expiry = s.deadline().Unix()
-	}
+	rec.Expiry = s.deadline().Unix()
 	if err := s.storeLocked(rec); err != nil {
 		delete(s.pending, id)
 		return "", err
@@ -444,30 +442,61 @@ func (s *State) findApprovedLocked(approved string) (confirmation, bool) {
 	if approved == "" {
 		return confirmation{}, false
 	}
-	if s.nonceDir != "" {
-		entries, err := os.ReadDir(filepath.Join(s.nonceDir, "confirmations"))
-		if err != nil {
-			return confirmation{}, false
-		}
-		for _, entry := range entries {
-			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
-				continue
+	if id, ok := s.approved[approved]; ok {
+		if s.nonceDir != "" {
+			disk, ok := s.readFile(id)
+			if !ok || disk.ApprovedID != approved || disk.Status != statusApproved || s.dropExpiredLocked(disk) {
+				delete(s.approved, approved)
+				delete(s.pending, id)
+			} else {
+				s.remember(disk)
+				return disk, true
 			}
-			id := strings.TrimSuffix(entry.Name(), ".json")
-			rec, ok := s.readFile(id)
-			if ok && rec.ApprovedID == approved {
-				s.remember(rec)
-				return rec, true
-			}
+		} else if rec, ok := s.pending[id]; ok && rec.ApprovedID == approved && rec.Status == statusApproved && !s.dropExpiredLocked(rec) {
+			return rec, true
 		}
+	}
+	if s.nonceDir == "" {
 		return confirmation{}, false
 	}
-	id, ok := s.approved[approved]
-	if !ok {
+	entries, err := os.ReadDir(filepath.Join(s.nonceDir, "confirmations"))
+	if err != nil {
 		return confirmation{}, false
 	}
-	rec, ok := s.pending[id]
-	return rec, ok
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		id := strings.TrimSuffix(entry.Name(), ".json")
+		rec, ok := s.readFile(id)
+		if !ok {
+			continue
+		}
+		if s.dropExpiredLocked(rec) {
+			continue
+		}
+		if rec.ApprovedID == approved && rec.Status == statusApproved {
+			s.remember(rec)
+			return rec, true
+		}
+	}
+	return confirmation{}, false
+}
+
+func (s *State) dropExpiredLocked(rec confirmation) bool {
+	if !expired(rec, s.clock()) {
+		return false
+	}
+	if s.nonceDir != "" && plainID(rec.ID) {
+		dir := filepath.Join(s.nonceDir, "confirmations")
+		_ = os.Remove(filepath.Join(dir, rec.ID+".json"))
+		_ = os.Remove(filepath.Join(dir, rec.ID+".claimed"))
+	}
+	delete(s.pending, rec.ID)
+	if rec.ApprovedID != "" {
+		delete(s.approved, rec.ApprovedID)
+	}
+	return true
 }
 
 func (s *State) remember(rec confirmation) {
@@ -518,7 +547,7 @@ func (b Builtin) Check(ctx context.Context, op *catalog.Operation) (Decision, er
 	if op == nil {
 		return DecisionDeny, errors.New("missing operation")
 	}
-	span := telemetry.StartSpan(ctx, "policy.decision")
+	_, span := telemetry.StartSpan(ctx, "policy.decision")
 	defer span.End()
 	if b.Allow != nil {
 		for _, p := range op.Permissions {

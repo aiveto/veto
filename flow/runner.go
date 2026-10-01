@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"maps"
 
 	"gopkg.in/yaml.v3"
@@ -35,9 +37,27 @@ type (
 func (s StoppedError) Error() string { return s.Status }
 
 func (s *Step) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind == yaml.AliasNode && value.Alias != nil {
+		return s.UnmarshalYAML(value.Alias)
+	}
 	if value.Kind == yaml.ScalarNode {
 		s.Operation = value.Value
 		return nil
+	}
+	if value.Kind != yaml.MappingNode {
+		return errors.New("flow step must be a string or mapping")
+	}
+	known := map[string]bool{"operation": true, "output": true, "to": true}
+	seen := map[string]bool{}
+	for i := 0; i+1 < len(value.Content); i += 2 {
+		key := value.Content[i].Value
+		if seen[key] {
+			return fmt.Errorf("duplicate field %q", key)
+		}
+		seen[key] = true
+		if !known[key] {
+			return fmt.Errorf("unknown field %q", key)
+		}
 	}
 	var raw struct {
 		Operation string `yaml:"operation"`
@@ -55,10 +75,71 @@ func (s *Step) UnmarshalYAML(value *yaml.Node) error {
 
 func Parse(data []byte) (*Definition, error) {
 	var def Definition
-	if err := yaml.Unmarshal(data, &def); err != nil {
+	if err := decodeStrict(data, &def); err != nil {
 		return nil, fmt.Errorf("parse flow: %w", err)
 	}
 	return &def, nil
+}
+
+func decodeStrict(data []byte, out any) error {
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	var doc yaml.Node
+	if err := dec.Decode(&doc); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		return err
+	}
+	var extra yaml.Node
+	err := dec.Decode(&extra)
+	if err == nil {
+		return errors.New("extra document")
+	}
+	if !errors.Is(err, io.EOF) {
+		return err
+	}
+	if err := rejectDup(&doc, map[*yaml.Node]struct{}{}); err != nil {
+		return err
+	}
+	known := yaml.NewDecoder(bytes.NewReader(data))
+	known.KnownFields(true)
+	return known.Decode(out)
+}
+
+func rejectDup(n *yaml.Node, active map[*yaml.Node]struct{}) error {
+	if n == nil {
+		return nil
+	}
+	if _, seen := active[n]; seen {
+		return errors.New("yaml alias cycle")
+	}
+	active[n] = struct{}{}
+	defer delete(active, n)
+	switch n.Kind {
+	case yaml.DocumentNode, yaml.SequenceNode:
+		for _, child := range n.Content {
+			if err := rejectDup(child, active); err != nil {
+				return err
+			}
+		}
+	case yaml.MappingNode:
+		keys := map[string]struct{}{}
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			key := n.Content[i].Value
+			if _, ok := keys[key]; ok {
+				return fmt.Errorf("duplicate field %q", key)
+			}
+			keys[key] = struct{}{}
+			if err := rejectDup(n.Content[i+1], active); err != nil {
+				return err
+			}
+		}
+	case yaml.AliasNode:
+		return rejectDup(n.Alias, active)
+	case yaml.ScalarNode:
+		return nil
+	}
+	return nil
 }
 
 func (r *Runner) Run(ctx context.Context, def *Definition, params map[string]string) ([]string, error) {

@@ -3,6 +3,7 @@ package catalog_test
 import (
 	"context"
 	"fmt"
+	"math"
 	"testing"
 
 	"os"
@@ -70,6 +71,33 @@ func TestSearchPageReturnsTheNextWindow(t *testing.T) {
 	require.Len(t, first, 3)
 	require.Len(t, next, 3)
 	assert.NotEqual(t, first[0].Operation.ID, next[0].Operation.ID)
+}
+
+func TestSearchPageClampsTheWindow(t *testing.T) {
+	cat := &catalog.Catalog{Operations: []catalog.Operation{{
+		ID: "item.get", Name: "Get item", Description: "fetch one",
+	}}}
+	cat.Finalize()
+	assert.Empty(t, catalog.SearchPage(cat, "item.get", nil, 1, math.MaxInt))
+	matches := catalog.SearchPage(cat, "item.get", nil, 0, math.MaxInt)
+	require.Len(t, matches, 1)
+}
+
+func FuzzSearchPage(f *testing.F) {
+	f.Add(0, 0)
+	f.Add(1, int(math.MaxInt))
+	f.Add(-1, -1)
+	f.Add(int(math.MaxInt), int(math.MaxInt))
+	cat := &catalog.Catalog{Operations: []catalog.Operation{{
+		ID: "item.get", Name: "Get item", Description: "fetch one",
+	}}}
+	cat.Finalize()
+	f.Fuzz(func(t *testing.T, offset, limit int) {
+		matches := catalog.SearchPage(cat, "item.get", nil, offset, limit)
+		if len(matches) > 8 {
+			t.Fatalf("len %d", len(matches))
+		}
+	})
 }
 
 func TestSearchRetireFindsDelete(t *testing.T) {

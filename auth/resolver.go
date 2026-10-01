@@ -286,7 +286,7 @@ func (r *Resolver) materialScheme(ctx context.Context, a catalog.Auth, in creden
 	if force {
 		flightKey += "\x00force"
 	}
-	return r.flight.Do(flightKey, func() (Material, error) {
+	return r.flight.Do(ctx, flightKey, func() (Material, error) {
 		if !force {
 			if mat, ok := r.cache.fresh(key, r.now()); ok {
 				return mat, nil
@@ -504,12 +504,33 @@ func (r *Resolver) subjectToken(ctx context.Context, s Scheme) string {
 	if err != nil {
 		return ""
 	}
+	if subjectExpired(stored, r.now()) {
+		if stored.RefreshToken == "" {
+			return ""
+		}
+		login := Scheme{Name: s.Subject}
+		if other, ok := r.schemes[s.Subject]; ok {
+			login = other
+		}
+		login.Name = s.Subject
+		if _, err := r.fetchLogin(ctx, login, catalog.Auth{Name: s.Subject}, nil, true); err != nil {
+			return ""
+		}
+		stored, err = readToken(r.dir, s.Subject)
+		if err != nil {
+			return ""
+		}
+	}
 	if other, ok := r.schemes[s.Subject]; ok {
 		if v := tokenField(stored, authFieldName(other)); v != "" {
 			return v
 		}
 	}
 	return tokenField(stored, "access_token")
+}
+
+func subjectExpired(stored storedToken, now time.Time) bool {
+	return !stored.ExpiresAt.IsZero() && !now.Before(stored.ExpiresAt)
 }
 
 func fieldSecrets(fields map[string]string) []string {
@@ -663,27 +684,6 @@ func (p extraProvider) Resolve(ctx context.Context, in credentials.Request) (cre
 	if in.UserToken != "" && UserToken(ctx) == "" {
 		ctx = WithUserToken(ctx, in.UserToken)
 	}
-	force := forced(ctx)
-	s := Scheme{Name: p.a.Name, Source: "source", Scopes: p.a.Scopes}
-	if cfg, ok := p.r.schemes[p.a.Name]; ok {
-		s.Audience = cfg.Audience
-		if len(s.Scopes) == 0 {
-			s.Scopes = cfg.Scopes
-		}
-	}
-	need := in.Scopes
-	if len(need) == 0 {
-		need = s.Scopes
-	}
-	if len(need) == 0 {
-		need = p.a.Scopes
-	}
-	key := scopedKey(ctx, cacheKey(s, need))
-	if !force {
-		if mat, ok := p.r.cache.fresh(key, p.r.now()); ok {
-			return credentialOf(mat), nil
-		}
-	}
 	if in.Scheme == "" {
 		in.Scheme = p.a.Name
 	}
@@ -691,20 +691,17 @@ func (p extraProvider) Resolve(ctx context.Context, in credentials.Request) (cre
 		in.UserToken = UserToken(ctx)
 	}
 	if len(in.Scopes) == 0 {
-		in.Scopes = need
+		in.Scopes = p.a.Scopes
+		if cfg, ok := p.r.schemes[p.a.Name]; ok && len(cfg.Scopes) > 0 {
+			in.Scopes = cfg.Scopes
+		}
 	}
 	if in.Audience == "" {
-		in.Audience = s.Audience
+		if cfg, ok := p.r.schemes[p.a.Name]; ok {
+			in.Audience = cfg.Audience
+		}
 	}
-	out, err := p.src.Resolve(ctx, in)
-	if err != nil {
-		return credentials.Credential{}, err
-	}
-	mat := materialOf(out)
-	if !mat.Expires.IsZero() {
-		p.r.cache.put(key, mat)
-	}
-	return credentialOf(mat), nil
+	return p.src.Resolve(ctx, in)
 }
 
 func (p fixedProvider) Resolve(context.Context, credentials.Request) (credentials.Credential, error) {
@@ -830,15 +827,19 @@ type (
 	}
 )
 
-func (f *flight) Do(key string, fn func() (Material, error)) (Material, error) {
+func (f *flight) Do(ctx context.Context, key string, fn func() (Material, error)) (Material, error) {
 	f.mu.Lock()
 	if f.m == nil {
 		f.m = map[string]*flightCall{}
 	}
 	if c, ok := f.m[key]; ok {
 		f.mu.Unlock()
-		<-c.done
-		return cloneMaterial(c.mat), c.err
+		select {
+		case <-c.done:
+			return cloneMaterial(c.mat), c.err
+		case <-ctx.Done():
+			return Material{}, ctx.Err()
+		}
 	}
 	c := &flightCall{done: make(chan struct{})}
 	f.m[key] = c

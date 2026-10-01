@@ -78,6 +78,7 @@ func TestInvokeLimitStopsBeforeHTTP(t *testing.T) {
 	assert.Equal(t, "limited", limited.Status)
 	assert.Equal(t, "invoke_limited", limited.Code)
 	assert.Equal(t, "invoke limit", limited.Error)
+	assert.NotEmpty(t, limited.RetryAfter)
 	assert.Equal(t, "orders.get", limited.OperationID)
 	assert.False(t, limited.Retryable)
 	assert.Empty(t, limited.Body)
@@ -96,4 +97,21 @@ func TestInvokeLimitStopsBeforeHTTP(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "ok", other.Status)
 	assert.Equal(t, int32(invokePerWindow+1), hits.Load())
+
+	fresh := rt
+	fresh.State = policy.NewState()
+	fresh.Gate = rt.Gate
+	still, err := fresh.Invoke(context.Background(), req)
+	require.NoError(t, err)
+	assert.Equal(t, "limited", still.Status)
+
+	otherRT := Runtime{
+		Catalog: cat,
+		Policy:  policy.Builtin{},
+		Exec:    execute.Client{BaseURL: ts.URL},
+		now:     func() time.Time { return when },
+	}
+	again, err := otherRT.Invoke(context.Background(), req)
+	require.NoError(t, err)
+	assert.Equal(t, "ok", again.Status)
 }

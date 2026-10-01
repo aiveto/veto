@@ -116,9 +116,6 @@ func selectRequirement(ctx context.Context, cfg Config, groups [][]catalog.Auth)
 
 func requirementError(ctx context.Context, cfg Config, group []catalog.Auth) error {
 	for _, a := range group {
-		if a.Kind == "unsupported" || (a.Kind == "apiKey" && a.Header == "" && a.Query == "") {
-			return fmt.Errorf("security scheme %s is not supported", a.Name)
-		}
 		if suppliedByLogin(cfg, group, a) {
 			continue
 		}
@@ -127,6 +124,9 @@ func requirementError(ctx context.Context, cfg Config, group []catalog.Auth) err
 				return cfg.Creds.UnsetError(a)
 			}
 			continue
+		}
+		if a.Kind == "unsupported" || (a.Kind == "apiKey" && a.Header == "" && a.Query == "") {
+			return fmt.Errorf("security scheme %s is not supported", a.Name)
 		}
 		if cfg.Auth[a.Name] == "" {
 			return fmt.Errorf("%s is unset", a.Name)

@@ -66,10 +66,21 @@ relations:
 ```bash
 git clone https://github.com/aiveto/veto.git
 cd veto
-go install github.com/aiveto/veto/cmd/veto@latest
+go test ./...
 go run ./examples/two-apis
-go run ./cmd/veto serve --config examples/two-apis/veto.yaml --stdio
 ```
+
+`examples/two-apis` starts the sample APIs, checks the delete path, and exits. It is not a session you attach to.
+
+`veto serve` needs an API that is still listening and a credential source for that contract:
+
+```bash
+go run ./cmd/veto validate --contract testdata/openapi.yaml
+go run ./cmd/veto eval --contract testdata/openapi.yaml --case testdata/delete.yaml
+go run ./cmd/veto serve --contract testdata/openapi.yaml --stdio
+```
+
+`serve --stdio` speaks MCP on stdin. Do not point it at `examples/two-apis/veto.yaml` after the example has exited. That file expects `bearerAuth` and a process that is still up.
 
 Setup is in [docs/guide.md](docs/guide.md).
 

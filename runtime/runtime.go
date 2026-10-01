@@ -44,6 +44,7 @@ type (
 		Body        string       `json:"Body"`
 		Code        string       `json:"Code"`
 		Retryable   bool         `json:"Retryable"`
+		RetryAfter  string       `json:"RetryAfter,omitempty"`
 		Error       string       `json:"Error"`
 		Truncated   bool         `json:"Truncated"`
 		Page        *result.Page `json:"Page"`
@@ -76,19 +77,31 @@ type (
 		State   *policy.State
 		Exec    Executor
 		Notify  policy.Notifier
+		Gate    *InvokeGate
 		now     func() time.Time
 	}
 )
 
 // Invoke runs one operation. MCP uses this directly. It does not run the agent loop.
-func (rt Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
+func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
+	if rt == nil {
+		return Result{Status: "error"}, errors.New("runtime required")
+	}
 	caller := requestCaller(ctx, req)
-	if !allowInvoke(rt.State, caller, rt.clock()) {
+	if rt.Gate == nil {
+		rt.Gate = &InvokeGate{}
+	}
+	if ok, wait := rt.Gate.allow(caller, rt.clock()); !ok {
+		retry := ""
+		if wait > 0 {
+			retry = wait.String()
+		}
 		return rt.record(ctx, Result{
 			Status:      "limited",
 			OperationID: req.Operation,
 			Code:        "invoke_limited",
 			Error:       "invoke limit",
+			RetryAfter:  retry,
 		}), nil
 	}
 	ctx = auth.WithCaller(ctx, caller)
@@ -128,7 +141,7 @@ func (rt Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 		return rt.record(ctx, Result{Status: "error"}), err
 	}
 	if decision == policy.DecisionConfirmationNeeded {
-		span := telemetry.StartSpan(ctx, "policy.confirmation")
+		ctx, span := telemetry.StartSpan(ctx, "policy.confirmation")
 		defer span.End()
 		span.SetAttributes(telemetry.Attr("operation.id", req.Operation))
 		if req.Approval == "" {
@@ -197,7 +210,7 @@ func (rt Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 }
 
 // Preview resolves, validates, and checks policy. It does not fetch a token or call upstream.
-func (rt Runtime) Preview(ctx context.Context, req Request) (Preview, error) {
+func (rt *Runtime) Preview(ctx context.Context, req Request) (Preview, error) {
 	caller := requestCaller(ctx, req)
 	ctx = auth.WithCaller(ctx, caller)
 	op := rt.operation(req.Operation)
@@ -240,7 +253,7 @@ func (rt Runtime) Preview(ctx context.Context, req Request) (Preview, error) {
 	return out, nil
 }
 
-func (rt Runtime) clock() time.Time {
+func (rt *Runtime) clock() time.Time {
 	if rt.now != nil {
 		return rt.now()
 	}
@@ -254,7 +267,7 @@ func requestCaller(ctx context.Context, req Request) string {
 	return auth.Caller(ctx)
 }
 
-func (rt Runtime) notify(ctx context.Context, notice policy.Notice) error {
+func (rt *Runtime) notify(ctx context.Context, notice policy.Notice) error {
 	if rt.Notify == nil {
 		return nil
 	}
@@ -264,7 +277,7 @@ func (rt Runtime) notify(ctx context.Context, notice policy.Notice) error {
 	return nil
 }
 
-func (rt Runtime) requestBase(op *catalog.Operation) string {
+func (rt *Runtime) requestBase(op *catalog.Operation) string {
 	if base, ok := rt.Exec.(interface{ UpstreamBase() string }); ok {
 		if v := strings.TrimSpace(base.UpstreamBase()); v != "" {
 			return v
@@ -276,14 +289,14 @@ func (rt Runtime) requestBase(op *catalog.Operation) string {
 	return op.BaseURL
 }
 
-func (rt Runtime) operation(id string) *catalog.Operation {
+func (rt *Runtime) operation(id string) *catalog.Operation {
 	if rt.Catalog == nil {
 		return nil
 	}
 	return rt.Catalog.ByID(id)
 }
 
-func (rt Runtime) decide(ctx context.Context, op *catalog.Operation) (policy.Decision, error) {
+func (rt *Runtime) decide(ctx context.Context, op *catalog.Operation) (policy.Decision, error) {
 	base := rt.Base
 	if base == nil {
 		base = policy.Builtin{}
@@ -307,8 +320,8 @@ func (rt Runtime) decide(ctx context.Context, op *catalog.Operation) (policy.Dec
 	return decision, nil
 }
 
-func (rt Runtime) record(ctx context.Context, res Result) Result {
-	span := telemetry.StartSpan(ctx, "runtime.outcome")
+func (rt *Runtime) record(ctx context.Context, res Result) Result {
+	_, span := telemetry.StartSpan(ctx, "runtime.outcome")
 	defer span.End()
 	if res.OperationID != "" {
 		span.SetAttributes(telemetry.Attr("operation.id", res.OperationID))

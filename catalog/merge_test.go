@@ -93,3 +93,10 @@ paths:
 	require.ErrorContains(t, err, "duplicate operation")
 	assert.ErrorContains(t, err, "customers.get")
 }
+
+func TestParseRelationsRejectsUnknownFields(t *testing.T) {
+	_, err := catalog.ParseRelations([]byte("relations:\n  - schema: Order\n    field: customerId\n    to: customers.get\n    extra: true\n"))
+	require.Error(t, err)
+	_, err = catalog.ParseRelations([]byte("relations:\n  - schema: Order\n    field: id\n    to: orders.get\n---\nrelations: []\n"))
+	require.Error(t, err)
+}

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
+	"strings"
 
 	"github.com/aiveto/veto/catalog"
 )
@@ -22,7 +24,7 @@ func Write(dir, module string, cat *catalog.Catalog) error {
 	if err := os.MkdirAll(filepath.Join(dir, "dispatch"), 0o750); err != nil {
 		return fmt.Errorf("mkdir dispatch: %w", err)
 	}
-	mod := "module " + module + "\n\ngo 1.26.0\n\nrequire github.com/aiveto/veto v0.0.0\n"
+	mod := "module " + module + "\n\ngo 1.27.1\n\nrequire github.com/aiveto/veto " + moduleVersion() + "\n"
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(mod), 0o600); err != nil {
 		return fmt.Errorf("write go.mod: %w", err)
 	}
@@ -40,4 +42,16 @@ func Write(dir, module string, cat *catalog.Catalog) error {
 		}
 	}
 	return nil
+}
+
+func moduleVersion() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "v0.0.0"
+	}
+	v := info.Main.Version
+	if len(v) < 2 || v[0] != 'v' || !strings.Contains(v, ".") || strings.Contains(v, "devel") {
+		return "v0.0.0"
+	}
+	return v
 }

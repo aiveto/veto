@@ -18,8 +18,13 @@ func TestDriftLocksOperationAndConfirmation(t *testing.T) {
 		{Name: "added", Operation: "orders.list"},
 	}
 	assert.Equal(t, []string{
-		"eval case delete changed operation or confirmation",
+		"eval case delete changed operation, confirmation, or no_http",
 		"eval case gone was removed",
 	}, eval.Drift(base, next))
 	assert.Empty(t, eval.Drift(base, base))
+	quiet := base[0]
+	quiet.NoHTTP = true
+	assert.Equal(t, []string{
+		"eval case delete changed operation, confirmation, or no_http",
+	}, eval.Drift([]eval.CaseExpect{base[0]}, []eval.CaseExpect{quiet}))
 }

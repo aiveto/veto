@@ -2,8 +2,9 @@ package auth
 
 import "net/http"
 
-// WithEnvProxy returns a client that still honors HTTPS_PROXY when Transport is set.
+// WithEnvProxy returns a client that still honors HTTPS_PROXY when Transport is *http.Transport.
 // A nil Transport uses the default transport, which already reads the proxy environment.
+// Any other RoundTripper is left alone. The caller owns its proxy.
 func WithEnvProxy(c *http.Client) *http.Client {
 	if c == nil {
 		return &http.Client{Transport: http.DefaultTransport}
@@ -23,7 +24,7 @@ func ensureProxy(rt http.RoundTripper) http.RoundTripper {
 	}
 	tr, ok := rt.(*http.Transport)
 	if !ok {
-		return proxyTrip{next: rt}
+		return rt
 	}
 	if tr.Proxy != nil {
 		return tr
@@ -31,19 +32,4 @@ func ensureProxy(rt http.RoundTripper) http.RoundTripper {
 	clone := tr.Clone()
 	clone.Proxy = http.ProxyFromEnvironment
 	return clone
-}
-
-type proxyTrip struct {
-	next http.RoundTripper
-}
-
-func (p proxyTrip) RoundTrip(req *http.Request) (*http.Response, error) {
-	u, err := http.ProxyFromEnvironment(req)
-	if err != nil {
-		return nil, err
-	}
-	if u == nil {
-		return p.next.RoundTrip(req)
-	}
-	return (&http.Transport{Proxy: http.ProxyURL(u)}).RoundTrip(req)
 }

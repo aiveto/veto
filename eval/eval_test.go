@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"os"
+	"path/filepath"
 
 	"github.com/aiveto/veto/agent"
 	"github.com/aiveto/veto/catalog"
@@ -18,14 +19,15 @@ import (
 
 type (
 	pickGet struct{}
-	hitExec struct{}
+	hitExec struct{ calls int }
 )
 
 func (pickGet) Complete(context.Context, agent.Request) (agent.Response, error) {
 	return agent.Response{OperationID: "orders.get", Params: map[string]string{"id": "1"}}, nil
 }
 
-func (hitExec) InvokeHTTPResult(context.Context, *catalog.Operation, map[string]string) (result.HTTPResult, error) {
+func (h *hitExec) InvokeHTTPResult(context.Context, *catalog.Operation, map[string]string) (result.HTTPResult, error) {
+	h.calls++
 	return result.HTTPResult{Status: 200, Code: "ok"}, nil
 }
 
@@ -69,7 +71,8 @@ func threeAPIs(t *testing.T) *catalog.Catalog {
 func TestNoHTTPFailsWhenTheCallRuns(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
-	loop, err := agent.New(cat, semantics.NewDerived(cat), hitExec{})
+	exec := &hitExec{}
+	loop, err := agent.New(cat, semantics.NewDerived(cat), exec)
 	require.NoError(t, err)
 	loop.Model = pickGet{}
 	err = (&eval.Runner{Loop: loop}).Run(context.Background(), &eval.Case{
@@ -80,7 +83,16 @@ func TestNoHTTPFailsWhenTheCallRuns(t *testing.T) {
 			NoHTTP:      true,
 		},
 	})
-	assert.ErrorContains(t, err, "http ran")
+	require.ErrorContains(t, err, "http ran")
+	assert.Zero(t, exec.calls)
+}
+
+func TestLoadCaseRejectsUnknownFields(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "case.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("name: get\ninput: get\nexpect:\n  operaton: orders.get\n"), 0o600))
+	_, err := eval.LoadCase(path)
+	require.Error(t, err)
 }
 
 func names(cases []*eval.Case) []string {

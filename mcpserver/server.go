@@ -23,6 +23,7 @@ type (
 		Body        string       `json:"body,omitempty"`
 		Code        string       `json:"code,omitempty"`
 		Retryable   bool         `json:"retryable"`
+		RetryAfter  string       `json:"retry_after,omitempty"`
 		Error       string       `json:"error,omitempty"`
 		Truncated   bool         `json:"truncated,omitempty"`
 		Page        *result.Page `json:"page,omitempty"`
@@ -94,6 +95,7 @@ func (s *Server) Call(ctx context.Context, req runtime.Request) (InvokeResult, e
 		Body:        call.Body,
 		Code:        call.Code,
 		Retryable:   call.Retryable,
+		RetryAfter:  call.RetryAfter,
 		Error:       call.Error,
 		Truncated:   call.Truncated,
 		Page:        call.Page,
