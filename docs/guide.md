@@ -255,13 +255,27 @@ The first command runs the message and prints the trace. With the default model 
 
 ## Doctor
 
-`veto doctor --config veto.yaml` loads the contracts, relations, and agent file, then reports blockers for:
+`veto doctor --config veto.yaml` loads the contracts, relations, and agent file, then reports:
 
 - a `--pin` that is unknown or discovery-only
-- a security scheme that is not configured, or whose env var, client secret, or stored login is missing
+- an operation whose required auth is missing, and a security scheme whose env var, client secret, or stored login is missing
+- a colliding operation id, and an id filled in when the contract omitted `operationId`
+- a parameter that veto cannot place on the request
+- an empty summary, or a weak summary (one word, or the same as the operation id)
+- a write that requires approval
 - with `--ping`, a GET that fails for a server URL
 
-It does not evaluate policy, and it does not approve a delete.
+It exits non-zero when a finding would make a call wrong: missing auth, a colliding id, or a parameter that cannot be serialized. A fallback id, a weak summary, and a write that requires approval are reported and do not by themselves fail the command. It does not evaluate policy, and it does not approve a delete.
+
+## Preview
+
+```bash
+veto preview --config veto.yaml --operation orders.delete --param id=123
+```
+
+Preview runs resolve, validate, and policy, then stops. It does not call upstream HTTP and it does not call a token URL. The JSON result is the operation, the request with secrets removed, validation errors, the policy decision, and whether approval is required.
+
+`capabilities_invoke` with `preview` set to true returns that same result. The CLI and MCP both call the invoke runtime.
 
 ## Generate
 

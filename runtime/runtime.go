@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/execute"
@@ -38,6 +39,25 @@ type (
 		Code        string
 		Retryable   bool
 		Error       string
+	}
+
+	// HTTPRequest is the call that would be sent, with secret values removed.
+	HTTPRequest struct {
+		Method  string            `json:"method,omitempty"`
+		URL     string            `json:"url,omitempty"`
+		Headers map[string]string `json:"headers,omitempty"`
+		Body    string            `json:"body,omitempty"`
+	}
+
+	// Preview is resolve, validate, and policy with no token fetch and no upstream HTTP.
+	Preview struct {
+		OperationID      string      `json:"operation_id,omitempty"`
+		Method           string      `json:"method,omitempty"`
+		Path             string      `json:"path,omitempty"`
+		Request          HTTPRequest `json:"request"`
+		Errors           []string    `json:"errors,omitempty"`
+		Decision         string      `json:"decision,omitempty"`
+		ApprovalRequired bool        `json:"approval_required"`
 	}
 
 	// Runtime resolves, validates, checks policy, verifies approval, executes, shapes, and records.
@@ -140,6 +160,59 @@ func (rt Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 		Code:        call.Code,
 		Retryable:   call.Retryable,
 	}), nil
+}
+
+// Preview resolves, validates, and checks policy. It does not fetch a token or call upstream.
+func (rt Runtime) Preview(ctx context.Context, req Request) (Preview, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	op := rt.operation(req.Operation)
+	if op == nil {
+		return Preview{Errors: []string{fmt.Sprintf("unknown operation %q", req.Operation)}}, nil
+	}
+	out := Preview{OperationID: op.ID, Method: op.Method, Path: op.PathTemplate}
+	if op.Exposure == catalog.ExposureDiscovery {
+		out.Errors = append(out.Errors, fmt.Sprintf("operation %q is discovery-only", req.Operation))
+	}
+	args, err := wire(req.Arguments)
+	if err != nil {
+		out.Errors = append(out.Errors, err.Error())
+	} else if err := execute.CheckParams(op, args); err != nil {
+		out.Errors = append(out.Errors, err.Error())
+	}
+	draft, err := execute.DraftRequest(ctx, rt.requestBase(op), op, args)
+	if err != nil {
+		out.Errors = append(out.Errors, err.Error())
+	} else {
+		method, rawURL, headers, body := execute.Sanitize(draft)
+		out.Request = HTTPRequest{Method: method, URL: rawURL, Headers: headers, Body: body}
+	}
+	ctx = policy.WithInput(ctx, policy.Input{
+		Params:    args,
+		Arguments: req.Arguments,
+		Caller:    req.Caller,
+	})
+	decision, err := rt.decide(ctx, op)
+	if err != nil {
+		out.Errors = append(out.Errors, err.Error())
+		return out, nil
+	}
+	out.Decision = string(decision)
+	out.ApprovalRequired = decision == policy.DecisionConfirmationNeeded
+	return out, nil
+}
+
+func (rt Runtime) requestBase(op *catalog.Operation) string {
+	if base, ok := rt.Exec.(interface{ UpstreamBase() string }); ok {
+		if v := strings.TrimSpace(base.UpstreamBase()); v != "" {
+			return v
+		}
+	}
+	if op == nil {
+		return ""
+	}
+	return op.BaseURL
 }
 
 func (rt Runtime) operation(id string) *catalog.Operation {

@@ -42,6 +42,8 @@ type (
 	}
 )
 
+func (c Client) UpstreamBase() string { return c.BaseURL }
+
 func (c Client) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, params map[string]string) (result.HTTPResult, error) {
 	cfg := Config{BaseURL: c.BaseURL, Client: c.HTTP, RecordBody: c.RecordBody, Auth: c.Auth, Creds: c.Creds, MaxBody: c.MaxBody}
 	resp, err := InvokeResponse(ctx, cfg, op, params)
@@ -84,72 +86,9 @@ func InvokeResponse(ctx context.Context, cfg Config, op *catalog.Operation, para
 		return nil, fmt.Errorf("operation %s has no server URL", op.ID)
 	}
 
-	if err := requireParams(op, params); err != nil {
-		return nil, err
-	}
-
-	path := op.PathTemplate
-	for _, p := range op.Params {
-		if p.In != "path" {
-			continue
-		}
-		path = strings.Replace(path, "{"+p.Name+"}", url.PathEscape(params[p.Name]), 1)
-	}
-	if strings.Contains(path, "{") {
-		return nil, fmt.Errorf("operation %s: empty path parameter", op.ID)
-	}
-	endpoint := strings.TrimRight(base, "/") + path
-
-	var bodyBytes []byte
-	media := ""
-	if p, ok := op.BodyParam(); ok {
-		raw := params[p.Name]
-		if raw != "" {
-			bodyBytes = []byte(raw)
-			media = p.MediaType
-			if media == "" {
-				media = "application/json"
-			}
-		}
-	}
-	var body io.Reader
-	if len(bodyBytes) > 0 {
-		body = bytes.NewReader(bodyBytes)
-	}
-	req, err := http.NewRequestWithContext(ctx, op.Method, endpoint, body)
+	req, err := prepareRequest(ctx, base, op, params, true)
 	if err != nil {
-		return nil, fmt.Errorf("build request: %w", err)
-	}
-	if len(bodyBytes) > 0 {
-		req.GetBody = func() (io.ReadCloser, error) {
-			return io.NopCloser(bytes.NewReader(bodyBytes)), nil
-		}
-	}
-	q := req.URL.Query()
-	for _, p := range op.Params {
-		if p.In != "query" {
-			continue
-		}
-		if v := params[p.Name]; v != "" {
-			writeQuery(q, p, v)
-		}
-	}
-	req.URL.RawQuery = q.Encode()
-	for _, p := range op.Params {
-		if p.In != "header" {
-			continue
-		}
-		if v := headerValue(p, params); v != "" {
-			req.Header.Set(p.Name, v)
-		}
-	}
-	if media != "" {
-		req.Header.Set("Content-Type", media)
-	}
-	if key := IdempotencyFrom(ctx); key != "" {
-		req.Header.Set("Idempotency-Key", key)
-	} else if op.Idempotency == "key" {
-		req.Header.Set("Idempotency-Key", uuid.NewString())
+		return nil, err
 	}
 	refresh, creds, err := obtainAuth(ctx, cfg, op, req, false)
 	if err != nil {
@@ -422,6 +361,98 @@ func IdempotencyFrom(ctx context.Context) string {
 // CheckParams reports a missing required parameter before HTTP.
 func CheckParams(op *catalog.Operation, params map[string]string) error {
 	return requireParams(op, params)
+}
+
+// DraftRequest is the upstream request without credentials. strict checks stay on the real call.
+func DraftRequest(ctx context.Context, base string, op *catalog.Operation, params map[string]string) (*http.Request, error) {
+	if op == nil {
+		return nil, fmt.Errorf("missing operation")
+	}
+	if base == "" {
+		base = op.BaseURL
+	}
+	if base == "" {
+		return nil, fmt.Errorf("operation %s has no server URL", op.ID)
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return prepareRequest(ctx, base, op, params, false)
+}
+
+func prepareRequest(ctx context.Context, base string, op *catalog.Operation, params map[string]string, strict bool) (*http.Request, error) {
+	if strict {
+		if err := requireParams(op, params); err != nil {
+			return nil, err
+		}
+	}
+	path := op.PathTemplate
+	for _, p := range op.Params {
+		if p.In != "path" {
+			continue
+		}
+		if params[p.Name] == "" {
+			continue
+		}
+		path = strings.Replace(path, "{"+p.Name+"}", url.PathEscape(params[p.Name]), 1)
+	}
+	if strict && strings.Contains(path, "{") {
+		return nil, fmt.Errorf("operation %s: empty path parameter", op.ID)
+	}
+	endpoint := strings.TrimRight(base, "/") + path
+
+	var bodyBytes []byte
+	media := ""
+	if p, ok := op.BodyParam(); ok {
+		raw := params[p.Name]
+		if raw != "" {
+			bodyBytes = []byte(raw)
+			media = p.MediaType
+			if media == "" {
+				media = "application/json"
+			}
+		}
+	}
+	var body io.Reader
+	if len(bodyBytes) > 0 {
+		body = bytes.NewReader(bodyBytes)
+	}
+	req, err := http.NewRequestWithContext(ctx, op.Method, endpoint, body)
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	if len(bodyBytes) > 0 {
+		req.GetBody = func() (io.ReadCloser, error) {
+			return io.NopCloser(bytes.NewReader(bodyBytes)), nil
+		}
+	}
+	q := req.URL.Query()
+	for _, p := range op.Params {
+		if p.In != "query" {
+			continue
+		}
+		if v := params[p.Name]; v != "" {
+			writeQuery(q, p, v)
+		}
+	}
+	req.URL.RawQuery = q.Encode()
+	for _, p := range op.Params {
+		if p.In != "header" {
+			continue
+		}
+		if v := headerValue(p, params); v != "" {
+			req.Header.Set(p.Name, v)
+		}
+	}
+	if media != "" {
+		req.Header.Set("Content-Type", media)
+	}
+	if key := IdempotencyFrom(ctx); key != "" {
+		req.Header.Set("Idempotency-Key", key)
+	} else if strict && op.Idempotency == "key" {
+		req.Header.Set("Idempotency-Key", uuid.NewString())
+	}
+	return req, nil
 }
 
 func headerValue(p catalog.Param, params map[string]string) string {
