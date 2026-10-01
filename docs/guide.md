@@ -2,11 +2,29 @@
 
 Point `veto` at OpenAPI files you already have. The agent gets three tools. Destructive calls wait for confirmation.
 
+## Install
+
 ```bash
 go install github.com/aiveto/veto/cmd/veto@latest
 ```
 
 That installs the `veto` command from `github.com/aiveto/veto/cmd/veto`. From a checkout of this repo, `go run ./cmd/veto` is the same binary.
+
+The container image builds that binary. Running the image runs `veto --help`.
+
+```bash
+docker build -t veto .
+docker run --rm veto
+```
+
+Orders and customers in `testdata` are the first successful path. From the checkout, with `veto` on your `PATH`:
+
+```bash
+veto doctor --config testdata/veto.yaml
+veto check --config testdata/veto.yaml --case testdata/cases
+```
+
+`testdata/veto.yaml` loads `orders.yaml` and `customers.yaml`. Doctor reports that `orders.delete` requires approval and exits zero. Check prints the joins and the case results.
 
 ## One veto.yaml
 
