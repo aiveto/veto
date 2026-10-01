@@ -14,7 +14,7 @@ Codegen first gives typed clients and catches schema mistakes at compile time. T
 
 ## Decision
 
-Ship an interpreter that executes operations from the catalog via `net/http`. Typed SDK codegen is the next slice.
+Ship an interpreter that executes operations from the catalog via `net/http`. `generate` writes an optional Go client that calls `runtime.Invoke`. `serve` and `eval` do not require that step.
 
 ## What we refused
 

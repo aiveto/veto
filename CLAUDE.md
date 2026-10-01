@@ -31,24 +31,32 @@ policy/      Allow, check, confirm. Run state
 flow/        Sequential steps. The model may pick the flow. Code runs it
 agent/       One turn. Completer, scripted default, policy, execute. The follow-up pack goes to the caller
 agent/openai OpenAI HTTP client for the openai provider key
-generate/    Typed SDK and CLI. Dispatch calls agent.Invoke
+generate/    Typed SDK and CLI. Dispatch calls runtime.Invoke
 execute/     HTTP from an Operation
-memory/      Memory interface. Local map default
+memory/      Local map. The Memory interface is agent.Memory
 config/      Provider keys. One file, defaults when unset
+auth/        Upstream credentials. Login, client credentials, token exchange, command
+credentials/ Provider an embedder implements for one upstream call
+bundle/      Contracts, relations, and check cases. Deployment stays outside
+opa/         Rego policy. The builtin permission floor still runs
+result/      HTTP result and parameter errors
+runtime/     Invoke sequence for the CLI, MCP, and generated clients
 mcpserver/   capabilities_search, capabilities_describe, capabilities_invoke, pins
 eval/        Cases on the agent loop. No network LLM
 telemetry/   OpenTelemetry spans. Stdout export is optional
 replay/      Read those spans. User text is omitted unless asked
 testdata/
 docs/adr/
+docs/guide.md
 examples/orders/
+examples/two-apis/
 ```
 
 No `util`, `common`, `pkg`, or empty directories. A new package needs a caller in this repo.
 
 ## Signed decisions
 
-1. `veto serve` executes from the catalog with net/http. Typed SDK generation is a later slice.
+1. `veto serve` executes from the catalog with net/http. `generate` writes an optional Go client that calls `runtime.Invoke`. Serving does not require codegen.
 2. MCP registers search, describe, and invoke, plus `--pin`. Never one tool per operation.
 3. DELETE, or an id containing "delete", requires confirmation unless agent.yaml sets confirmation false for that operation. agent.yaml can require confirmation on any operation. Without approval, invoke does not call HTTP.
 4. Context pack holds rules, the search hits and their neighbors, the conversation given to it, the operation just described, and pending confirmation. It does not list every operation and it does not embed the raw spec. Truncate the index first.
@@ -71,13 +79,13 @@ veto serve --contract testdata/orders.yaml --stdio
 veto eval --contract testdata/orders.yaml --case testdata/delete.yaml
 ```
 
-Tests use the standard `testing` package and lock behavior: graph grouping, search through synonyms, context pack omits the raw spec, delete does not hit the test server until approved, eval passes, MCP tool list is the three capabilities plus pins.
+Tests use the standard `testing` package and testify. They lock behavior: graph grouping, search through synonyms, context pack omits the raw spec, delete does not hit the test server until approved, eval passes, MCP tool list is the three capabilities plus pins.
 
 ## Shape
 
 Modular. The core decides. The edge adapts.
 
-- Core packages hold the logic: catalog, semantics, runctx, policy, flow, memory, and the `agent` loop. They return values and errors. They do not log, print, exit, or know about MCP or the CLI. `agent.Invoke` is the only policy gate. `execute` is the only HTTP writer. Generated code calls `agent.Invoke`.
+- Core packages hold the logic: catalog, semantics, runctx, policy, flow, memory, and the `agent` loop. They return values and errors. They do not log, print, exit, or know about MCP or the CLI. `runtime.Invoke` is the policy gate for the CLI, MCP, and generated clients. `agent.Invoke` is one loop turn and calls that runtime. `execute` is the only HTTP writer.
 - Edges are `cmd/veto`, `mcpserver`, and `execute`. They parse input, call the core, and handle the error once: an exit code, an MCP error, or an HTTP status.
 - Wrap an error on the way out. Do not log it and return it.
 - Validate at the edge. Pass typed values inward. Do not pass a raw request, a flag set, or the environment into the core.

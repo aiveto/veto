@@ -145,7 +145,7 @@ func readSnapshot(path string) (baseline, error) {
 	if file.Operations == nil {
 		file.Operations = map[string]catalog.OpFact{}
 	}
-	return baseline{Operations: file.Operations, Cases: file.Cases, Confirmations: file.Confirmations}, nil
+	return baseline(file), nil
 }
 
 func baselineFromGit(cmd checkCmd) (baseline, error) {
