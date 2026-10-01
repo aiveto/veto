@@ -72,7 +72,7 @@ func TestMissingCredentialSkipsHTTP(t *testing.T) {
 					HTTP:    tokenSrv.Client(),
 				}),
 			}).InvokeHTTPResult(context.Background(), op, map[string]string{"id": "1"})
-			assert.Error(t, err)
+			require.Error(t, err)
 			assert.NotContains(t, err.Error(), "WORKFORCE_SECRET")
 			assert.Equal(t, int32(0), tokenHits.Load())
 			assert.Equal(t, int32(0), upstreamHits.Load())
@@ -128,12 +128,15 @@ func TestQueryKeyIsScrubbedFromTheErrorAndTrace(t *testing.T) {
 	const secret = "query-secret-value"
 	rec, err := telemetry.Record()
 	require.NoError(t, err)
-	defer rec.Stop(context.Background())
-	_, err = execute.InvokeResponse(context.Background(), execute.Config{
+	defer func() { require.NoError(t, rec.Stop(context.Background())) }()
+	resp, err := execute.InvokeResponse(context.Background(), execute.Config{
 		BaseURL: "http://127.0.0.1:9",
 		Client:  &http.Client{Transport: errTrip{}},
 		Auth:    map[string]string{"queryAuth": secret},
 	}, op, nil)
+	if resp != nil && resp.Body != nil {
+		require.NoError(t, resp.Body.Close())
+	}
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), secret)
 	assert.NotContains(t, spanText(t, rec), secret)
@@ -174,14 +177,12 @@ func TestParallelClientCredentialsHitTheTokenURLOnce(t *testing.T) {
 	var wg sync.WaitGroup
 	errCh := make(chan error, n)
 	for range n {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			_, err := client.InvokeHTTPResult(context.Background(), op, map[string]string{"id": "1"})
 			if err != nil {
 				errCh <- err
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	close(errCh)
@@ -279,7 +280,7 @@ func TestTokenStaysOffTheTrace(t *testing.T) {
 	t.Setenv("QUERY_TOKEN", query)
 	rec, err := telemetry.Record()
 	require.NoError(t, err)
-	defer rec.Stop(context.Background())
+	defer func() { require.NoError(t, rec.Stop(context.Background())) }()
 	creds := auth.New(auth.Options{Schemes: []auth.Scheme{
 		{Name: "bearerAuth", Source: "client_credentials", TokenURL: tokenSrv.URL, ClientID: "job", ClientSecretEnv: "WORKFORCE_SECRET"},
 		{Name: "queryAuth", Source: "env", Env: "QUERY_TOKEN"},
@@ -323,9 +324,9 @@ func TestLoginStoresRefreshAndInvokeRefreshesWithoutABrowser(t *testing.T) {
 		RedirectURL: "http://127.0.0.1:0/callback",
 		HTTP:        tokenSrv.Client(),
 		Out:         io.Discard,
-		Open: func(raw string) error {
+		Open: func(ctx context.Context, raw string) error {
 			opens.Add(1)
-			return finishCodeLogin(raw)
+			return finishCodeLogin(ctx, raw)
 		},
 	})
 	require.NoError(t, err)
@@ -391,21 +392,21 @@ func TestCommandHookFailuresSkipUpstream(t *testing.T) {
 				}}, Dir: t.TempDir()}),
 			}).InvokeHTTPResult(context.Background(), op, map[string]string{"id": "1"})
 			require.Error(t, err)
-			assert.ErrorContains(t, err, tc.want)
+			require.ErrorContains(t, err, tc.want)
 			assert.NotContains(t, err.Error(), "secret-stdout")
-			assert.Equal(t, int32(0), hits.Load())
+			require.Equal(t, int32(0), hits.Load())
 		})
 	}
 }
 
-func finishCodeLogin(raw string) error {
+func finishCodeLogin(ctx context.Context, raw string) error {
 	u, err := url.Parse(raw)
 	if err != nil {
 		return err
 	}
 	q := u.Query()
 	if q.Get("code_challenge_method") != "S256" || q.Get("code_challenge") == "" {
-		return errString("missing pkce")
+		return stringError("missing pkce")
 	}
 	cb, err := url.Parse(q.Get("redirect_uri"))
 	if err != nil {
@@ -414,7 +415,11 @@ func finishCodeLogin(raw string) error {
 	cb.RawQuery = url.Values{"code": {"abc"}, "state": {q.Get("state")}}.Encode()
 	var resp *http.Response
 	for range 20 {
-		resp, err = http.Get(cb.String())
+		req, reqErr := http.NewRequestWithContext(ctx, http.MethodGet, cb.String(), nil)
+		if reqErr != nil {
+			return reqErr
+		}
+		resp, err = http.DefaultClient.Do(req)
 		if err == nil {
 			break
 		}
@@ -423,19 +428,22 @@ func finishCodeLogin(raw string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
-	_, _ = io.ReadAll(resp.Body)
-	return nil
+	_, readErr := io.ReadAll(resp.Body)
+	closeErr := resp.Body.Close()
+	if readErr != nil {
+		return readErr
+	}
+	return closeErr
 }
 
-type errString string
+type stringError string
 
-func (e errString) Error() string { return string(e) }
+func (e stringError) Error() string { return string(e) }
 
 type errTrip struct{}
 
 func (errTrip) RoundTrip(req *http.Request) (*http.Response, error) {
-	return nil, errString("Get \"" + req.URL.String() + "\": refused")
+	return nil, stringError("Get \"" + req.URL.String() + "\": refused")
 }
 
 const twoSchemeSpec = `openapi: 3.0.3

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -99,7 +100,7 @@ func evalPointer(expr, ptr, body string) (string, error) {
 	}
 	cur := bytes.TrimSpace([]byte(body))
 	indexes := 0
-	for _, tok := range strings.Split(ptr, "/") {
+	for tok := range strings.SplitSeq(ptr, "/") {
 		tok = unescapePointer(tok)
 		if tok == "" {
 			return "", fmt.Errorf("response expression %q is not a field", expr)
@@ -126,7 +127,7 @@ func evalPointer(expr, ptr, body string) (string, error) {
 func pointerStep(cur []byte, tok string) ([]byte, error) {
 	cur = bytes.TrimSpace(cur)
 	if len(cur) == 0 {
-		return nil, fmt.Errorf("missing")
+		return nil, errors.New("missing")
 	}
 	switch cur[0] {
 	case '{':
@@ -136,12 +137,12 @@ func pointerStep(cur []byte, tok string) ([]byte, error) {
 		}
 		raw, ok := obj[tok]
 		if !ok || jsonNull(raw) {
-			return nil, fmt.Errorf("missing")
+			return nil, errors.New("missing")
 		}
 		return raw, nil
 	case '[':
 		if !pointerIndex(tok) {
-			return nil, fmt.Errorf("missing")
+			return nil, errors.New("missing")
 		}
 		var arr []json.RawMessage
 		if err := json.Unmarshal(cur, &arr); err != nil {
@@ -152,11 +153,11 @@ func pointerStep(cur []byte, tok string) ([]byte, error) {
 			i = i*10 + int(c-'0')
 		}
 		if i < 0 || i >= len(arr) || jsonNull(arr[i]) {
-			return nil, fmt.Errorf("missing")
+			return nil, errors.New("missing")
 		}
 		return arr[i], nil
 	default:
-		return nil, fmt.Errorf("missing")
+		return nil, errors.New("missing")
 	}
 }
 

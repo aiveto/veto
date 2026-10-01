@@ -37,16 +37,16 @@ type (
 
 	// Result is the shaped outcome of one invoke.
 	Result struct {
-		Status      string
-		ApprovalID  string
-		OperationID string
-		HTTPStatus  int
-		Body        string
-		Code        string
-		Retryable   bool
-		Error       string
-		Truncated   bool
-		Page        *result.Page
+		Status      string       `json:"Status"`
+		ApprovalID  string       `json:"ApprovalID"`
+		OperationID string       `json:"OperationID"`
+		HTTPStatus  int          `json:"HTTPStatus"`
+		Body        string       `json:"Body"`
+		Code        string       `json:"Code"`
+		Retryable   bool         `json:"Retryable"`
+		Error       string       `json:"Error"`
+		Truncated   bool         `json:"Truncated"`
+		Page        *result.Page `json:"Page"`
 	}
 
 	// HTTPRequest is the call that would be sent, with secret values removed.
@@ -82,9 +82,6 @@ type (
 
 // Invoke runs one operation. MCP uses this directly. It does not run the agent loop.
 func (rt Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	caller := requestCaller(ctx, req)
 	if !allowInvoke(rt.State, caller, rt.clock()) {
 		return rt.record(ctx, Result{
@@ -156,7 +153,7 @@ func (rt Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 			return rt.record(ctx, Result{Status: "error"}), err
 		}
 		if !ok {
-			return rt.record(ctx, Result{Status: "error"}), fmt.Errorf("invalid approval")
+			return rt.record(ctx, Result{Status: "error"}), errors.New("invalid approval")
 		}
 		span.SetAttributes(telemetry.Attr("approval.id", req.Approval))
 		decision = policy.DecisionAllow
@@ -165,7 +162,7 @@ func (rt Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 		return rt.record(ctx, Result{Status: "denied", OperationID: req.Operation}), nil
 	}
 	if rt.Exec == nil {
-		return rt.record(ctx, Result{Status: "error"}), fmt.Errorf("missing executor")
+		return rt.record(ctx, Result{Status: "error"}), errors.New("missing executor")
 	}
 	ctx = execute.WithIdempotency(ctx, req.Idempotency)
 	if len(req.Fields) > 0 || req.Limit > 0 || req.Offset > 0 {
@@ -201,9 +198,6 @@ func (rt Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 
 // Preview resolves, validates, and checks policy. It does not fetch a token or call upstream.
 func (rt Runtime) Preview(ctx context.Context, req Request) (Preview, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	caller := requestCaller(ctx, req)
 	ctx = auth.WithCaller(ctx, caller)
 	op := rt.operation(req.Operation)

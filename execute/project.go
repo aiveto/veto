@@ -112,7 +112,7 @@ func shapeBody(status int, raw []byte, cut bool, cfg Config) ([]byte, View, erro
 
 var errNotJSON = errors.New("body is not json")
 
-func projectBody(raw []byte, p Projection, cut bool, max int64) ([]byte, *result.Page, bool, error) {
+func projectBody(raw []byte, p Projection, cut bool, limit int64) ([]byte, *result.Page, bool, error) {
 	val, partial, err := decodeContainer(raw)
 	if err != nil {
 		return nil, nil, false, fmt.Errorf("project response: %w", err)
@@ -132,7 +132,7 @@ func projectBody(raw []byte, p Projection, cut bool, max int64) ([]byte, *result
 			truncated = true
 		}
 		pageItems := items[offset:end]
-		encoded, shrank, err := fitEncoded(pageItems, max)
+		encoded, shrank, err := fitEncoded(pageItems, limit)
 		if err != nil {
 			return nil, nil, false, fmt.Errorf("project response: %w", err)
 		}
@@ -151,8 +151,8 @@ func projectBody(raw []byte, p Projection, cut bool, max int64) ([]byte, *result
 		if err != nil {
 			return nil, nil, false, fmt.Errorf("project response: %w", err)
 		}
-		if int64(len(encoded)) > max {
-			return nil, nil, false, fmt.Errorf("response exceeds %d bytes", max)
+		if int64(len(encoded)) > limit {
+			return nil, nil, false, fmt.Errorf("response exceeds %d bytes", limit)
 		}
 		return encoded, nil, truncated, nil
 	default:
@@ -162,7 +162,7 @@ func projectBody(raw []byte, p Projection, cut bool, max int64) ([]byte, *result
 
 func pageWindow(n, offset, limit int) (int, int, bool, error) {
 	if offset < 0 || limit < 0 {
-		return 0, 0, false, fmt.Errorf("projection page is out of range")
+		return 0, 0, false, errors.New("projection page is out of range")
 	}
 	if offset > n {
 		offset = n
@@ -175,12 +175,12 @@ func pageWindow(n, offset, limit int) (int, int, bool, error) {
 	return offset, end, false, nil
 }
 
-func fitEncoded(items []any, max int64) ([]byte, bool, error) {
+func fitEncoded(items []any, limit int64) ([]byte, bool, error) {
 	encoded, err := encodeJSON(items)
 	if err != nil {
 		return nil, false, err
 	}
-	if int64(len(encoded)) <= max {
+	if int64(len(encoded)) <= limit {
 		return encoded, false, nil
 	}
 	for len(items) > 0 {
@@ -189,7 +189,7 @@ func fitEncoded(items []any, max int64) ([]byte, bool, error) {
 		if err != nil {
 			return nil, false, err
 		}
-		if int64(len(encoded)) <= max {
+		if int64(len(encoded)) <= limit {
 			return encoded, true, nil
 		}
 	}
@@ -228,25 +228,25 @@ func decodeObject(dec *json.Decoder) (map[string]any, bool, error) {
 	for dec.More() {
 		keyTok, err := dec.Token()
 		if err != nil {
-			return obj, true, nil
+			return keptPartial(obj)
 		}
 		key, ok := keyTok.(string)
 		if !ok {
-			return obj, true, nil
+			return keptPartial(obj)
 		}
 		var raw json.RawMessage
 		if err := dec.Decode(&raw); err != nil {
-			return obj, true, nil
+			return keptPartial(obj)
 		}
 		val, err := decodeRaw(raw)
 		if err != nil {
-			return obj, true, nil
+			return keptPartial(obj)
 		}
 		obj[key] = val
 	}
 	tok, err = dec.Token()
 	if err != nil || tok != json.Delim('}') {
-		return obj, true, nil
+		return keptPartial(obj)
 	}
 	return obj, false, nil
 }
@@ -260,19 +260,23 @@ func decodeArray(dec *json.Decoder) ([]any, bool, error) {
 	for dec.More() {
 		var raw json.RawMessage
 		if err := dec.Decode(&raw); err != nil {
-			return items, true, nil
+			return keptPartial(items)
 		}
 		val, err := decodeRaw(raw)
 		if err != nil {
-			return items, true, nil
+			return keptPartial(items)
 		}
 		items = append(items, val)
 	}
 	tok, err = dec.Token()
 	if err != nil || tok != json.Delim(']') {
-		return items, true, nil
+		return keptPartial(items)
 	}
 	return items, false, nil
+}
+
+func keptPartial[T any](v T) (T, bool, error) {
+	return v, true, nil
 }
 
 func decodeRaw(raw []byte) (any, error) {

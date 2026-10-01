@@ -24,7 +24,7 @@ func TestProjectedResponseKeepsNamedFieldsAndMarksTheCap(t *testing.T) {
 	one := fmt.Sprintf(`{"id":"0","name":"row","access_token":"%s","blob":"%s"}`, secret, blob)
 	var raw strings.Builder
 	raw.WriteByte('[')
-	for i := 0; i < 30; i++ {
+	for i := range 30 {
 		if i > 0 {
 			raw.WriteByte(',')
 		}
@@ -49,7 +49,7 @@ func TestProjectedResponseKeepsNamedFieldsAndMarksTheCap(t *testing.T) {
 
 	rec, err := telemetry.Record()
 	require.NoError(t, err)
-	defer rec.Stop(context.Background())
+	defer func() { require.NoError(t, rec.Stop(context.Background())) }()
 
 	rt := runtime.Runtime{
 		Catalog: cat,
@@ -64,7 +64,7 @@ func TestProjectedResponseKeepsNamedFieldsAndMarksTheCap(t *testing.T) {
 	assert.Equal(t, "ok", out.Status)
 	assert.True(t, out.Truncated)
 	require.NotNil(t, out.Page)
-	assert.Greater(t, out.Page.Returned, 0)
+	assert.Positive(t, out.Page.Returned)
 	assert.Less(t, out.Page.Returned, 30)
 
 	var items []map[string]any
@@ -81,21 +81,23 @@ func TestProjectedResponseKeepsNamedFieldsAndMarksTheCap(t *testing.T) {
 	assert.NotContains(t, text, secret)
 	assert.NotContains(t, text, "BLOBDATA")
 
-	rec.Stop(context.Background())
+	require.NoError(t, rec.Stop(context.Background()))
 	rec2, err := telemetry.Record()
 	require.NoError(t, err)
-	defer rec2.Stop(context.Background())
+	defer func() { require.NoError(t, rec2.Stop(context.Background())) }()
 	plain := runtime.Runtime{
 		Catalog: cat,
 		State:   policy.NewState(),
 		Exec:    execute.Client{BaseURL: ts.URL, MaxBody: maxBody, RecordBody: true},
 	}
 	_, err = plain.Invoke(context.Background(), runtime.Request{Operation: "orders.list"})
-	assert.ErrorContains(t, err, fmt.Sprintf("exceeds %d bytes", maxBody))
+	require.ErrorContains(t, err, fmt.Sprintf("exceeds %d bytes", maxBody))
 	assert.NotContains(t, spanText(t, rec2), secret)
 
 	small := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, `[{"id":"1","name":"ada","access_token":"%s"},{"id":"2","name":"grace","access_token":"%s"}]`, secret, secret)
+		if _, err := fmt.Fprintf(w, `[{"id":"1","name":"ada","access_token":"%s"},{"id":"2","name":"grace","access_token":"%s"}]`, secret, secret); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 	}))
 	defer small.Close()
 	configured := runtime.Runtime{

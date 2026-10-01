@@ -73,7 +73,7 @@ func TestApprovalsListFollowsTheUserToken(t *testing.T) {
 		Device: true,
 		HTTP:   idp.Client(),
 		Out:    io.Discard,
-		Open:   func(string) error { t.Fatal("browser opened"); return nil },
+		Open:   func(context.Context, string) error { t.Fatal("browser opened"); return nil },
 	})
 	require.NoError(t, err)
 	raw, err := readTokenFile(t, dir, "appAuth")
@@ -105,7 +105,7 @@ func TestApprovalsListFollowsTheUserToken(t *testing.T) {
 
 	rec, err := telemetry.Record()
 	require.NoError(t, err)
-	defer rec.Stop(context.Background())
+	defer func() { require.NoError(t, rec.Stop(context.Background())) }()
 	res, err := (execute.Client{
 		BaseURL: up.URL,
 		Creds: auth.New(auth.Options{Schemes: []auth.Scheme{{
@@ -172,7 +172,7 @@ func TestMissingUserTokenSkipsUpstream(t *testing.T) {
 		}}, Dir: dir, HTTP: idp.Client()}),
 	}).InvokeHTTPResult(context.Background(), loadSpec(t, approvalsSpec).ByID("approvals.list"), nil)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "user token is unset")
+	require.ErrorContains(t, err, "user token is unset")
 	assert.NotContains(t, err.Error(), "app-token")
 	assert.Equal(t, int32(0), tokenHits.Load())
 	assert.Equal(t, int32(0), upstreamHits.Load())
@@ -180,8 +180,7 @@ func TestMissingUserTokenSkipsUpstream(t *testing.T) {
 
 func TestContractUserHeaderAndWorkforceStayApart(t *testing.T) {
 	t.Run("contract header", func(t *testing.T) {
-		var idp *httptest.Server
-		idp = httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+		idp := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 		idp.Config.Handler = userLoginHandler(idp, map[string]any{
 			"access_token": "app-token", "id_token": "opaque-user", "expires_in": 3600, "refresh_token": "refresh-secret",
 		})
@@ -228,7 +227,7 @@ func TestContractUserHeaderAndWorkforceStayApart(t *testing.T) {
 			}}, Dir: t.TempDir(), HTTP: tokenSrv.Client()}),
 		}).InvokeHTTPResult(context.Background(), loadSpec(t, bearerSpec).ByID("orders.get"), map[string]string{"id": "1"})
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "user token is unset")
+		require.ErrorContains(t, err, "user token is unset")
 		assert.NotContains(t, err.Error(), "super-secret")
 		assert.Equal(t, int32(0), tokenHits.Load())
 		assert.Equal(t, int32(0), upstreamHits.Load())
@@ -310,7 +309,7 @@ func jwtSubject(tok string) string {
 func splitDot(s string) []string {
 	var out []string
 	start := 0
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		if s[i] == '.' {
 			out = append(out, s[start:i])
 			start = i + 1

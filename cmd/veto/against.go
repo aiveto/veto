@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -46,7 +47,7 @@ type (
 	}
 )
 
-func newCheckCommand() (*cobra.Command, error) {
+func newCheckCommand() *cobra.Command {
 	cmd := &checkCmd{}
 	c := &cobra.Command{
 		Use:   "check",
@@ -63,7 +64,7 @@ func newCheckCommand() (*cobra.Command, error) {
 	c.Flags().StringVar(&cmd.relations, "relations", "", "Relations file. Overrides relations_file.")
 	c.Flags().StringVar(&cmd.baseURL, "base-url", "", "Override the server URL on every operation. Empty uses each contract server.")
 	c.Flags().StringVar(&cmd.against, "against", "", "Git ref or snapshot JSON. Fail if a joined operation disappeared, confirmation was dropped without an agent.yaml change, a new destructive operation appeared, or an eval expectation changed.")
-	return c, nil
+	return c
 }
 
 func runCheck(cmd checkCmd) {
@@ -87,7 +88,7 @@ func runChecked(cmd checkCmd) error {
 		cmd.cases = cfg.Cases
 	}
 	if len(cmd.cases) == 0 {
-		return fmt.Errorf("case required")
+		return errors.New("case required")
 	}
 	if cmd.against != "" {
 		if err := diffAgainst(cmd, loop.Catalog); err != nil {
@@ -102,10 +103,11 @@ func diffAgainst(cmd checkCmd, cat *catalog.Catalog) error {
 	if err != nil {
 		return err
 	}
-	_, _, _, agentPath, err := resolveBundle(cmd.config, cmd.bundle, cmd.contract, cmd.relations, cmd.agent)
+	src, err := resolveBundle(cmd.config, cmd.bundle, cmd.contract, cmd.relations, cmd.agent)
 	if err != nil {
 		return err
 	}
+	agentPath := src.agent
 	curAgent := agentmeta.File{}
 	if agentPath != "" {
 		curAgent, err = agentmeta.Load(agentPath)
@@ -145,7 +147,7 @@ func readSnapshot(path string) (baseline, error) {
 	if file.Operations == nil {
 		file.Operations = map[string]catalog.OpFact{}
 	}
-	return baseline{Operations: file.Operations, Cases: file.Cases, Confirmations: file.Confirmations}, nil
+	return baseline(file), nil
 }
 
 func baselineFromGit(cmd checkCmd) (baseline, error) {
@@ -166,7 +168,7 @@ func baselineFromGit(cmd checkCmd) (baseline, error) {
 	return baselineFromPaths(root, cmd.against, cmd.contract, cmd.relations, cmd.agent, cmd.cases)
 }
 
-func baselineFromConfig(root, ref, configPath string, casePaths []string) (baseline, error) {
+func baselineFromConfig(root, ref, configPath string, casePaths []string) (base baseline, err error) {
 	cfgRel, err := repoRel(root, configPath)
 	if err != nil {
 		return baseline{}, err
@@ -179,7 +181,11 @@ func baselineFromConfig(root, ref, configPath string, casePaths []string) (basel
 	if err != nil {
 		return baseline{}, err
 	}
-	defer os.RemoveAll(tmp)
+	defer func() {
+		if rerr := os.RemoveAll(tmp); rerr != nil {
+			err = errors.Join(err, fmt.Errorf("remove temp: %w", rerr))
+		}
+	}()
 	if err := writeRepoFile(tmp, cfgRel, raw); err != nil {
 		return baseline{}, err
 	}
@@ -233,23 +239,27 @@ func baselineFromConfig(root, ref, configPath string, casePaths []string) (basel
 	return baseline{Operations: catalog.Facts(cat), Cases: cases, Confirmations: conf}, nil
 }
 
-func baselineFromPaths(root, ref string, contracts []string, relations, agentPath string, casePaths []string) (baseline, error) {
+func baselineFromPaths(root, ref string, contracts []string, relations, agentPath string, casePaths []string) (base baseline, err error) {
 	tmp, err := os.MkdirTemp("", "veto-against-")
 	if err != nil {
 		return baseline{}, err
 	}
-	defer os.RemoveAll(tmp)
+	defer func() {
+		if rerr := os.RemoveAll(tmp); rerr != nil {
+			err = errors.Join(err, fmt.Errorf("remove temp: %w", rerr))
+		}
+	}()
 	var contractPaths []string
 	for i, abs := range contracts {
-		data, _, err := showIfPresent(root, ref, abs)
+		data, err := showIfPresent(root, ref, abs)
+		if errors.Is(err, errNotInRef) {
+			continue
+		}
 		if err != nil {
 			return baseline{}, err
 		}
-		if data == nil {
-			continue
-		}
 		name := fmt.Sprintf("contract-%d.yaml", i)
-		if err := os.WriteFile(filepath.Join(tmp, name), data, 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(tmp, name), data, 0o600); err != nil {
 			return baseline{}, err
 		}
 		contractPaths = append(contractPaths, filepath.Join(tmp, name))
@@ -259,13 +269,17 @@ func baselineFromPaths(root, ref string, contracts []string, relations, agentPat
 	}
 	relPath := ""
 	if relations != "" {
-		data, _, err := showIfPresent(root, ref, relations)
+		data, err := showIfPresent(root, ref, relations)
+		if errors.Is(err, errNotInRef) {
+			data = nil
+			err = nil
+		}
 		if err != nil {
 			return baseline{}, err
 		}
 		if data != nil {
 			relPath = filepath.Join(tmp, "relations.yaml")
-			if err := os.WriteFile(relPath, data, 0o644); err != nil {
+			if err := os.WriteFile(relPath, data, 0o600); err != nil {
 				return baseline{}, err
 			}
 		}
@@ -276,13 +290,17 @@ func baselineFromPaths(root, ref string, contracts []string, relations, agentPat
 	}
 	conf := map[string]*bool{}
 	if agentPath != "" {
-		data, _, err := showIfPresent(root, ref, agentPath)
+		data, err := showIfPresent(root, ref, agentPath)
+		if errors.Is(err, errNotInRef) {
+			data = nil
+			err = nil
+		}
 		if err != nil {
 			return baseline{}, err
 		}
 		if data != nil {
 			agentFilePath := filepath.Join(tmp, "agent.yaml")
-			if err := os.WriteFile(agentFilePath, data, 0o644); err != nil {
+			if err := os.WriteFile(agentFilePath, data, 0o600); err != nil {
 				return baseline{}, err
 			}
 			if err := applyAgent(cat, agentFilePath); err != nil {
@@ -303,14 +321,14 @@ func baselineFromPaths(root, ref string, contracts []string, relations, agentPat
 }
 
 func loadConfigAt(configPath string) (configFile, error) {
-	cfg, _, _, _, err := resolve(configPath, nil, "", "")
+	src, err := resolve(configPath, nil, "", "")
 	if err != nil {
 		return configFile{}, err
 	}
-	return configFile{Contracts: cfg.Contracts, RelationsFile: cfg.RelationsFile, AgentFile: cfg.AgentFile}, nil
+	return configFile{Contracts: src.cfg.Contracts, RelationsFile: src.cfg.RelationsFile, AgentFile: src.cfg.AgentFile}, nil
 }
 
-func casesAtRef(root, ref string, paths []string) ([]eval.CaseExpect, error) {
+func casesAtRef(root, ref string, paths []string) (out []eval.CaseExpect, err error) {
 	if len(paths) == 0 {
 		return nil, nil
 	}
@@ -318,7 +336,11 @@ func casesAtRef(root, ref string, paths []string) ([]eval.CaseExpect, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer os.RemoveAll(tmp)
+	defer func() {
+		if rerr := os.RemoveAll(tmp); rerr != nil {
+			err = errors.Join(err, fmt.Errorf("remove temp: %w", rerr))
+		}
+	}()
 	var files []string
 	for _, p := range paths {
 		abs, err := filepath.Abs(p)
@@ -347,10 +369,10 @@ func casesAtRef(root, ref string, paths []string) ([]eval.CaseExpect, error) {
 					return nil, err
 				}
 				dest := filepath.Join(tmp, filepath.FromSlash(name))
-				if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+				if err := os.MkdirAll(filepath.Dir(dest), 0o750); err != nil {
 					return nil, err
 				}
-				if err := os.WriteFile(dest, data, 0o644); err != nil {
+				if err := os.WriteFile(dest, data, 0o600); err != nil {
 					return nil, err
 				}
 				files = append(files, dest)
@@ -365,10 +387,10 @@ func casesAtRef(root, ref string, paths []string) ([]eval.CaseExpect, error) {
 			return nil, err
 		}
 		dest := filepath.Join(tmp, filepath.FromSlash(rel))
-		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(dest), 0o750); err != nil {
 			return nil, err
 		}
-		if err := os.WriteFile(dest, data, 0o644); err != nil {
+		if err := os.WriteFile(dest, data, 0o600); err != nil {
 			return nil, err
 		}
 		files = append(files, dest)
@@ -383,27 +405,20 @@ func casesAtRef(root, ref string, paths []string) ([]eval.CaseExpect, error) {
 	return eval.Expects(cases), nil
 }
 
-func showIfPresent(root, ref, abs string) ([]byte, string, error) {
+func showIfPresent(root, ref, abs string) ([]byte, error) {
 	rel, err := repoRel(root, abs)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
-	data, err := gitShow(root, ref, rel)
-	if errors.Is(err, errNotInRef) {
-		return nil, rel, nil
-	}
-	if err != nil {
-		return nil, rel, err
-	}
-	return data, rel, nil
+	return gitShow(root, ref, rel)
 }
 
 func writeRepoFile(tmp, rel string, data []byte) error {
 	dest := filepath.Join(tmp, filepath.FromSlash(rel))
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dest), 0o750); err != nil {
 		return err
 	}
-	return os.WriteFile(dest, data, 0o644)
+	return os.WriteFile(dest, data, 0o600)
 }
 
 func gitRoot(dir string) (string, error) {
@@ -437,7 +452,7 @@ func repoRel(root, abs string) (string, error) {
 }
 
 func gitShow(root, ref, rel string) ([]byte, error) {
-	cmd := exec.Command("git", "-C", root, "show", ref+":"+rel)
+	cmd := exec.CommandContext(context.Background(), "git", "-C", root, "show", ref+":"+rel)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -456,7 +471,7 @@ func gitShow(root, ref, rel string) ([]byte, error) {
 }
 
 func gitList(root, ref, rel string) ([]string, error) {
-	cmd := exec.Command("git", "-C", root, "ls-tree", "-r", "--name-only", ref, "--", rel)
+	cmd := exec.CommandContext(context.Background(), "git", "-C", root, "ls-tree", "-r", "--name-only", ref, "--", rel)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -464,7 +479,7 @@ func gitList(root, ref, rel string) ([]string, error) {
 		return nil, fmt.Errorf("git ls-tree %s %s: %s", ref, rel, strings.TrimSpace(stderr.String()))
 	}
 	var out []string
-	for _, line := range strings.Split(stdout.String(), "\n") {
+	for line := range strings.SplitSeq(stdout.String(), "\n") {
 		line = strings.TrimSpace(line)
 		if line != "" {
 			out = append(out, line)
@@ -474,7 +489,7 @@ func gitList(root, ref, rel string) ([]string, error) {
 }
 
 func gitOutput(dir string, args ...string) ([]byte, error) {
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	cmd := exec.CommandContext(context.Background(), "git", append([]string{"-C", dir}, args...)...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

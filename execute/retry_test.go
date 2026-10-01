@@ -149,6 +149,6 @@ func TestRetryAfterStopsWhenTheContextIsCanceled(t *testing.T) {
 	if resp != nil && resp.Body != nil {
 		_ = resp.Body.Close()
 	}
-	assert.ErrorIs(t, err, context.Canceled)
+	require.ErrorIs(t, err, context.Canceled)
 	assert.Less(t, time.Since(start), 1500*time.Millisecond)
 }

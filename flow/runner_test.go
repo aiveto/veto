@@ -2,6 +2,7 @@ package flow_test
 
 import (
 	"context"
+	"maps"
 	"testing"
 
 	"github.com/aiveto/veto/flow"
@@ -43,7 +44,7 @@ func TestConfirmationStopsTheNextStep(t *testing.T) {
 		return "ok", `{"id":"7"}`, nil
 	}}
 	_, err := runner.Run(context.Background(), def, nil)
-	var stopped flow.Stopped
+	var stopped flow.StoppedError
 	require.ErrorAs(t, err, &stopped)
 	assert.Equal(t, "orders.delete", stopped.Operation)
 	assert.Equal(t, []string{"orders.get", "orders.delete"}, called)
@@ -51,8 +52,6 @@ func TestConfirmationStopsTheNextStep(t *testing.T) {
 
 func clone(in map[string]string) map[string]string {
 	out := make(map[string]string, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
+	maps.Copy(out, in)
 	return out
 }

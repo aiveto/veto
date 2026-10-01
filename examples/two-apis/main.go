@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -38,7 +39,7 @@ func main() {
 }
 
 func run(ctx context.Context) error {
-	cat, err := loadCatalog()
+	cat, err := loadCatalog(ctx)
 	if err != nil {
 		return err
 	}
@@ -51,7 +52,11 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer rec.Stop(ctx)
+	defer func() {
+		if stopErr := rec.Stop(ctx); stopErr != nil {
+			fmt.Fprintf(os.Stderr, "example: %v\n", stopErr)
+		}
+	}()
 
 	orders := serve(ordersHandler)
 	customers := serve(customersHandler)
@@ -72,10 +77,10 @@ func run(ctx context.Context) error {
 	}
 	text := replay.FromSpans(rec.Spans(), true).String()
 	if text == "" {
-		return fmt.Errorf("trace is empty")
+		return errors.New("trace is empty")
 	}
 	if strings.Contains(text, secret) {
-		return fmt.Errorf("trace contains the secret")
+		return errors.New("trace contains the secret")
 	}
 	fmt.Printf("Someone asked who placed order 123.\n")
 	fmt.Printf("orders.get returned customerId %s.\n", customerID)
@@ -102,12 +107,11 @@ func (s *served) Close() {
 	}
 }
 
-func loadCatalog() (*catalog.Catalog, error) {
+func loadCatalog(ctx context.Context) (*catalog.Catalog, error) {
 	dir, err := exampleDir()
 	if err != nil {
 		return nil, err
 	}
-	ctx := context.Background()
 	orders, err := openapi.Load(ctx, filepath.Join(dir, "orders.yaml"))
 	if err != nil {
 		return nil, err
@@ -137,7 +141,7 @@ func loadCatalog() (*catalog.Catalog, error) {
 func exampleDir() (string, error) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
-		return "", fmt.Errorf("locate example")
+		return "", errors.New("locate example")
 	}
 	return filepath.Dir(file), nil
 }
@@ -153,10 +157,10 @@ func checkSurface(cat *catalog.Catalog, sem *semantics.Derived) (string, error) 
 	joined := note + "\n" + described
 	sentence := sem.Note("orders.get").Relation
 	if sentence == "" || !strings.Contains(note, sentence) {
-		return "", fmt.Errorf("note missing the declared link")
+		return "", errors.New("note missing the declared link")
 	}
 	if runctx.ContainsRawSpec(joined) {
-		return "", fmt.Errorf("note contains the raw document")
+		return "", errors.New("note contains the raw document")
 	}
 	if len(names) != 3 || len(cat.Operations) < len(names) {
 		return "", fmt.Errorf("operations %d tools %d", len(cat.Operations), len(names))
@@ -188,7 +192,7 @@ func followOrder(ctx context.Context, loop *agent.Loop, orders, customers *serve
 		return "", err
 	}
 	if len(calls) != 2 || calls[0].OperationID != "orders.get" || calls[1].OperationID != "customers.get" {
-		return "", fmt.Errorf("follow did not walk the link")
+		return "", errors.New("follow did not walk the link")
 	}
 	id, err := customerID(calls[0].Body)
 	if err != nil {
@@ -198,10 +202,10 @@ func followOrder(ctx context.Context, loop *agent.Loop, orders, customers *serve
 		return "", fmt.Errorf("customers.get was not called for %s", id)
 	}
 	if !strings.Contains(customers.hits[0], "Bearer "+secret) {
-		return "", fmt.Errorf("customers.get went out without the secret")
+		return "", errors.New("customers.get went out without the secret")
 	}
 	if len(orders.hits) != 1 || !strings.Contains(orders.hits[0], "GET /orders/123") {
-		return "", fmt.Errorf("orders.get was not called")
+		return "", errors.New("orders.get was not called")
 	}
 	return id, nil
 }
@@ -213,7 +217,7 @@ func customerID(body string) (string, error) {
 	}
 	id := fields["customerId"]
 	if id == "" {
-		return "", fmt.Errorf("orders.get missing customerId")
+		return "", errors.New("orders.get missing customerId")
 	}
 	return id, nil
 }
@@ -225,7 +229,7 @@ func deleteOrder(ctx context.Context, loop *agent.Loop, orders *served) error {
 		return err
 	}
 	if held.Status != "confirmation_required" || len(orders.hits) != before {
-		return fmt.Errorf("delete went out before yes")
+		return errors.New("delete went out before yes")
 	}
 	approved, err := loop.State.Approve(held.ApprovalID)
 	if err != nil {
@@ -236,7 +240,7 @@ func deleteOrder(ctx context.Context, loop *agent.Loop, orders *served) error {
 		return err
 	}
 	if sent.Status != "ok" || len(orders.hits) != before+1 {
-		return fmt.Errorf("delete did not go out after yes")
+		return errors.New("delete did not go out after yes")
 	}
 	last := orders.hits[len(orders.hits)-1]
 	if !strings.Contains(last, "DELETE /orders/123") || !strings.Contains(last, "Bearer "+secret) {

@@ -56,8 +56,8 @@ func runDoctor(cmd doctorCmd) {
 		os.Exit(1)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.Timeout)
-	defer cancel()
 	lines, fail := doctorReport(ctx, loop.Catalog, cfg, cmd.pin, cmd.ping)
+	cancel()
 	if len(lines) == 0 {
 		fmt.Fprintln(os.Stderr, "ok")
 		return
@@ -223,6 +223,7 @@ func writeOp(op catalog.Operation) bool {
 	switch op.SideEffect {
 	case catalog.SideEffectWrite, catalog.SideEffectDestructive:
 		return true
+	case catalog.SideEffectNone:
 	}
 	switch op.Method {
 	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:

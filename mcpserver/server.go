@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/aiveto/veto/agent"
@@ -74,7 +75,7 @@ func (s *Server) Invoke(ctx context.Context, operationID string, params map[stri
 // Preview runs the shared runtime and stops before a token URL and upstream HTTP.
 func (s *Server) Preview(ctx context.Context, req runtime.Request) (runtime.Preview, error) {
 	if s == nil || s.Calls == nil {
-		return runtime.Preview{}, fmt.Errorf("runtime required")
+		return runtime.Preview{}, errors.New("runtime required")
 	}
 	return s.Calls.Preview(ctx, req)
 }
@@ -82,7 +83,7 @@ func (s *Server) Preview(ctx context.Context, req runtime.Request) (runtime.Prev
 // Call runs one typed invoke. It does not use the agent loop.
 func (s *Server) Call(ctx context.Context, req runtime.Request) (InvokeResult, error) {
 	if s == nil || s.Calls == nil {
-		return InvokeResult{Status: "error", Error: "runtime required"}, fmt.Errorf("runtime required")
+		return InvokeResult{Status: "error", Error: "runtime required"}, errors.New("runtime required")
 	}
 	call, err := s.Calls.Invoke(ctx, req)
 	return InvokeResult{
@@ -107,9 +108,7 @@ func ToolNames(cat *catalog.Catalog, pins []string, directPins, grouped bool) []
 		"capabilities_invoke",
 	}
 	if directPins {
-		for _, p := range pins {
-			names = append(names, p)
-		}
+		names = append(names, pins...)
 	}
 	if grouped {
 		names = append(names, groupedResources(cat)...)

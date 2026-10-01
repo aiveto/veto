@@ -2,6 +2,7 @@ package execute
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -68,7 +69,7 @@ func providerFor(cfg Config, a catalog.Auth) (credentials.Provider, error) {
 }
 
 func applyCredentials(req *http.Request, creds []credentials.Credential) ([]string, []string, error) {
-	var secrets []string
+	secrets := make([]string, 0, len(creds))
 	var queryKeys []string
 	var signs []func(*http.Request) error
 	for _, cred := range creds {
@@ -108,7 +109,7 @@ func selectRequirement(ctx context.Context, cfg Config, groups [][]catalog.Auth)
 		return group, nil
 	}
 	if why == nil {
-		why = fmt.Errorf("credential is unset")
+		why = errors.New("credential is unset")
 	}
 	return nil, why
 }

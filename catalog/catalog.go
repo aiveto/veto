@@ -28,60 +28,60 @@ type (
 	SideEffect string
 
 	Server struct {
-		URL  string
-		Name string
+		URL  string `json:"URL"`
+		Name string `json:"Name"`
 	}
 
 	// Auth is one scheme in a security requirement.
 	// Header is set for header placement. Query is set for an apiKey in query.
 	// UserHeader is set when the contract names a separate header for the person token.
 	Auth struct {
-		Name       string
-		Header     string
-		Query      string
-		Kind       string
-		Scopes     []string
-		UserHeader string
+		Name       string   `json:"Name"`
+		Header     string   `json:"Header"`
+		Query      string   `json:"Query"`
+		Kind       string   `json:"Kind"`
+		Scopes     []string `json:"Scopes"`
+		UserHeader string   `json:"UserHeader"`
 	}
 
 	Param struct {
-		Name        string
-		In          string // path, query, header, body
-		Required    bool
-		Description string
-		Schema      string
-		MediaType   string
-		Default     string
-		Style       string
-		Explode     bool
+		Name        string `json:"Name"`
+		In          string `json:"In"` // path, query, header, body
+		Required    bool   `json:"Required"`
+		Description string `json:"Description"`
+		Schema      string `json:"Schema"`
+		MediaType   string `json:"MediaType"`
+		Default     string `json:"Default"`
+		Style       string `json:"Style"`
+		Explode     bool   `json:"Explode"`
 	}
 
 	Operation struct {
-		ID                   string
-		Name                 string
-		Summary              string `json:"-"`
-		Description          string
-		IDFallback           bool   `json:"-"`
-		IDCollision          string `json:"-"`
-		Group                string
-		Kind                 Kind
-		Method               string
-		PathTemplate         string
-		Params               []Param
-		ResponseSummary      string
-		SideEffect           SideEffect
-		RequiresConfirmation bool
-		Permissions          []string
-		Idempotency          string
-		Retry                string
-		Exposure             string
-		BaseURL              string
-		Servers              []Server
-		Page                 map[string]string
-		Auth                 []Auth
-		Requirements         [][]Auth // OR of AND groups. Auth is the first group.
-		Tags                 []string
-		ResponseFields       []string
+		ID                   string            `json:"ID"`
+		Name                 string            `json:"Name"`
+		Summary              string            `json:"-"`
+		Description          string            `json:"Description"`
+		IDFallback           bool              `json:"-"`
+		IDCollision          string            `json:"-"`
+		Group                string            `json:"Group"`
+		Kind                 Kind              `json:"Kind"`
+		Method               string            `json:"Method"`
+		PathTemplate         string            `json:"PathTemplate"`
+		Params               []Param           `json:"Params"`
+		ResponseSummary      string            `json:"ResponseSummary"`
+		SideEffect           SideEffect        `json:"SideEffect"`
+		RequiresConfirmation bool              `json:"RequiresConfirmation"`
+		Permissions          []string          `json:"Permissions"`
+		Idempotency          string            `json:"Idempotency"`
+		Retry                string            `json:"Retry"`
+		Exposure             string            `json:"Exposure"`
+		BaseURL              string            `json:"BaseURL"`
+		Servers              []Server          `json:"Servers"`
+		Page                 map[string]string `json:"Page"`
+		Auth                 []Auth            `json:"Auth"`
+		Requirements         [][]Auth          `json:"Requirements"` // OR of AND groups. Auth is the first group.
+		Tags                 []string          `json:"Tags"`
+		ResponseFields       []string          `json:"ResponseFields"`
 	}
 
 	OpLink struct {

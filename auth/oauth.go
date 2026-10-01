@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -41,7 +42,7 @@ type (
 func Discover(ctx context.Context, client *http.Client, issuer string) (Endpoints, error) {
 	issuer = strings.TrimRight(strings.TrimSpace(issuer), "/")
 	if issuer == "" {
-		return Endpoints{}, fmt.Errorf("issuer is unset")
+		return Endpoints{}, errors.New("issuer is unset")
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, issuer+"/.well-known/openid-configuration", nil)
 	if err != nil {
@@ -49,12 +50,15 @@ func Discover(ctx context.Context, client *http.Client, issuer string) (Endpoint
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return Endpoints{}, fmt.Errorf("discover issuer: request failed")
+		return Endpoints{}, errors.New("discover issuer: request failed")
 	}
-	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	closeErr := resp.Body.Close()
 	if err != nil {
-		return Endpoints{}, fmt.Errorf("discover issuer: request failed")
+		return Endpoints{}, errors.New("discover issuer: request failed")
+	}
+	if closeErr != nil {
+		return Endpoints{}, errors.New("discover issuer: request failed")
 	}
 	if resp.StatusCode != http.StatusOK {
 		return Endpoints{}, fmt.Errorf("discover issuer: status %d", resp.StatusCode)
@@ -65,10 +69,10 @@ func Discover(ctx context.Context, client *http.Client, issuer string) (Endpoint
 		Device        string `json:"device_authorization_endpoint"`
 	}
 	if err := json.Unmarshal(body, &doc); err != nil {
-		return Endpoints{}, fmt.Errorf("discover issuer: invalid document")
+		return Endpoints{}, errors.New("discover issuer: invalid document")
 	}
 	if doc.Authorization == "" || doc.Token == "" {
-		return Endpoints{}, fmt.Errorf("discover issuer: endpoints missing")
+		return Endpoints{}, errors.New("discover issuer: endpoints missing")
 	}
 	return Endpoints{Authorization: doc.Authorization, Token: doc.Token, Device: doc.Device}, nil
 }
@@ -101,11 +105,11 @@ func fillEndpoints(ctx context.Context, client *http.Client, scheme *Scheme) err
 
 func postForm(ctx context.Context, client *http.Client, endpoint string, form url.Values, secrets []string) (tokenResponse, error) {
 	if endpoint == "" {
-		return tokenResponse{}, fmt.Errorf("token url is unset")
+		return tokenResponse{}, errors.New("token url is unset")
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
-		return tokenResponse{}, fmt.Errorf("token endpoint: request failed")
+		return tokenResponse{}, errors.New("token endpoint: request failed")
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
@@ -113,10 +117,13 @@ func postForm(ctx context.Context, client *http.Client, endpoint string, form ur
 	if err != nil {
 		return tokenResponse{}, fmt.Errorf("token endpoint: %s", Redact(err.Error(), secrets, nil))
 	}
-	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	closeErr := resp.Body.Close()
 	if err != nil {
-		return tokenResponse{}, fmt.Errorf("token endpoint: request failed")
+		return tokenResponse{}, errors.New("token endpoint: request failed")
+	}
+	if closeErr != nil {
+		return tokenResponse{}, errors.New("token endpoint: request failed")
 	}
 	if resp.StatusCode != http.StatusOK {
 		return tokenResponse{}, fmt.Errorf("token endpoint returned %d", resp.StatusCode)
@@ -126,7 +133,7 @@ func postForm(ctx context.Context, client *http.Client, endpoint string, form ur
 		return tokenResponse{}, err
 	}
 	if tok.Error != "" || !tok.hasToken() {
-		return tokenResponse{}, fmt.Errorf("token endpoint rejected the request")
+		return tokenResponse{}, errors.New("token endpoint rejected the request")
 	}
 	return tok, nil
 }
@@ -134,11 +141,11 @@ func postForm(ctx context.Context, client *http.Client, endpoint string, form ur
 func decodeTokenResponse(body []byte) (tokenResponse, error) {
 	var tok tokenResponse
 	if err := json.Unmarshal(body, &tok); err != nil {
-		return tokenResponse{}, fmt.Errorf("token endpoint returned invalid JSON")
+		return tokenResponse{}, errors.New("token endpoint returned invalid JSON")
 	}
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(body, &raw); err != nil {
-		return tokenResponse{}, fmt.Errorf("token endpoint returned invalid JSON")
+		return tokenResponse{}, errors.New("token endpoint returned invalid JSON")
 	}
 	tok.Fields = map[string]string{}
 	for k, v := range raw {
@@ -180,7 +187,7 @@ func grantedScopes(responseScope string, requested []string) ([]string, error) {
 		got = strings.Fields(responseScope)
 	}
 	if !covers(got, requested) {
-		return nil, fmt.Errorf("token scopes are narrower than the operation")
+		return nil, errors.New("token scopes are narrower than the operation")
 	}
 	return append([]string(nil), got...), nil
 }
@@ -258,7 +265,7 @@ func refreshToken(ctx context.Context, client *http.Client, clientID, secret, to
 			AuthStyle: oauth2.AuthStyleInParams,
 		},
 	}
-	ctx, cap := withOAuthClient(ctx, client)
+	ctx, captured := withOAuthClient(ctx, client)
 	tok, err := cfg.TokenSource(ctx, &oauth2.Token{
 		AccessToken:  "expired",
 		RefreshToken: refresh,
@@ -267,7 +274,7 @@ func refreshToken(ctx context.Context, client *http.Client, clientID, secret, to
 	if err != nil {
 		return tokenResponse{}, fmt.Errorf("token endpoint: %s", Redact(err.Error(), secrets, nil))
 	}
-	return capturedToken(tok, cap.take())
+	return capturedToken(tok, captured.take())
 }
 
 func clientCredentialsToken(ctx context.Context, client *http.Client, clientID, secret, tokenURL, audience string, scopes []string) (tokenResponse, error) {
@@ -281,12 +288,12 @@ func clientCredentialsToken(ctx context.Context, client *http.Client, clientID, 
 	if audience != "" {
 		cfg.EndpointParams = url.Values{"audience": {audience}}
 	}
-	ctx, cap := withOAuthClient(ctx, client)
+	ctx, captured := withOAuthClient(ctx, client)
 	tok, err := cfg.Token(ctx)
 	if err != nil {
 		return tokenResponse{}, fmt.Errorf("token endpoint: %s", Redact(err.Error(), []string{secret}, nil))
 	}
-	return capturedToken(tok, cap.take())
+	return capturedToken(tok, captured.take())
 }
 
 func capturedToken(tok *oauth2.Token, body []byte) (tokenResponse, error) {
@@ -306,7 +313,7 @@ func capturedToken(tok *oauth2.Token, body []byte) (tokenResponse, error) {
 		}
 	}
 	if parsed.Error != "" || !parsed.hasToken() {
-		return tokenResponse{}, fmt.Errorf("token endpoint rejected the request")
+		return tokenResponse{}, errors.New("token endpoint rejected the request")
 	}
 	return parsed, nil
 }
@@ -318,14 +325,14 @@ type bodyCapture struct {
 }
 
 func withOAuthClient(ctx context.Context, base *http.Client) (context.Context, *bodyCapture) {
-	cap := &bodyCapture{}
+	captured := &bodyCapture{}
 	if base == nil {
 		base = &http.Client{}
 	}
-	cap.base = base.Transport
+	captured.base = base.Transport
 	client := *base
-	client.Transport = cap
-	return context.WithValue(ctx, oauth2.HTTPClient, &client), cap
+	client.Transport = captured
+	return context.WithValue(ctx, oauth2.HTTPClient, &client), captured
 }
 
 func (c *bodyCapture) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -338,9 +345,12 @@ func (c *bodyCapture) RoundTrip(req *http.Request) (*http.Response, error) {
 		return resp, err
 	}
 	raw, rerr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	_ = resp.Body.Close()
+	closeErr := resp.Body.Close()
 	if rerr != nil {
 		return nil, rerr
+	}
+	if closeErr != nil {
+		return nil, closeErr
 	}
 	c.mu.Lock()
 	c.last = append([]byte(nil), raw...)

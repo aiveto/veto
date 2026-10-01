@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -38,15 +39,15 @@ type (
 
 func NewWebhook(rawURL string, command []string) (Notifier, error) {
 	if rawURL == "" && len(command) == 0 {
-		return nil, fmt.Errorf("approval webhook required")
+		return nil, errors.New("approval webhook required")
 	}
 	if rawURL != "" && len(command) > 0 {
-		return nil, fmt.Errorf("approval webhook is a command or an HTTP URL")
+		return nil, errors.New("approval webhook is a command or an HTTP URL")
 	}
 	if rawURL != "" {
 		u, err := url.Parse(rawURL)
 		if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
-			return nil, fmt.Errorf("approval webhook URL is not http or https")
+			return nil, errors.New("approval webhook URL is not http or https")
 		}
 		return &HTTPNotifier{
 			url: rawURL,
@@ -57,14 +58,14 @@ func NewWebhook(rawURL string, command []string) (Notifier, error) {
 		}, nil
 	}
 	if command[0] == "" {
-		return nil, fmt.Errorf("approval webhook command required")
+		return nil, errors.New("approval webhook command required")
 	}
 	return &CommandNotifier{command: append([]string(nil), command...)}, nil
 }
 
 func (h *HTTPNotifier) Pending(ctx context.Context, notice Notice) error {
 	if h == nil {
-		return fmt.Errorf("approval webhook required")
+		return errors.New("approval webhook required")
 	}
 	body, err := noticeJSON(notice)
 	if err != nil {
@@ -75,7 +76,7 @@ func (h *HTTPNotifier) Pending(ctx context.Context, notice Notice) error {
 
 func (c *CommandNotifier) Pending(ctx context.Context, notice Notice) error {
 	if c == nil {
-		return fmt.Errorf("approval webhook required")
+		return errors.New("approval webhook required")
 	}
 	body, err := noticeJSON(notice)
 	if err != nil {
@@ -114,8 +115,14 @@ func (h *HTTPNotifier) post(ctx context.Context, body []byte) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+	_, copyErr := io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+	closeErr := resp.Body.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("status %d", resp.StatusCode)
 	}

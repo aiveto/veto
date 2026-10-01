@@ -43,7 +43,7 @@ func TestJSONBodySetsContentHeaders(t *testing.T) {
 	resp, err := execute.InvokeResponse(context.Background(), execute.Config{BaseURL: ts.URL}, op, map[string]string{"body": raw})
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
-	assert.Equal(t, raw, gotBody)
+	assert.JSONEq(t, raw, gotBody)
 	assert.Equal(t, "application/json", gotType)
 	assert.Equal(t, int64(len(raw)), gotCL)
 	assert.Equal(t, "14", gotLen)
@@ -66,11 +66,14 @@ func TestMissingRequiredInputDoesNotCallDo(t *testing.T) {
 			op := loadSpec(t, tc.spec).ByID(tc.op)
 			require.NotNil(t, op)
 			trip := &failTrip{}
-			_, err := execute.InvokeResponse(context.Background(), execute.Config{
+			resp, err := execute.InvokeResponse(context.Background(), execute.Config{
 				BaseURL: "http://127.0.0.1:9",
 				Client:  &http.Client{Transport: trip},
 			}, op, tc.params)
-			assert.ErrorContains(t, err, tc.want)
+			if resp != nil && resp.Body != nil {
+				require.NoError(t, resp.Body.Close())
+			}
+			require.ErrorContains(t, err, tc.want)
 			assert.False(t, trip.called)
 		})
 	}
@@ -146,7 +149,7 @@ func (f *failTrip) RoundTrip(*http.Request) (*http.Response, error) {
 func loadSpec(t *testing.T, spec string) *catalog.Catalog {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "spec.yaml")
-	require.NoError(t, os.WriteFile(path, []byte(spec), 0o644))
+	require.NoError(t, os.WriteFile(path, []byte(spec), 0o600))
 	cat, err := openapi.Load(context.Background(), path)
 	require.NoError(t, err)
 	return cat

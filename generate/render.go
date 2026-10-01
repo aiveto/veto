@@ -2,6 +2,7 @@ package generate
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"go/format"
 	"go/token"
@@ -293,7 +294,7 @@ type (
 
 func Render(module string, cat *catalog.Catalog) (Files, error) {
 	if module == "" {
-		return Files{}, fmt.Errorf("module path required")
+		return Files{}, errors.New("module path required")
 	}
 	views := views(cat)
 	sdk, err := render("sdk", sdkTmpl, map[string]any{"Ops": views})
@@ -320,7 +321,7 @@ func views(cat *catalog.Catalog) []opView {
 	for _, op := range ops {
 		goName := unique(usedGo, goName(op.ID))
 		cmd := unique(usedCmd, commandName(op.ID))
-		var params []paramView
+		params := make([]paramView, 0, len(op.Params))
 		usedArg := map[string]int{}
 		for _, p := range op.Params {
 			params = append(params, paramView{
@@ -398,9 +399,11 @@ func argName(name string) string {
 		return "arg"
 	}
 	s := strings.ToLower(parts[0])
+	var rest strings.Builder
 	for _, p := range parts[1:] {
-		s += export(p)
+		rest.WriteString(export(p))
 	}
+	s += rest.String()
 	if !token.IsIdentifier(s) || token.IsKeyword(s) {
 		s = "arg" + export(s)
 	}

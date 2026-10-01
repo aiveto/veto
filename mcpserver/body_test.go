@@ -38,7 +38,7 @@ func TestInvokeSendsObjectOrStringBody(t *testing.T) {
 			defer ts.Close()
 
 			path := filepath.Join(t.TempDir(), "spec.yaml")
-			require.NoError(t, os.WriteFile(path, []byte(versionBodySpec), 0o644))
+			require.NoError(t, os.WriteFile(path, []byte(versionBodySpec), 0o600))
 			cat, err := openapi.Load(context.Background(), path)
 			require.NoError(t, err)
 			loop, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
@@ -52,7 +52,7 @@ func TestInvokeSendsObjectOrStringBody(t *testing.T) {
 			require.NoError(t, err)
 			session, err := mcp.NewClient(&mcp.Implementation{Name: "client", Version: "0.1.0"}, nil).Connect(ctx, clientTransport, nil)
 			require.NoError(t, err)
-			defer session.Close()
+			t.Cleanup(func() { require.NoError(t, session.Close()) })
 
 			_, err = session.CallTool(ctx, &mcp.CallToolParams{
 				Name: "capabilities_invoke",

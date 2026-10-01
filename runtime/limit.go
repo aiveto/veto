@@ -30,7 +30,11 @@ var gates sync.Map
 
 func allowInvoke(state *policy.State, caller string, now time.Time) bool {
 	v, _ := gates.LoadOrStore(gateKey{state: state, caller: caller}, &window{})
-	return v.(*window).allow(now)
+	w, ok := v.(*window)
+	if !ok {
+		return false
+	}
+	return w.allow(now)
 }
 
 func (w *window) allow(now time.Time) bool {

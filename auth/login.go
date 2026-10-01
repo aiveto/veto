@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -22,7 +23,7 @@ type LoginOptions struct {
 	Scheme      Scheme
 	Dir         string
 	Device      bool
-	Open        func(string) error
+	Open        func(context.Context, string) error
 	HTTP        *http.Client
 	RedirectURL string
 	Out         io.Writer
@@ -50,16 +51,16 @@ func Login(ctx context.Context, opt LoginOptions) error {
 		return err
 	}
 	if scheme.ClientID == "" {
-		return fmt.Errorf("client id is unset")
+		return errors.New("client id is unset")
 	}
 	if scheme.TokenURL == "" {
-		return fmt.Errorf("token url is unset")
+		return errors.New("token url is unset")
 	}
 	if opt.Device {
 		return deviceLogin(ctx, opt, scheme)
 	}
 	if scheme.AuthorizationURL == "" {
-		return fmt.Errorf("authorization url is unset")
+		return errors.New("authorization url is unset")
 	}
 	return codeLogin(ctx, opt, scheme)
 }
@@ -76,23 +77,24 @@ func HasBrowser() bool {
 	}
 }
 
-func OpenBrowser(raw string) error {
-	var cmd *exec.Cmd
+func OpenBrowser(ctx context.Context, raw string) error {
+	var name string
+	var args []string
 	switch runtime.GOOS {
 	case "darwin":
-		cmd = exec.Command("open", raw)
+		name, args = "open", []string{raw}
 	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", raw)
+		name, args = "rundll32", []string{"url.dll,FileProtocolHandler", raw}
 	default:
-		cmd = exec.Command("xdg-open", raw)
+		name, args = "xdg-open", []string{raw}
 	}
-	return cmd.Start()
+	return exec.CommandContext(ctx, name, args...).Start()
 }
 
 // SetToken stores a token the operator already holds. The file mode is 0600.
 func SetToken(dir, scheme, token string) error {
 	if strings.TrimSpace(token) == "" {
-		return fmt.Errorf("token is empty")
+		return errors.New("token is empty")
 	}
 	if dir == "" {
 		dir = DefaultTokenDir()
@@ -118,8 +120,10 @@ func codeLogin(ctx context.Context, opt LoginOptions, scheme Scheme) error {
 	code, err := waitForCode(ctx, redirect, state, func(listen string) error {
 		cfg = oauthConfig(scheme, listen, secret)
 		authURL := cfg.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier))
-		fmt.Fprintf(opt.Out, "Open this URL to sign in:\n%s\n", authURL)
-		if err := opt.Open(authURL); err != nil {
+		if _, err := fmt.Fprintf(opt.Out, "Open this URL to sign in:\n%s\n", authURL); err != nil {
+			return fmt.Errorf("write login url: %w", err)
+		}
+		if err := opt.Open(ctx, authURL); err != nil {
 			return fmt.Errorf("open browser: %w", err)
 		}
 		return nil
@@ -127,12 +131,12 @@ func codeLogin(ctx context.Context, opt LoginOptions, scheme Scheme) error {
 	if err != nil {
 		return err
 	}
-	ctx, cap := withOAuthClient(ctx, opt.HTTP)
+	ctx, captured := withOAuthClient(ctx, opt.HTTP)
 	tok, err := cfg.Exchange(ctx, code, oauth2.VerifierOption(verifier))
 	if err != nil {
 		return fmt.Errorf("token endpoint: %s", Redact(err.Error(), []string{secret, code, verifier}, nil))
 	}
-	parsed, err := capturedToken(tok, cap.take())
+	parsed, err := capturedToken(tok, captured.take())
 	if err != nil {
 		return err
 	}
@@ -141,11 +145,11 @@ func codeLogin(ctx context.Context, opt LoginOptions, scheme Scheme) error {
 
 func deviceLogin(ctx context.Context, opt LoginOptions, scheme Scheme) error {
 	if scheme.DeviceAuthorizationURL == "" {
-		return fmt.Errorf("device authorization endpoint is unset")
+		return errors.New("device authorization endpoint is unset")
 	}
 	secret := secretFromEnv(scheme.ClientSecretEnv)
 	cfg := oauthConfig(scheme, "", secret)
-	ctx, cap := withOAuthClient(ctx, opt.HTTP)
+	ctx, captured := withOAuthClient(ctx, opt.HTTP)
 	var opts []oauth2.AuthCodeOption
 	if secret != "" {
 		opts = append(opts, oauth2.SetAuthURLParam("client_secret", secret))
@@ -158,15 +162,17 @@ func deviceLogin(ctx context.Context, opt LoginOptions, scheme Scheme) error {
 	if dev.VerificationURIComplete != "" {
 		show = dev.VerificationURIComplete
 	}
-	fmt.Fprintf(opt.Out, "Open %s\nEnter code %s\n", show, dev.UserCode)
+	if _, err := fmt.Fprintf(opt.Out, "Open %s\nEnter code %s\n", show, dev.UserCode); err != nil {
+		return fmt.Errorf("write device code: %w", err)
+	}
 	tok, err := cfg.DeviceAccessToken(ctx, dev)
 	if err != nil {
 		if ctx.Err() != nil {
-			return fmt.Errorf("login timed out")
+			return errors.New("login timed out")
 		}
 		return fmt.Errorf("token endpoint: %s", Redact(err.Error(), []string{secret, dev.DeviceCode}, nil))
 	}
-	parsed, err := capturedToken(tok, cap.take())
+	parsed, err := capturedToken(tok, captured.take())
 	if err != nil {
 		return err
 	}
@@ -180,7 +186,7 @@ func saveMinted(dir string, scheme Scheme, tok tokenResponse, requested []string
 	}
 	stored := absorb(storedToken{}, tok, scheme, scopes, expiryFrom(time.Now(), tok.ExpiresIn), scheme.TokenURL, scheme.ClientID)
 	if stored.RefreshToken == "" && stored.AccessToken == "" {
-		return fmt.Errorf("token endpoint rejected the request")
+		return errors.New("token endpoint rejected the request")
 	}
 	return writeToken(dir, scheme.Name, stored)
 }
@@ -190,7 +196,7 @@ func waitForCode(ctx context.Context, redirect, state string, open func(listen s
 	if err != nil {
 		return "", fmt.Errorf("redirect url: %w", err)
 	}
-	ln, err := net.Listen("tcp", u.Host)
+	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", u.Host)
 	if err != nil {
 		return "", fmt.Errorf("listen on redirect URL: %w", err)
 	}
@@ -205,7 +211,7 @@ func waitForCode(ctx context.Context, redirect, state string, open func(listen s
 		if r.URL.Query().Get("state") != state {
 			http.Error(w, "state mismatch", http.StatusBadRequest)
 			select {
-			case failed <- fmt.Errorf("login state mismatch"):
+			case failed <- errors.New("login state mismatch"):
 			default:
 			}
 			return
@@ -213,7 +219,7 @@ func waitForCode(ctx context.Context, redirect, state string, open func(listen s
 		if r.URL.Query().Get("error") != "" {
 			http.Error(w, "login failed", http.StatusBadRequest)
 			select {
-			case failed <- fmt.Errorf("login was denied"):
+			case failed <- errors.New("login was denied"):
 			default:
 			}
 			return
@@ -222,7 +228,7 @@ func waitForCode(ctx context.Context, redirect, state string, open func(listen s
 		if code == "" {
 			http.Error(w, "missing code", http.StatusBadRequest)
 			select {
-			case failed <- fmt.Errorf("login returned no code"):
+			case failed <- errors.New("login returned no code"):
 			default:
 			}
 			return
@@ -233,9 +239,13 @@ func waitForCode(ctx context.Context, redirect, state string, open func(listen s
 		default:
 		}
 	})
-	srv := &http.Server{Handler: mux}
+	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() { _ = srv.Serve(ln) }()
-	defer func() { _ = srv.Shutdown(context.Background()) }()
+	defer func() {
+		shut, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shut)
+	}()
 	listen := redirect
 	if u.Port() == "" || strings.HasSuffix(u.Host, ":0") {
 		listen = fmt.Sprintf("%s://%s%s", u.Scheme, ln.Addr().String(), path)
@@ -245,7 +255,7 @@ func waitForCode(ctx context.Context, redirect, state string, open func(listen s
 	}
 	select {
 	case <-ctx.Done():
-		return "", fmt.Errorf("login timed out")
+		return "", errors.New("login timed out")
 	case err := <-failed:
 		return "", err
 	case code := <-got:

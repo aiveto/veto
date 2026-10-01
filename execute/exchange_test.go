@@ -117,7 +117,7 @@ func TestMissingExchangeSubjectSkipsHTTP(t *testing.T) {
 		}}, Dir: t.TempDir(), HTTP: tokenSrv.Client()}),
 	}).InvokeHTTPResult(context.Background(), loadSpec(t, bearerSpec).ByID("orders.get"), map[string]string{"id": "1"})
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "subject token is unset")
+	require.ErrorContains(t, err, "subject token is unset")
 	assert.NotContains(t, err.Error(), "super-secret")
 	assert.Equal(t, int32(0), tokenHits.Load())
 	assert.Equal(t, int32(0), upstreamHits.Load())
@@ -166,7 +166,7 @@ func (p signProvider) Resolve(context.Context, credentials.Request) (credentials
 				return p.err
 			}
 			if r.URL.Query().Get("api_key") == "" {
-				return errString("query was not on the request")
+				return stringError("query was not on the request")
 			}
 			r.Header.Set("X-Signed", "yes")
 			return nil
@@ -197,9 +197,9 @@ func TestProviderSignErrorSkipsUpstream(t *testing.T) {
 	}))
 	defer up.Close()
 	creds := auth.New(auth.Options{Dir: t.TempDir()})
-	creds.SetProvider("queryAuth", signProvider{err: errString("sign failed")})
+	creds.SetProvider("queryAuth", signProvider{err: stringError("sign failed")})
 	_, err := (execute.Client{BaseURL: up.URL, Creds: creds}).InvokeHTTPResult(context.Background(), loadSpec(t, querySpec).ByID("orders.search"), nil)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "sign failed")
+	require.ErrorContains(t, err, "sign failed")
 	assert.Equal(t, int32(0), hits.Load())
 }

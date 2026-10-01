@@ -28,18 +28,18 @@ func TestGeneratedClientKeepsExposureAuthAndIdempotency(t *testing.T) {
 	dir := t.TempDir()
 	const module = "example.com/fidelity"
 	require.NoError(t, generate.Write(dir, module, cat))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "sdk", "fidelity_test.go"), []byte(fidelityProbe), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "sdk", "fidelity_test.go"), []byte(fidelityProbe), 0o600))
 	root, err := filepath.Abs("..")
 	require.NoError(t, err)
-	replace := exec.Command("go", "mod", "edit", "-replace", "github.com/aiveto/veto="+root)
+	replace := exec.CommandContext(t.Context(), "go", "mod", "edit", "-replace", "github.com/aiveto/veto="+root)
 	replace.Dir = dir
 	out, err := replace.CombinedOutput()
 	require.NoError(t, err, string(out))
-	tidy := exec.Command("go", "mod", "tidy")
+	tidy := exec.CommandContext(t.Context(), "go", "mod", "tidy")
 	tidy.Dir = dir
 	out, err = tidy.CombinedOutput()
 	require.NoError(t, err, string(out))
-	run := exec.Command("go", "test", "-count=1", "./sdk")
+	run := exec.CommandContext(t.Context(), "go", "test", "-count=1", "./sdk")
 	run.Dir = dir
 	out, err = run.CombinedOutput()
 	require.NoError(t, err, string(out))

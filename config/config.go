@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -79,7 +80,7 @@ func Load(path string) (File, error) {
 	}
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
-	if err := dec.Decode(&cfg); err != nil && err != io.EOF {
+	if err := dec.Decode(&cfg); err != nil && !errors.Is(err, io.EOF) {
 		return File{}, fmt.Errorf("parse config: %w", err)
 	}
 	cfg.applyDefaults()
@@ -167,7 +168,7 @@ func (f *File) applyDefaults() {
 	}
 }
 
-func (f File) validate() error {
+func (f *File) validate() error {
 	if f.Model != "scripted" && f.Model != "openai" {
 		return fmt.Errorf("model provider %q is not in this slice", f.Model)
 	}
@@ -175,13 +176,13 @@ func (f File) validate() error {
 		return fmt.Errorf("memory provider %q is not in this slice", f.Memory)
 	}
 	if f.Memory == "file" && f.MemoryFile == "" {
-		return fmt.Errorf("memory file provider needs memory_file")
+		return errors.New("memory file provider needs memory_file")
 	}
 	if f.Semantics != "derived" && f.Semantics != "file" {
 		return fmt.Errorf("semantics provider %q is not in this slice", f.Semantics)
 	}
 	if f.Semantics == "file" && f.SemanticsFile == "" {
-		return fmt.Errorf("semantics file provider needs semantics_file")
+		return errors.New("semantics file provider needs semantics_file")
 	}
 	if f.Decision != "default" {
 		return fmt.Errorf("decision provider %q is not in this slice", f.Decision)
@@ -192,7 +193,7 @@ func (f File) validate() error {
 		return fmt.Errorf("unsupported policy provider %q", f.Policy)
 	}
 	if f.Policy == "opa" && f.PolicyFile != "" && f.PolicyBundle != "" {
-		return fmt.Errorf("policy opa takes policy_file or policy_bundle")
+		return errors.New("policy opa takes policy_file or policy_bundle")
 	}
 	if f.Telemetry != "otel" {
 		return fmt.Errorf("telemetry provider %q is not in this slice", f.Telemetry)
@@ -204,7 +205,7 @@ func (f File) validate() error {
 		return fmt.Errorf("execution provider %q is not in this slice", f.Execution)
 	}
 	if f.Subagents != "off" {
-		return fmt.Errorf("subagents are not in this slice")
+		return errors.New("subagents are not in this slice")
 	}
 	if f.ReplayRedact != "" && f.ReplayRedact != "true" && f.ReplayRedact != "false" {
 		return fmt.Errorf("replay_redact %q is not true or false", f.ReplayRedact)
@@ -213,7 +214,7 @@ func (f File) validate() error {
 		return fmt.Errorf("page %q is not follow", f.Page)
 	}
 	if f.ResponseLimit < 0 {
-		return fmt.Errorf("response_limit is negative")
+		return errors.New("response_limit is negative")
 	}
 	for name, src := range f.Auth {
 		if err := src.validate(name); err != nil {
@@ -222,7 +223,7 @@ func (f File) validate() error {
 	}
 	for id, env := range f.Callers {
 		if id == "" || env == "" {
-			return fmt.Errorf("caller credential required")
+			return errors.New("caller credential required")
 		}
 	}
 	if err := f.ApprovalWebhook.validate(); err != nil {
@@ -261,8 +262,10 @@ func (w *Webhook) UnmarshalYAML(node *yaml.Node) error {
 		}
 		w.Command = parts
 		return nil
+	case yaml.DocumentNode, yaml.MappingNode, yaml.AliasNode:
+		return errors.New("approval_webhook is a command or an HTTP URL")
 	default:
-		return fmt.Errorf("approval_webhook is a command or an HTTP URL")
+		return errors.New("approval_webhook is a command or an HTTP URL")
 	}
 }
 
@@ -271,17 +274,17 @@ func (w Webhook) validate() error {
 		return nil
 	}
 	if w.URL != "" && len(w.Command) > 0 {
-		return fmt.Errorf("approval_webhook is a command or an HTTP URL")
+		return errors.New("approval_webhook is a command or an HTTP URL")
 	}
 	if w.URL != "" {
 		u, err := url.Parse(w.URL)
 		if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
-			return fmt.Errorf("approval_webhook URL is not http or https")
+			return errors.New("approval_webhook URL is not http or https")
 		}
 		return nil
 	}
 	if strings.TrimSpace(w.Command[0]) == "" {
-		return fmt.Errorf("approval_webhook command required")
+		return errors.New("approval_webhook command required")
 	}
 	return nil
 }
@@ -334,7 +337,7 @@ func (s *Source) UnmarshalYAML(node *yaml.Node) error {
 		*s = Source{Source: "env", Env: env}
 		return nil
 	}
-	if err := unknownKeys(node, reflect.TypeOf(Source{})); err != nil {
+	if err := unknownKeys(node, reflect.TypeFor[Source]()); err != nil {
 		return err
 	}
 	type plain Source
@@ -357,26 +360,26 @@ func rejectUnknown(data []byte) error {
 	if err := yaml.Unmarshal(data, &node); err != nil {
 		return err
 	}
-	return unknownKeys(&node, reflect.TypeOf(File{}))
+	return unknownKeys(&node, reflect.TypeFor[File]())
 }
 
 func unknownKeys(node *yaml.Node, typ reflect.Type) error {
 	if node == nil {
 		return nil
 	}
-	if node.Kind == yaml.DocumentNode {
-		if len(node.Content) == 0 {
-			return nil
-		}
-		return unknownKeys(node.Content[0], typ)
-	}
-	if node.Kind == yaml.AliasNode {
-		return unknownKeys(node.Alias, typ)
-	}
 	for typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
 	}
 	switch node.Kind {
+	case yaml.DocumentNode:
+		if len(node.Content) == 0 {
+			return nil
+		}
+		return unknownKeys(node.Content[0], typ)
+	case yaml.AliasNode:
+		return unknownKeys(node.Alias, typ)
+	case yaml.ScalarNode:
+		return nil
 	case yaml.MappingNode:
 		if typ.Kind() == reflect.Map {
 			elem := typ.Elem()
@@ -416,8 +419,7 @@ func unknownKeys(node *yaml.Node, typ reflect.Type) error {
 
 func yamlFields(typ reflect.Type) map[string]reflect.Type {
 	out := make(map[string]reflect.Type, typ.NumField())
-	for i := 0; i < typ.NumField(); i++ {
-		f := typ.Field(i)
+	for f := range typ.Fields() {
 		if f.PkgPath != "" {
 			continue
 		}
@@ -427,7 +429,7 @@ func yamlFields(typ reflect.Type) map[string]reflect.Type {
 		}
 		name := strings.ToLower(f.Name)
 		if tag != "" {
-			part := strings.Split(tag, ",")[0]
+			part, _, _ := strings.Cut(tag, ",")
 			if part == "-" {
 				continue
 			}
@@ -518,6 +520,6 @@ func (s Source) validate(name string) error {
 }
 
 // An unset key redacts.
-func (f File) Redact() bool {
+func (f *File) Redact() bool {
 	return f.ReplayRedact != "false"
 }

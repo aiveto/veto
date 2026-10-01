@@ -36,9 +36,9 @@ type (
 	Decision string
 
 	PendingConfirmation struct {
-		ID          string
-		OperationID string
-		Params      map[string]string
+		ID          string            `json:"ID"`
+		OperationID string            `json:"OperationID"`
+		Params      map[string]string `json:"Params"`
 	}
 
 	confirmation struct {
@@ -152,7 +152,7 @@ func NewState() *State {
 // A signing secret makes the approved id a token. The pending id stays a handle.
 func ApplyEnv(s *State) error {
 	if s == nil {
-		return fmt.Errorf("missing approval state")
+		return errors.New("missing approval state")
 	}
 	dir := os.Getenv("VETO_APPROVAL_NONCE_DIR")
 	secret := os.Getenv("VETO_APPROVAL_SECRET")
@@ -262,13 +262,13 @@ func (s *State) Approve(id string) (string, error) {
 	defer s.mu.Unlock()
 	rec, ok := s.loadLocked(id)
 	if !ok || rec.Status == statusConsumed || expired(rec, s.clock()) {
-		return "", fmt.Errorf("unknown approval")
+		return "", errors.New("unknown approval")
 	}
 	if rec.Status == statusApproved && rec.ApprovedID != "" {
 		return rec.ApprovedID, nil
 	}
 	if rec.Status != statusPending {
-		return "", fmt.Errorf("unknown approval")
+		return "", errors.New("unknown approval")
 	}
 	approved := uuid.NewString()
 	if len(s.secret) > 0 {
@@ -376,7 +376,7 @@ func (s *State) writeLocked(rec confirmation) error {
 		return nil
 	}
 	if !plainID(rec.ID) {
-		return fmt.Errorf("approval id")
+		return errors.New("approval id")
 	}
 	dir := filepath.Join(s.nonceDir, "confirmations")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -410,7 +410,7 @@ func (s *State) writeLocked(rec confirmation) error {
 
 func (s *State) claimLocked(id string) (bool, error) {
 	if !plainID(id) {
-		return false, fmt.Errorf("approval id")
+		return false, errors.New("approval id")
 	}
 	dir := filepath.Join(s.nonceDir, "confirmations")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -516,7 +516,7 @@ func (s *State) deadline() time.Time {
 
 func (b Builtin) Check(ctx context.Context, op *catalog.Operation) (Decision, error) {
 	if op == nil {
-		return DecisionDeny, fmt.Errorf("missing operation")
+		return DecisionDeny, errors.New("missing operation")
 	}
 	span := telemetry.StartSpan(ctx, "policy.decision")
 	defer span.End()
@@ -577,11 +577,11 @@ func (s *State) consumeSigned(caller, token, opID string, params map[string]stri
 	}
 	unix, err := strconv.ParseInt(parts[1], 10, 64)
 	if err != nil || !now.Before(time.Unix(unix, 0)) {
-		return false, nil
+		return rejectToken()
 	}
 	got, err := base64.RawURLEncoding.DecodeString(parts[3])
 	if err != nil {
-		return false, nil
+		return rejectToken()
 	}
 	mac := hmac.New(sha256.New, s.secret)
 	_, _ = mac.Write([]byte(approvalPayload(caller, opID, params, unix, parts[2])))
@@ -589,9 +589,13 @@ func (s *State) consumeSigned(caller, token, opID string, params map[string]stri
 		return false, nil
 	}
 	if s.nonceDir == "" {
-		return false, fmt.Errorf("approval nonce dir is not set")
+		return false, errors.New("approval nonce dir is not set")
 	}
-	f, err := os.OpenFile(filepath.Join(s.nonceDir, parts[2]), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	nonce := filepath.Base(parts[2])
+	if nonce != parts[2] || !plainNonce(nonce) {
+		return rejectToken()
+	}
+	f, err := os.OpenFile(filepath.Join(s.nonceDir, nonce), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		if errors.Is(err, fs.ErrExist) {
 			return false, nil
@@ -607,6 +611,10 @@ func (s *State) consumeSigned(caller, token, opID string, params map[string]stri
 		return false, fmt.Errorf("approval nonce: %w", cerr)
 	}
 	return true, nil
+}
+
+func rejectToken() (bool, error) {
+	return false, nil
 }
 
 func plainNonce(nonce string) bool {

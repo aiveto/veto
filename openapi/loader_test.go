@@ -27,7 +27,7 @@ func TestLoadRejectsIncompleteDocuments(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "spec.yaml")
-			require.NoError(t, os.WriteFile(path, []byte(tc.body), 0o644))
+			require.NoError(t, os.WriteFile(path, []byte(tc.body), 0o600))
 			_, err := openapi.Load(context.Background(), path)
 			assert.ErrorContains(t, err, tc.want)
 		})
@@ -37,7 +37,7 @@ func TestLoadRejectsIncompleteDocuments(t *testing.T) {
 func TestOpenAPI31DocumentLoads(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "ping.yaml")
-	require.NoError(t, os.WriteFile(path, []byte(openAPI31), 0o644))
+	require.NoError(t, os.WriteFile(path, []byte(openAPI31), 0o600))
 	cat, err := openapi.Load(context.Background(), path)
 	require.NoError(t, err)
 	require.NotNil(t, cat.ByID("ping"))

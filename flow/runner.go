@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 
 	"gopkg.in/yaml.v3"
 )
@@ -21,7 +22,7 @@ type (
 		Steps []Step `yaml:"steps"`
 	}
 
-	Stopped struct {
+	StoppedError struct {
 		Status    string
 		Operation string
 	}
@@ -31,7 +32,7 @@ type (
 	}
 )
 
-func (s Stopped) Error() string { return s.Status }
+func (s StoppedError) Error() string { return s.Status }
 
 func (s *Step) UnmarshalYAML(value *yaml.Node) error {
 	if value.Kind == yaml.ScalarNode {
@@ -85,7 +86,7 @@ func (r *Runner) Run(ctx context.Context, def *Definition, params map[string]str
 		}
 		results = append(results, status)
 		if status != "ok" {
-			return results, Stopped{Status: status, Operation: step.Operation}
+			return results, StoppedError{Status: status, Operation: step.Operation}
 		}
 		lastBody = body
 	}
@@ -94,9 +95,7 @@ func (r *Runner) Run(ctx context.Context, def *Definition, params map[string]str
 
 func cloneParams(in map[string]string) map[string]string {
 	out := make(map[string]string, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
+	maps.Copy(out, in)
 	return out
 }
 

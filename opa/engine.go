@@ -2,7 +2,9 @@ package opa
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"maps"
 	"os"
 
 	"github.com/aiveto/veto/catalog"
@@ -22,10 +24,10 @@ type Engine struct {
 
 func New(ctx context.Context, file, bundle string, next policy.Hook) (*Engine, error) {
 	if file == "" && bundle == "" {
-		return nil, fmt.Errorf("policy opa needs policy_file or policy_bundle")
+		return nil, errors.New("policy opa needs policy_file or policy_bundle")
 	}
 	if file != "" && bundle != "" {
-		return nil, fmt.Errorf("policy opa takes policy_file or policy_bundle")
+		return nil, errors.New("policy opa takes policy_file or policy_bundle")
 	}
 	if next == nil {
 		next = policy.Builtin{}
@@ -70,10 +72,10 @@ func (e *Engine) Check(ctx context.Context, op *catalog.Operation) (policy.Decis
 
 func (e *Engine) evaluate(ctx context.Context, op *catalog.Operation) (policy.Decision, string, error) {
 	if e == nil {
-		return policy.DecisionDeny, "", fmt.Errorf("missing policy")
+		return policy.DecisionDeny, "", errors.New("missing policy")
 	}
 	if op == nil {
-		return policy.DecisionDeny, "", fmt.Errorf("missing operation")
+		return policy.DecisionDeny, "", errors.New("missing operation")
 	}
 	in := policy.InputFrom(ctx)
 	input := map[string]any{
@@ -94,7 +96,7 @@ func (e *Engine) evaluate(ctx context.Context, op *catalog.Operation) (policy.De
 		return policy.DecisionDeny, "", fmt.Errorf("policy: %w", err)
 	}
 	if len(rs) == 0 || len(rs[0].Expressions) == 0 {
-		return policy.DecisionDeny, "", fmt.Errorf("policy returned no decision")
+		return policy.DecisionDeny, "", errors.New("policy returned no decision")
 	}
 	decision, reason, err := decisionFields(rs[0].Expressions[0].Value)
 	if err != nil {
@@ -124,9 +126,7 @@ func (e *Engine) caller(in policy.Input) string {
 
 func cloneParams(in map[string]string) map[string]string {
 	out := make(map[string]string, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
+	maps.Copy(out, in)
 	return out
 }
 
@@ -154,12 +154,12 @@ func schemeNames(op *catalog.Operation) []string {
 func decisionFields(value any) (string, string, error) {
 	obj, ok := value.(map[string]any)
 	if !ok {
-		return "", "", fmt.Errorf("policy decision is not an object")
+		return "", "", errors.New("policy decision is not an object")
 	}
 	decision, _ := obj["decision"].(string)
 	reason, _ := obj["reason"].(string)
 	if decision == "" {
-		return "", reason, fmt.Errorf("policy returned no decision")
+		return "", reason, errors.New("policy returned no decision")
 	}
 	return decision, reason, nil
 }

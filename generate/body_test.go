@@ -17,7 +17,7 @@ import (
 func TestGeneratedBodyParamReachesInvoke(t *testing.T) {
 	dir := t.TempDir()
 	spec := filepath.Join(dir, "spec.yaml")
-	require.NoError(t, os.WriteFile(spec, []byte(createSpec), 0o644))
+	require.NoError(t, os.WriteFile(spec, []byte(createSpec), 0o600))
 	cat, err := openapi.Load(context.Background(), spec)
 	require.NoError(t, err)
 	out := filepath.Join(dir, "gen")
@@ -38,15 +38,15 @@ func TestGeneratedBodyParamReachesInvoke(t *testing.T) {
 
 	root, err := filepath.Abs("..")
 	require.NoError(t, err)
-	replace := exec.Command("go", "mod", "edit", "-replace", "github.com/aiveto/veto="+root)
+	replace := exec.CommandContext(t.Context(), "go", "mod", "edit", "-replace", "github.com/aiveto/veto="+root)
 	replace.Dir = out
 	msg, err := replace.CombinedOutput()
 	require.NoError(t, err, string(msg))
-	tidy := exec.Command("go", "mod", "tidy")
+	tidy := exec.CommandContext(t.Context(), "go", "mod", "tidy")
 	tidy.Dir = out
 	msg, err = tidy.CombinedOutput()
 	require.NoError(t, err, string(msg))
-	help := exec.Command("go", "run", "./cli", "create", "--help-json")
+	help := exec.CommandContext(t.Context(), "go", "run", "./cli", "create", "--help-json")
 	help.Dir = out
 	msg, err = help.CombinedOutput()
 	require.NoError(t, err, string(msg))
