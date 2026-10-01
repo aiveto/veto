@@ -2,7 +2,7 @@
 
 **Turn existing OpenAPI services into tools AI agents can discover and call under your rules.**
 
-The model may request a call. Veto checks policy, requires approval for a destructive call, and resolves credentials before your API runs. Declared relations name the next operation. The decision is recorded.
+The model may request a call. Veto checks policy, requires approval for a destructive call, and resolves credentials before your API runs. Declared relations name a linked operation. A trace records the decision.
 
 **The model proposes. Veto decides. Your API executes.**
 
@@ -12,7 +12,7 @@ Connect an MCP client, or embed the Go runtime. MCP, the CLI, eval, and a genera
 
 [veto-demo](https://github.com/aiveto/veto-demo) is the full walk. Harbor sells home goods. Orders, customers, and billing are the APIs. The walk follows a customer from an order, holds a delete until a person approves it, and keeps the secret out of the trace. `make demo` runs the story. `make mcp` leaves Harbor listening and prints the config for Claude, Cursor, or ChatGPT.
 
-The same path runs in this repo, then exits. Go 1.27.1. No model key.
+This repo runs the relation, the held delete, and the redacted trace, then exits. Go 1.27.1. No model key.
 
 ```bash
 git clone https://github.com/aiveto/veto.git
@@ -38,7 +38,7 @@ Agent submits the approved ID  -> one matching invocation
 
 The approval is bound to the caller, the operation, and the parameters. Permission and confirmation run before credentials are fetched and before HTTP. An [OPA](docs/guide.md#policy) allow does not skip those checks. A webhook or a command can notify your approval system. The server and `veto approve` share approval storage and signing configuration.
 
-Once the call is allowed, timeouts, retries, and a per-caller limit still apply.
+A per-caller limit stops a call before policy. Timeouts and retries apply to the call that is sent.
 
 ## The next call is declared
 
@@ -53,7 +53,7 @@ Search returns the related operation. Describe returns the note, such as `Order.
 
 ## What the agent receives
 
-The tool names are `capabilities_search`, `capabilities_describe`, and `capabilities_invoke`. A pin or a resource group can sit beside those three. Search matches the summary, tags, path, and synonyms such as retire for delete. An overlay can add a word of your own.
+The tool names are `capabilities_search`, `capabilities_describe`, and `capabilities_invoke`. Direct pins add a few operations beside those three. Grouped mode adds one tool per resource. Search matches the summary, tags, the path noun, and synonyms such as retire for delete. An overlay can add a word of your own.
 
 [Response shaping](docs/guide.md#mcp) returns named fields and a bounded list, and marks pagination and truncation. A Go [context pack](docs/guide.md#pack) holds rules, operation summaries, the conversation, relations, and a pending confirmation, inside a byte budget. The raw OpenAPI document stays out of the pack.
 
@@ -61,34 +61,37 @@ The tool names are `capabilities_search`, `capabilities_describe`, and `capabili
 
 One [veto.yaml](docs/guide.md#one-vetoyaml) names the OpenAPI files and the credential sources. `veto serve --stdio` speaks MCP on stdin. [Authenticated Streamable HTTP](docs/guide.md#remote-mcp) serves the same runtime to a remote client.
 
-Credentials come from the environment, OAuth, a caller-supplied token, token exchange, a command that prints headers, or a Go provider that signs the request. The agent does not perform that login. [Authentication](docs/guide.md#auth).
+Credentials come from the environment, OAuth, a caller-supplied token, token exchange, a command that returns headers, or a Go provider that signs the request. The agent does not perform that login. [Authentication](docs/guide.md#auth).
 
 ## Check it
 
 | Task | How |
 | --- | --- |
-| Load the contracts | [`validate`](docs/guide.md#one-vetoyaml) |
-| Missing auth, operation IDs, unsupported parameters | [`doctor`](docs/guide.md#doctor) |
-| Request and policy decision, before credentials and before HTTP | [`preview`](docs/guide.md#preview) |
-| Run cases, and fail when a join, a confirmation, a permission, or a destructive operation drifts | [`eval`](docs/guide.md#check-in-ci) and [`check --against`](docs/guide.md#check-in-ci) |
+| The catalog loads, and its operation count and joins are printed | [`validate`](docs/guide.md#one-vetoyaml) |
+| Missing auth, a colliding operation id, or a parameter that cannot be sent | [`doctor`](docs/guide.md#doctor) |
+| The request and the policy decision, before a token is fetched and before HTTP | [`preview`](docs/guide.md#preview) |
+| Run a case | [`eval`](docs/guide.md#check-in-ci) |
+| Fail when a joined operation disappears, confirmation or a permission is dropped, a new destructive operation appears, or a case expectation changes | [`check --against`](docs/guide.md#check-in-ci) |
 | Read a saved trace, or run a message | [`replay --from`](docs/guide.md#replay) prints the file; `replay` with a message executes it |
 | Share contracts, relations, and cases apart from deployment credentials | [capability bundle](docs/guide.md#capability-bundle) |
-| Call the same runtime from your own Go module | [generate](docs/guide.md#generate) a client, a CLI, and a dispatch package |
+| Call the same runtime from your own Go module | [generate](docs/guide.md#generate) a client, a CLI, and an MCP dispatch package |
 
-Traces are OpenTelemetry, with OTLP export. The Go model and memory interfaces, and sequential flows, run in-process. They are not a durable workflow service.
+Traces are OpenTelemetry. OTLP export is optional. The Go model and memory interfaces, and sequential flows, run in-process. They are not a durable workflow service.
 
 ```bash
-go run ./cmd/veto validate --contract testdata/openapi.yaml
-go run ./cmd/veto eval --contract testdata/openapi.yaml --case testdata/delete.yaml
-go run ./cmd/veto serve --contract testdata/openapi.yaml --stdio
+go run ./cmd/veto validate --config testdata/veto.yaml
+go run ./cmd/veto eval --config testdata/veto.yaml --case testdata/delete.yaml
+go run ./cmd/veto serve --config testdata/veto.yaml --stdio
 ```
 
 `validate` and `eval` read the contract in this repo. `serve --stdio` is the MCP process. A call needs an API that is still listening, which is what veto-demo keeps up.
 
 ## Scope
 
-**Pre-1.0.** Public APIs may change. OpenAPI support is a subset: not full schema validation, and not every auth scheme. Approvals and tokens are stored on the machine that issued them. A shared signing key does not make an approval single-use across machines.
+**Pre-1.0.** Public APIs may change. Request bodies are not validated against the OpenAPI schema. The loader accepts bearer, API key, and OAuth2. Other schemes need a command or a Go signer.
 
-Your host owns the model. Your APIs own business logic and authorization.
+Approvals and tokens are files on the machine that issued them. Two machines that share the signing secret and not the approval directory can both accept the same yes until it expires.
+
+Your host owns the model. Your API still authenticates the caller and enforces its own authorization.
 
 [Setup guide](docs/guide.md) | [Current limits](docs/guide.md#limits) | [Apache-2.0](LICENSE)
