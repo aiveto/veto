@@ -180,8 +180,7 @@ func TestMissingUserTokenSkipsUpstream(t *testing.T) {
 
 func TestContractUserHeaderAndWorkforceStayApart(t *testing.T) {
 	t.Run("contract header", func(t *testing.T) {
-		var idp *httptest.Server
-		idp = httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+		idp := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 		idp.Config.Handler = userLoginHandler(idp, map[string]any{
 			"access_token": "app-token", "id_token": "opaque-user", "expires_in": 3600, "refresh_token": "refresh-secret",
 		})

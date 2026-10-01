@@ -107,9 +107,7 @@ func ToolNames(cat *catalog.Catalog, pins []string, directPins, grouped bool) []
 		"capabilities_invoke",
 	}
 	if directPins {
-		for _, p := range pins {
-			names = append(names, p)
-		}
+		names = append(names, pins...)
 	}
 	if grouped {
 		names = append(names, groupedResources(cat)...)

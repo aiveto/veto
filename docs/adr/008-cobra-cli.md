@@ -2,7 +2,7 @@
 
 ## Context
 
-The CLI exposes `validate`, `serve`, `eval`, `generate`, and `replay`. ADR 008 first chose `github.com/alecthomas/kong`.
+The CLI exposes `validate`, `serve`, `eval`, `generate`, `replay`, `check`, `doctor`, `preview`, `approve`, `pack`, `init`, and `auth`. ADR 008 first chose `github.com/alecthomas/kong`.
 
 ## Staff engineer
 

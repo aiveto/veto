@@ -71,14 +71,6 @@ func TestSearchPageReturnsTheNextWindow(t *testing.T) {
 	assert.NotEqual(t, first[0].Operation.ID, next[0].Operation.ID)
 }
 
-func ids(matches []catalog.Match) []string {
-	out := make([]string, len(matches))
-	for i, m := range matches {
-		out[i] = m.Operation.ID
-	}
-	return out
-}
-
 func TestSearchRetireFindsDelete(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)

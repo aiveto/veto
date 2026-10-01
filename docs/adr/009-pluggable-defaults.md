@@ -14,7 +14,7 @@ Early interfaces for OSSIE tempt premature abstraction.
 
 ## Decision
 
-Interfaces: `memory.Memory`, `agent.Completer`, `semantics.Provider`, `policy.Hook`. Defaults: local map memory, scripted model, derived+file semantics, builtin policy. Document optional provider keys in ADR 012. They are not packages in this slice.
+Interfaces: `agent.Memory`, `agent.Completer`, `semantics.Provider`, `policy.Hook`. The local map is `memory.LocalMap`. Defaults: that map, the scripted model, derived+file semantics, builtin policy. Document optional provider keys in ADR 012. They are not packages in this slice.
 
 ## What we refused
 
