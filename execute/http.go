@@ -49,10 +49,17 @@ type (
 func (c Client) UpstreamBase() string { return c.BaseURL }
 
 func (c Client) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, params map[string]string) (result.HTTPResult, error) {
+	project := c.projection(ctx)
+	follow := op != nil && c.FollowPages > 1 && len(op.Page) > 0
 	var view View
 	cfg := Config{
 		BaseURL: c.BaseURL, Client: c.HTTP, RecordBody: c.RecordBody, Auth: c.Auth, Creds: c.Creds, MaxBody: c.MaxBody,
-		Project: c.projection(ctx), View: &view,
+		Project: project, View: &view,
+	}
+	// Page cursors live on the raw body. Project the merged body after the walk.
+	if follow && len(project.Fields) > 0 {
+		cfg.Project = Projection{}
+		cfg.View = nil
 	}
 	resp, err := InvokeResponse(ctx, cfg, op, params)
 	if err != nil {
@@ -64,19 +71,28 @@ func (c Client) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, par
 	}
 	code, retryable := classify(resp.StatusCode)
 	out := result.HTTPResult{Status: resp.StatusCode, Body: body, Code: code, Retryable: retryable}
+	if follow {
+		merged, err := followPages(ctx, cfg, op, params, body, c.FollowPages)
+		if err != nil {
+			return result.HTTPResult{}, err
+		}
+		out.Body = merged
+	}
+	if follow && len(project.Fields) > 0 {
+		shaped, projected, err := shapeBody(resp.StatusCode, []byte(out.Body), false, Config{Project: project, MaxBody: c.MaxBody})
+		if err != nil {
+			return result.HTTPResult{}, err
+		}
+		out.Body = string(shaped)
+		out.Truncated = projected.Truncated
+		out.Page = projected.Page
+		return out, nil
+	}
 	if view.Applied {
 		out.Truncated = view.Truncated
 		out.Page = view.Page
 		return out, nil
 	}
-	if c.FollowPages <= 1 || len(op.Page) == 0 {
-		return out, nil
-	}
-	merged, err := followPages(ctx, cfg, op, params, body, c.FollowPages)
-	if err != nil {
-		return result.HTTPResult{}, err
-	}
-	out.Body = merged
 	return out, nil
 }
 
