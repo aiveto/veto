@@ -4,11 +4,13 @@ Point `veto` at OpenAPI files you already have. The agent gets three tools. Dest
 
 ## Install
 
+From a checkout of this repo:
+
 ```bash
-go install github.com/aiveto/veto/cmd/veto@latest
+go install ./cmd/veto
 ```
 
-That installs the `veto` command from `github.com/aiveto/veto/cmd/veto`. From a checkout of this repo, `go run ./cmd/veto` is the same binary.
+That installs the `veto` command. `go run ./cmd/veto` is the same binary.
 
 The container image builds that binary. Running the image runs `veto --help`.
 
@@ -39,11 +41,14 @@ contracts:
   - orders.yaml
   - customers.yaml
 relations_file: relations.yaml
+```
+
+That is the file `init` writes. Paths are relative to `veto.yaml`. Add `auth` when a scheme needs a credential. A string names the environment variable that holds the token. A login, client credentials, or a command is the other form. Secrets stay out of this file. Unset keys keep the defaults (`model: scripted`, `policy: builtin`, in-process execution).
+
+```yaml
 auth:
   bearerAuth: ORDER_TOKEN
 ```
-
-Paths are relative to `veto.yaml`. `auth` maps a security scheme to an env var, a login, client credentials, or a command. Secrets stay out of this file. Unset keys keep the defaults (`model: scripted`, `policy: builtin`, in-process execution).
 
 `veto validate --config veto.yaml` loads the contracts and prints the operation count and joins.
 
@@ -258,7 +263,7 @@ paths:
         "201": {description: created}
 ```
 
-A call whose body is `{"name":"ada"}` goes out with `Content-Type: application/json;v=3`. The orders and customers example (`go run ./examples/two-apis`) still follows `orders.get` to `customers.get` and holds `orders.delete` until approval.
+A call whose body is `{"name":"ada"}` goes out with `Content-Type: application/json;v=3`.
 
 ## Relations
 
@@ -271,7 +276,7 @@ relations:
     to: customers.get
 ```
 
-`orders.get` returns `customerId`. `customers.get` runs because `to:` says so. A field name in the spec does not create that call.
+`orders.get` returns `customerId`. The relation names `customers.get` as the linked operation. A field name in the spec does not create that call. MCP invoke runs one operation.
 
 An OpenAPI link with no `parameters` map does not invent a call. A link parameter may be a JSON pointer into the response: objects, and one array index.
 
@@ -310,11 +315,11 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: go install github.com/aiveto/veto/cmd/veto@latest
+      - run: go install ./cmd/veto
       - run: veto check --config veto.yaml --case cases --against ${{ github.event.pull_request.base.sha }}
 ```
 
-`cases/delete.yaml` is the confirmation case when the contract has `orders.delete`. The default model selects that id from the sentence below, and the call must not reach HTTP:
+That workflow checks out this module. `cases/delete.yaml` is the confirmation case when the contract has `orders.delete`. The default model selects that id from the sentence below, and the call must not reach HTTP:
 
 ```yaml
 name: delete-requires-confirmation
@@ -351,6 +356,19 @@ A command is the other webhook form: `approval_webhook: /usr/local/bin/veto-noti
 Rego sees `operation`, `params`, `method`, `path`, `side_effect`, `permissions`, `caller`, `environment`, `auth_scheme`, `tags`, and `resource_group`. A fact the call does not have is empty. `environment` is the config value. `caller` is the invoke caller, or `caller` in config when the invoke omits one. `auth_scheme` is the scheme names on the operation. `path` is the contract path. `resource_group` is the catalog group.
 
 A deny stops the call before HTTP. When Rego allows the call, builtin permissions and confirmation still apply.
+
+```rego
+package veto
+
+import rego.v1
+
+default decision := "allow"
+default reason := ""
+
+decision := "confirmation" if {
+	input.operation == "orders.delete"
+}
+```
 
 ## Replay
 
@@ -393,92 +411,6 @@ veto generate --config veto.yaml --out ./client --module example.com/client
 
 The generated client calls through the same gate.
 
-## Orders and customers
-
-`examples/two-apis` is two contracts. Each file keeps its own server URL.
-
-```yaml
-contracts:
-  - orders.yaml
-  - customers.yaml
-```
-
-A person logs in once. Invoke exchanges that token for the bearer the contracts name.
-
-```yaml
-contracts:
-  - orders.yaml
-  - customers.yaml
-auth:
-  user:
-    source: login
-    client_id: veto
-    issuer: https://idp.example
-    scopes: [orders.read]
-  bearerAuth:
-    source: token_exchange
-    token_url: https://idp.example/oauth/token
-    client_id: veto
-    client_secret_env: VETO_SECRET
-    audience: https://orders.example
-    scopes: [orders.read]
-    subject: user
-```
-
-```bash
-veto auth login --config veto.yaml --scheme user
-```
-
-OPA can require confirmation for the write `orders.delete`. Builtin confirmation still applies when Rego allows the call.
-
-```yaml
-policy: opa
-policy_file: policy.rego
-```
-
-```rego
-package veto
-
-import rego.v1
-
-default decision := "allow"
-default reason := ""
-
-decision := "confirmation" if {
-	input.operation == "orders.delete"
-}
-```
-
-A command can supply `bearerAuth`. Veto writes JSON to its stdin and reads headers from stdout.
-
-```yaml
-auth:
-  bearerAuth:
-    source: command
-    command: /usr/local/bin/veto-sig
-    timeout: 5s
-```
-
-`veto check` on a pull request, for that same `veto.yaml`:
-
-```yaml
-name: veto
-on:
-  pull_request:
-jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - run: go install github.com/aiveto/veto/cmd/veto@latest
-      - run: veto check --config veto.yaml --case cases --against ${{ github.event.pull_request.base.sha }}
-```
-
 ## Limits
 
 `veto serve` defaults to stdio. `--http` is one process at `127.0.0.1:7433`.
@@ -489,26 +421,8 @@ Token files are local. `token_dir` and `VETO_TOKEN_DIR` name that directory. The
 
 Invoke allows 16 calls in one second in this process, counted per caller. The next call stops before policy, a token URL, and upstream HTTP. That limit stays on.
 
-```text
-agent host
-    |  stdio MCP
-    v
-  veto
-    |  your API's HTTP
-    v
- your API
-```
-
-Veto is not backend auth. The API still authenticates the caller and enforces its own authorization.
+Veto is not backend auth. The API still authenticates the caller, stores the data, and enforces its own authorization and quotas.
 
 Veto is not an agent framework. The host owns the model.
 
 Veto is not an API gateway replacement. It does not sit in front of every client.
-
-## Roadmap
-
-Better discovery.
-
-## What the API still owns
-
-The service still authenticates the caller, stores the data, and enforces its own authorization and quotas. Veto names the env var and holds a destructive call until confirmation is stored.
