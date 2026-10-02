@@ -35,10 +35,10 @@ type (
 	}
 
 	configFile struct {
-		Contracts     []string
-		RelationsFile string
-		AgentFile     string
-		Confirms      bool
+		Contracts       []string
+		RelationsFile   string
+		AgentFile       string
+		ConfirmationOff bool
 	}
 
 	checkCmd struct {
@@ -228,7 +228,7 @@ func baselineFromConfig(root, ref, configPath string, casePaths []string) (base 
 	if err := applyAgent(cat, cfg.AgentFile); err != nil {
 		return baseline{}, err
 	}
-	if !cfg.Confirms {
+	if cfg.ConfirmationOff {
 		cat.ClearConfirmation()
 	}
 	conf := map[string]*bool{}
@@ -332,7 +332,7 @@ func loadConfigAt(configPath string) (configFile, error) {
 	if err != nil {
 		return configFile{}, err
 	}
-	return configFile{Contracts: src.cfg.Contracts, RelationsFile: src.cfg.RelationsFile, AgentFile: src.cfg.AgentFile, Confirms: src.cfg.Confirms()}, nil
+	return configFile{Contracts: src.cfg.Contracts, RelationsFile: src.cfg.RelationsFile, AgentFile: src.cfg.AgentFile, ConfirmationOff: !src.cfg.Confirms()}, nil
 }
 
 func casesAtRef(root, ref string, paths []string) (out []eval.CaseExpect, err error) {
