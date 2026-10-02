@@ -78,7 +78,8 @@ Credentials come from the environment, OAuth, a caller-supplied token, token exc
 | The request and the policy decision, before a token is fetched and before HTTP | [`preview`](docs/guide.md#preview) |
 | Run a case | [`eval`](docs/guide.md#check-in-ci) |
 | Fail when a joined operation disappears, confirmation or a permission is dropped, a new destructive operation appears, or a case expectation changes | [`check --against`](docs/guide.md#check-in-ci) |
-| Read a saved trace, or run a message | [`replay --from`](docs/guide.md#replay) prints the file; `replay` with a message executes it |
+| Print a saved trace | [`replay --from`](docs/guide.md#replay) |
+| Run a message | [`replay`](docs/guide.md#replay) |
 | Share contracts, relations, and cases apart from deployment credentials | [capability bundle](docs/guide.md#capability-bundle) |
 | Call the same runtime from your own Go module | [generate](docs/guide.md#generate) a client, a CLI, and an MCP dispatch package |
 
