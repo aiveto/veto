@@ -151,8 +151,11 @@ func Load(path string) (File, error) {
 }
 
 // Confirms reports whether this deployment keeps the confirmation gate. Unset means it does.
-func (f File) Confirms() bool {
-	return f.Confirmation == nil || *f.Confirmation
+func (f *File) Confirms() bool {
+	if f == nil || f.Confirmation == nil {
+		return true
+	}
+	return *f.Confirmation
 }
 
 func (f *File) applyDefaults() {
