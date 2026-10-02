@@ -173,7 +173,7 @@ func run{{.GoName}}(args []string) {
 	confirm := fs.Bool("confirm", false, "confirm this destructive call")
 {{- end}}
 {{- range .Params}}
-	{{.GoName}} := fs.String({{quote .Name}}, "", {{quote .Description}})
+	{{.GoName}} := fs.String({{quote .Flag}}, "", {{quote .FlagHelp}})
 {{- end}}
 	_ = fs.Parse(args)
 	if *helpJSON {
@@ -190,7 +190,7 @@ func run{{.GoName}}(args []string) {
 			Errors: []string{},
 			Params: []helpArg{
 {{- range .Params}}
-				{Name: {{quote .Name}}, In: {{quote .In}}, Type: "string", Required: {{.Required}}, Description: {{quote .Description}}},
+				{Name: {{quote .Flag}}, In: {{quote .In}}, Type: "string", Required: {{.Required}}, Description: {{quote .FlagHelp}}},
 {{- end}}
 			},
 		}); err != nil {
@@ -285,6 +285,8 @@ type (
 
 	paramView struct {
 		Name        string
+		Flag        string
+		FlagHelp    string
 		GoName      string
 		In          string
 		Required    bool
@@ -328,9 +330,13 @@ func views(cat *catalog.Catalog) []opView {
 		cmd := unique(usedCmd, commandName(op.ID))
 		params := make([]paramView, 0, len(op.Params))
 		usedArg := reservedArgs()
+		usedFlag := reservedFlags(op.RequiresConfirmation)
 		for _, p := range op.Params {
+			flag := uniqueFlag(usedFlag, cliFlag(p.Name))
 			params = append(params, paramView{
 				Name:        p.Name,
+				Flag:        flag,
+				FlagHelp:    flagHelp(p.Name, flag, p.Description),
 				GoName:      unique(usedArg, argName(p.Name)),
 				In:          p.In,
 				Required:    p.Required || p.In == "path",
@@ -366,6 +372,46 @@ func views(cat *catalog.Catalog) []opView {
 		})
 	}
 	return out
+}
+
+func reservedFlags(confirm bool) map[string]int {
+	used := map[string]int{"help-json": 1}
+	if confirm {
+		used["confirm"] = 1
+	}
+	return used
+}
+
+func cliFlag(name string) string {
+	if name == "" || strings.HasPrefix(name, "-") || strings.ContainsAny(name, "= \t") {
+		return "arg"
+	}
+	return name
+}
+
+func flagHelp(name, flag, desc string) string {
+	if flag == name {
+		return desc
+	}
+	note := "parameter " + name
+	if desc == "" {
+		return note
+	}
+	return desc + " (" + note + ")"
+}
+
+func uniqueFlag(seen map[string]int, name string) string {
+	if seen[name] == 0 {
+		seen[name] = 1
+		return name
+	}
+	for i := 2; ; i++ {
+		next := name + "-" + strconv.Itoa(i)
+		if seen[next] == 0 {
+			seen[next] = 1
+			return next
+		}
+	}
 }
 
 func reservedArgs() map[string]int {

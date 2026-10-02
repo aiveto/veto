@@ -89,7 +89,10 @@ func (c Client) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, par
 			return result.HTTPResult{}, err
 		}
 		out.Body = string(shaped)
-		out.Truncated = projected.Truncated
+		// The walk may already have stopped early. Field selection must not clear that.
+		if projected.Truncated {
+			out.Truncated = true
+		}
 		out.Page = projected.Page
 		return out, nil
 	}

@@ -1,6 +1,7 @@
 package generate_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -103,12 +104,16 @@ func TestRenderRejectsAModulePathThatCannotBeImported(t *testing.T) {
 
 func TestGeneratedAdversarialNamesCompile(t *testing.T) {
 	cat := &catalog.Catalog{Operations: []catalog.Operation{{
-		ID: "Calls", Method: "GET", PathTemplate: "/calls",
+		ID: "orders.delete", Method: "DELETE", PathTemplate: "/orders/{id}",
+		RequiresConfirmation: true,
 		Params: []catalog.Param{
+			{Name: "id", In: "path", Required: true},
 			{Name: "args", In: "query"},
 			{Name: "confirm", In: "query"},
 			{Name: "fmt", In: "query"},
 			{Name: "ctx", In: "query"},
+			{Name: "help-json", In: "query"},
+			{Name: "a=b", In: "query"},
 		},
 	}}}
 	cat.Finalize()
@@ -128,4 +133,22 @@ func TestGeneratedAdversarialNamesCompile(t *testing.T) {
 	run.Dir = dir
 	out, err = run.CombinedOutput()
 	require.NoError(t, err, string(out))
+
+	help := exec.CommandContext(t.Context(), "go", "run", "./cli", "delete", "--id", "1", "--confirm-2", "yes", "--help-json-2", "q", "--arg", "z", "--help-json")
+	help.Dir = dir
+	var stdout, stderr bytes.Buffer
+	help.Stdout = &stdout
+	help.Stderr = &stderr
+	require.NoError(t, help.Run(), stderr.String())
+	var doc struct {
+		Params []struct {
+			Name string `json:"name"`
+		} `json:"params"`
+	}
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &doc))
+	names := make([]string, 0, len(doc.Params))
+	for _, p := range doc.Params {
+		names = append(names, p.Name)
+	}
+	assert.ElementsMatch(t, []string{"id", "args", "confirm-2", "fmt", "ctx", "help-json-2", "arg"}, names)
 }
