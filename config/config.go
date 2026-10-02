@@ -49,6 +49,7 @@ type File struct {
 	ResponseLimit   int               `yaml:"response_limit"`
 	Caller          string            `yaml:"caller"`
 	Callers         map[string]string `yaml:"callers"`
+	Confirmation    *bool             `yaml:"confirmation"`
 	ApprovalWebhook Webhook           `yaml:"approval_webhook"`
 	Permissions     []string          `yaml:"permissions"`
 	MemoryFile      string            `yaml:"memory_file"`
@@ -147,6 +148,11 @@ func Load(path string) (File, error) {
 		return File{}, err
 	}
 	return cfg, nil
+}
+
+// Confirms reports whether this deployment keeps the confirmation gate. Unset means it does.
+func (f File) Confirms() bool {
+	return f.Confirmation == nil || *f.Confirmation
 }
 
 func (f *File) applyDefaults() {

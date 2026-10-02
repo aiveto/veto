@@ -42,7 +42,7 @@ func Facts(cat *Catalog) map[string]OpFact {
 }
 
 // confirmationChanged lists operations whose agent.yaml confirmation field changed on purpose.
-func SurfaceRegressions(base, next map[string]OpFact, confirmationChanged map[string]bool) []string {
+func SurfaceRegressions(base, next map[string]OpFact, confirmationChanged map[string]bool, confirmationOff bool) []string {
 	var out []string
 	for id, fact := range base {
 		cur, ok := next[id]
@@ -53,7 +53,7 @@ func SurfaceRegressions(base, next map[string]OpFact, confirmationChanged map[st
 		if !ok {
 			continue
 		}
-		if fact.Destructive && fact.Confirmation && !cur.Confirmation && !confirmationChanged[id] {
+		if fact.Destructive && fact.Confirmation && !cur.Confirmation && !confirmationChanged[id] && !confirmationOff {
 			out = append(out, "operation "+id+" lost confirmation")
 		}
 		if fact.Callable != nil && !*fact.Callable && cur.Callable != nil && *cur.Callable {

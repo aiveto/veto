@@ -34,6 +34,7 @@ func TestSurfaceRegressions(t *testing.T) {
 		name  string
 		next  map[string]catalog.OpFact
 		allow map[string]bool
+		off   bool
 		want  []string
 	}{
 		{
@@ -49,6 +50,12 @@ func TestSurfaceRegressions(t *testing.T) {
 			next:  changed,
 			allow: map[string]bool{"orders.delete": true},
 			want:  []string{"operation customers.get referenced by a relation or link was removed"},
+		},
+		{
+			name: "deployment confirmation off",
+			next: changed,
+			off:  true,
+			want: []string{"operation customers.get referenced by a relation or link was removed"},
 		},
 		{name: "unchanged", next: base},
 		{
@@ -72,7 +79,7 @@ func TestSurfaceRegressions(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.want, catalog.SurfaceRegressions(base, tc.next, tc.allow))
+			assert.Equal(t, tc.want, catalog.SurfaceRegressions(base, tc.next, tc.allow, tc.off))
 		})
 	}
 }
@@ -87,8 +94,8 @@ func TestSurfaceRegressionsLoadsANewDestructiveOperation(t *testing.T) {
 	require.NoError(t, err)
 	nextCat, err := openapi.Load(context.Background(), nextPath)
 	require.NoError(t, err)
-	assert.Empty(t, catalog.SurfaceRegressions(catalog.Facts(baseCat), catalog.Facts(baseCat), nil))
-	assert.Equal(t, []string{"operation orders.delete is a new destructive operation"}, catalog.SurfaceRegressions(catalog.Facts(baseCat), catalog.Facts(nextCat), nil))
+	assert.Empty(t, catalog.SurfaceRegressions(catalog.Facts(baseCat), catalog.Facts(baseCat), nil, false))
+	assert.Equal(t, []string{"operation orders.delete is a new destructive operation"}, catalog.SurfaceRegressions(catalog.Facts(baseCat), catalog.Facts(nextCat), nil, false))
 }
 
 const ordersGetSpec = `openapi: 3.0.3

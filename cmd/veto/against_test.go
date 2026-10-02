@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -44,6 +45,36 @@ func TestCheckAgainstSnapshot(t *testing.T) {
 	err = diffAgainst(cmd, cat)
 	require.ErrorContains(t, err, "gone.get")
 	assert.ErrorContains(t, err, "delete-requires-confirmation")
+}
+
+func TestCheckAgainstDeploymentConfirmationOff(t *testing.T) {
+	dir := t.TempDir()
+	spec := filepath.Join(dir, "orders.yaml")
+	require.NoError(t, os.WriteFile(spec, []byte(confirmationSpec), 0o600))
+	caseBody := "name: drop\ninput: delete order 10490\nexpect:\n  operation: orders.delete\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "case.yaml"), []byte(caseBody), 0o600))
+	offPath := filepath.Join(dir, "off.yaml")
+	require.NoError(t, os.WriteFile(offPath, []byte(fmt.Sprintf("confirmation: false\ncontracts:\n  - %s\n", spec)), 0o600))
+	onPath := filepath.Join(dir, "on.yaml")
+	require.NoError(t, os.WriteFile(onPath, []byte(fmt.Sprintf("contracts:\n  - %s\n", spec)), 0o600))
+
+	loop, _, err := buildLoop(nil, offPath, "", "", "")
+	require.NoError(t, err)
+	snap := filepath.Join(dir, "surface.json")
+	body, err := json.Marshal(snapshotFile{Operations: map[string]catalog.OpFact{
+		"orders.delete": {Destructive: true, Confirmation: true},
+	}})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(snap, body, 0o600))
+
+	err = diffAgainst(checkCmd{against: snap, config: offPath, cases: []string{filepath.Join(dir, "case.yaml")}}, loop.Catalog)
+	require.NoError(t, err)
+
+	held, _, err := buildLoop(nil, onPath, "", "", "")
+	require.NoError(t, err)
+	held.Catalog.ClearConfirmation()
+	err = diffAgainst(checkCmd{against: snap, config: onPath, cases: []string{filepath.Join(dir, "case.yaml")}}, held.Catalog)
+	require.ErrorContains(t, err, "orders.delete lost confirmation")
 }
 
 func TestCheckAgainstGitRef(t *testing.T) {

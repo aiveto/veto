@@ -50,6 +50,8 @@ auth:
   bearerAuth: ORDER_TOKEN
 ```
 
+`confirmation: false` turns the confirmation gate off for every operation in this deployment. Unset, and `confirmation: true`, leave it on. The clear runs after `agent.yaml`, so one operation set to true does not turn the gate back on. When the key is unset, `agent.yaml` can still set `confirmation: false` on one operation. Invoke cannot set the key. A bundle manifest cannot carry it. Doctor and check print `confirmation is off`.
+
 `veto validate --config veto.yaml` loads the contracts and prints the operation count and joins.
 
 ## Capability bundle
@@ -297,7 +299,7 @@ veto pack --config veto.yaml --message "who placed order 123"
 
 ## Check in CI
 
-`veto check` loads the catalog, prints joins, and runs the case files. `--case` names the case file or directory. When it is omitted, check uses the `cases` list from the bundle. `--against` is a git ref or a snapshot JSON file. The check fails when a joined operation disappears, confirmation is dropped without an `agent.yaml` change, a new destructive operation appears, a discovery-only operation becomes callable, a required permission is removed, or an eval expectation changes.
+`veto check` loads the catalog, prints joins, and runs the case files. `--case` names the case file or directory. When it is omitted, check uses the `cases` list from the bundle. `--against` is a git ref or a snapshot JSON file. The check fails when a joined operation disappears, confirmation is dropped without an `agent.yaml` change or `confirmation: false`, a new destructive operation appears, a discovery-only operation becomes callable, a required permission is removed, or an eval expectation changes. `confirmation: false` prints `confirmation is off` and does not also report each operation as lost confirmation.
 
 `--against` reads files from that git ref, so the checkout needs the history.
 
@@ -389,9 +391,10 @@ The first command runs the message and prints the trace. With the default model 
 - a parameter that veto cannot place on the request
 - an empty summary, or a weak summary (one word, or the same as the operation id)
 - a write that requires approval
+- `confirmation is off`, when `veto.yaml` sets `confirmation: false`
 - with `--ping`, a GET that fails for a server URL
 
-It exits non-zero when a finding would make a call wrong: missing auth, a colliding id, or a parameter that cannot be serialized. A fallback id, a weak summary, and a write that requires approval are reported and do not by themselves fail the command. It does not evaluate policy, and it does not approve a delete.
+It exits non-zero when a finding would make a call wrong: missing auth, a colliding id, or a parameter that cannot be serialized. A fallback id, a weak summary, a write that requires approval, and `confirmation is off` are reported and do not by themselves fail the command. It does not evaluate policy, and it does not approve a delete.
 
 ## Preview
 

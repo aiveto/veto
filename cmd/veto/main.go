@@ -414,7 +414,11 @@ func runValidate(cmd validateCmd) {
 		fmt.Fprintf(os.Stderr, "validate failed: %v\n", err)
 		exitMain(1)
 	}
+	applyDeployment(cat, src.cfg)
 	fmt.Printf("ok: %s (%d operations)\n", cat.Title, len(cat.Operations))
+	if line := confirmationNotice(src.cfg); line != "" {
+		fmt.Println(line)
+	}
 	for _, line := range cat.Joins() {
 		fmt.Println(line)
 	}
@@ -436,6 +440,7 @@ func runGenerate(cmd generateCmd) {
 		fmt.Fprintf(os.Stderr, "generate: %v\n", err)
 		exitMain(1)
 	}
+	applyDeployment(cat, src.cfg)
 	if err := generate.Write(cmd.out, cmd.module, cat); err != nil {
 		fmt.Fprintf(os.Stderr, "generate: %v\n", err)
 		exitMain(1)
@@ -745,6 +750,20 @@ func authResolver(cfg config.File) *auth.Resolver {
 	})
 }
 
+func applyDeployment(cat *catalog.Catalog, cfg config.File) {
+	if cfg.Confirms() {
+		return
+	}
+	cat.ClearConfirmation()
+}
+
+func confirmationNotice(cfg config.File) string {
+	if cfg.Confirms() {
+		return ""
+	}
+	return "confirmation is off"
+}
+
 func applyAgent(cat *catalog.Catalog, path string) error {
 	if path == "" {
 		return nil
@@ -890,6 +909,7 @@ func buildLoopBundle(contracts []string, configPath, bundlePath, agentPath, rela
 	if err := applyAgent(cat, agentPath); err != nil {
 		return nil, config.File{}, err
 	}
+	applyDeployment(cat, cfg)
 	if err := cat.SelectServer(cfg.Server); err != nil {
 		return nil, config.File{}, err
 	}
