@@ -53,6 +53,13 @@ func followPages(ctx context.Context, cfg Config, op *catalog.Operation, params 
 			break
 		}
 		items = append(items, more...)
+		// pageCap counts the first page too. A later cursor means this result is partial.
+		if page+1 == pageCap {
+			later, found := nextPage(op.Page, body)
+			if found && !seen[fmt.Sprint(later)] {
+				truncated = true
+			}
+		}
 	}
 	raw, err := json.Marshal(items)
 	if err != nil {

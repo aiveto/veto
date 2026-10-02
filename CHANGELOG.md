@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- A page walk that stops because the page cap or the byte budget is reached stays `truncated` after field selection. A complete walk stays complete.
+- A generated CLI keeps `--help-json`, and `--confirm` on a destructive command. A parameter with one of those names is registered under a different flag, so the command does not panic.
+- A generated `go.mod` requires a veto release or the pseudo-version of this commit. It does not require `v0.0.0`.
 - The first concurrent invoke on one runtime shares one limiter. A generated client does not race while creating it.
 - Generated names avoid the SDK field `Calls`, the CLI locals, and an invalid module path. The required veto version is veto's own module version, not the program that embedded it.
 - A second YAML document in `veto.yaml` or a bundle manifest is an error. Alias graphs are counted before they expand.
