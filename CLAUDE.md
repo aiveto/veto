@@ -57,7 +57,7 @@ No `util`, `common`, `pkg`, or empty directories. A new package needs a caller i
 
 1. `veto serve` executes from the catalog with net/http. `generate` writes an optional Go client that calls `runtime.Invoke`. Serving does not require codegen.
 2. MCP registers search, describe, and invoke, plus `--pin`. Never one tool per operation.
-3. DELETE, or an id containing "delete", requires confirmation unless agent.yaml sets confirmation false for that operation. agent.yaml can require confirmation on any operation. Without approval, invoke does not call HTTP.
+3. DELETE, or an id containing "delete", requires confirmation unless agent.yaml sets confirmation false for that operation, or veto.yaml sets confirmation false for the deployment. Unset leaves the gate on. A deployment confirmation false clears every operation, including one agent.yaml set true. agent.yaml can require confirmation on any operation when the deployment key is unset. Without approval, invoke does not call HTTP.
 4. Context pack holds rules, the search hits and their neighbors, the conversation given to it, the operation just described, and pending confirmation. It does not list every operation and it does not embed the raw spec. Truncate the index first.
 5. Semantics come from the summary, tags, path noun, and a small synonym map (delete/remove/retire, get/fetch/read). A declared relation becomes a sentence on the note, such as `Order.customerId identifies customers.get`. A yaml overlay overrides one id and does not drop that sentence. Apache Ossie 0.1.1 is the later file format behind `semantics.Provider`. Do not import `github.com/apache/ossie/cli`. Do not depend on Ossie 0.2 drafts.
 6. No external decision client is in the module. A decision check does not approve a delete.

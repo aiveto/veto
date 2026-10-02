@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `confirmation: false` in `veto.yaml` turns the confirmation gate off for every operation in that deployment. Unset leaves it on. `agent.yaml` can still exempt one operation when the key is unset. Doctor and check print `confirmation is off`. A bundle cannot set the key.
 - A page walk that stops because the page cap or the byte budget is reached stays `truncated` after field selection. A complete walk stays complete.
 - A generated CLI keeps `--help-json`, and `--confirm` on a destructive command. A parameter with one of those names is registered under a different flag, so the command does not panic.
 - A generated `go.mod` requires a veto release or the pseudo-version of this commit. It does not require `v0.0.0`.

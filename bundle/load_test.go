@@ -87,6 +87,11 @@ func TestBundleRejectsDeploymentFields(t *testing.T) {
 			body: "token_dir: /tmp/tokens\ncontracts:\n  - orders.yaml\n",
 			want: "token_dir",
 		},
+		{
+			name: "confirmation",
+			body: "confirmation: false\ncontracts:\n  - orders.yaml\n",
+			want: "confirmation",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -71,6 +71,33 @@ func TestKnownProviderKeysLoad(t *testing.T) {
 	}
 }
 
+func TestConfirmationIsOnUntilSetFalse(t *testing.T) {
+	dir := t.TempDir()
+	unset := filepath.Join(dir, "unset.yaml")
+	require.NoError(t, os.WriteFile(unset, []byte("model: scripted\n"), 0o600))
+	cfg, err := config.Load(unset)
+	require.NoError(t, err)
+	assert.True(t, cfg.Confirms())
+	assert.Nil(t, cfg.Confirmation)
+
+	off := filepath.Join(dir, "off.yaml")
+	require.NoError(t, os.WriteFile(off, []byte("confirmation: false\n"), 0o600))
+	cfg, err = config.Load(off)
+	require.NoError(t, err)
+	assert.False(t, cfg.Confirms())
+
+	on := filepath.Join(dir, "on.yaml")
+	require.NoError(t, os.WriteFile(on, []byte("confirmation: true\n"), 0o600))
+	cfg, err = config.Load(on)
+	require.NoError(t, err)
+	assert.True(t, cfg.Confirms())
+
+	bad := filepath.Join(dir, "bad.yaml")
+	require.NoError(t, os.WriteFile(bad, []byte("confirmation: sometimes\n"), 0o600))
+	_, err = config.Load(bad)
+	require.Error(t, err)
+}
+
 func TestAuthSourcesKeepTheEnvShorthand(t *testing.T) {
 	body := "token_dir: tokens\nauth:\n  bearerAuth: ORDER_TOKEN\n  user:\n    source: login\n    client_id: veto\n    issuer: https://idp.example\n    scopes: [orders.read]\n    auth_token: app_token\n    user_token: person_token\n    user_header: X-User-Token\n  upstream:\n    source: token_exchange\n    token_url: https://idp.example/token\n    client_id: veto\n    client_secret_env: VETO_SECRET\n    audience: https://api.example\n    scopes: [orders.read]\n    subject: invoke\n  workforce:\n    source: client_credentials\n    token_url: https://idp.example/token\n    client_id: job\n    client_secret_env: WORKFORCE_SECRET\n    audience: https://api.example\n  sig:\n    source: command\n    command: /usr/local/bin/veto-sig\n    timeout: 5s\n"
 	path := filepath.Join(t.TempDir(), "veto.yaml")

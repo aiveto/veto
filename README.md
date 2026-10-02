@@ -36,7 +36,7 @@ Person runs veto approve <id>  -> approved ID
 Agent submits the approved ID  -> one matching invocation
 ```
 
-The approval is bound to the caller, the operation, and the parameters. Permission and confirmation run before credentials are fetched and before HTTP. An [OPA](docs/guide.md#policy) allow does not skip those checks. A webhook or a command can notify your approval system. The server and `veto approve` share approval storage and signing configuration.
+The approval is bound to the caller, the operation, and the parameters. Permission and confirmation run before credentials are fetched and before HTTP. An [OPA](docs/guide.md#policy) allow does not skip those checks. A webhook or a command can notify your approval system. The server and `veto approve` share approval storage and signing configuration. `confirmation: false` in [`veto.yaml`](docs/guide.md#one-vetoyaml) turns that gate off for the deployment. Unset leaves it on.
 
 A per-caller limit stops a call before policy. Timeouts and retries apply to the call that is sent.
 
@@ -77,7 +77,7 @@ Credentials come from the environment, OAuth, a caller-supplied token, token exc
 | Missing auth, a colliding operation id, or a parameter that cannot be sent | [`doctor`](docs/guide.md#doctor) |
 | The request and the policy decision, before a token is fetched and before HTTP | [`preview`](docs/guide.md#preview) |
 | Run a case | [`eval`](docs/guide.md#check-in-ci) |
-| Fail when a joined operation disappears, confirmation or a permission is dropped, a new destructive operation appears, or a case expectation changes | [`check --against`](docs/guide.md#check-in-ci) |
+| Fail when a joined operation disappears, confirmation or a permission is dropped, a new destructive operation appears, or a case expectation changes. `confirmation: false` is the record of a deployment-wide drop | [`check --against`](docs/guide.md#check-in-ci) |
 | Print a saved trace | [`replay --from`](docs/guide.md#replay) |
 | Run a message | [`replay`](docs/guide.md#replay) |
 | Share contracts, relations, and cases apart from deployment credentials | [capability bundle](docs/guide.md#capability-bundle) |

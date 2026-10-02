@@ -188,6 +188,16 @@ func (c *Catalog) SelectServer(name string) error {
 	return nil
 }
 
+// ClearConfirmation turns the confirmation gate off for every operation.
+func (c *Catalog) ClearConfirmation() {
+	if c == nil {
+		return
+	}
+	for i := range c.Operations {
+		c.Operations[i].RequiresConfirmation = false
+	}
+}
+
 func (c *Catalog) Finalize() {
 	slices.SortFunc(c.Operations, func(a, b Operation) int { return strings.Compare(a.ID, b.ID) })
 	c.index()

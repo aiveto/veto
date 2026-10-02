@@ -38,6 +38,7 @@ type (
 		Contracts     []string
 		RelationsFile string
 		AgentFile     string
+		Confirms      bool
 	}
 
 	checkCmd struct {
@@ -63,7 +64,7 @@ func newCheckCommand() *cobra.Command {
 	c.Flags().StringVar(&cmd.agent, "agent", "", "Path to agent.yaml. Overrides agent_file.")
 	c.Flags().StringVar(&cmd.relations, "relations", "", "Relations file. Overrides relations_file.")
 	c.Flags().StringVar(&cmd.baseURL, "base-url", "", "Override the server URL on every operation. Empty uses each contract server.")
-	c.Flags().StringVar(&cmd.against, "against", "", "Git ref or snapshot JSON. Fail if a joined operation disappeared, confirmation was dropped without an agent.yaml change, a new destructive operation appeared, or an eval expectation changed.")
+	c.Flags().StringVar(&cmd.against, "against", "", "Git ref or snapshot JSON. Fail if a joined operation disappeared, confirmation was dropped without an agent.yaml change or confirmation: false, a new destructive operation appeared, or an eval expectation changed.")
 	return c
 }
 
@@ -81,6 +82,9 @@ func runChecked(cmd checkCmd) error {
 		return err
 	}
 	fmt.Printf("ok: %s (%d operations)\n", loop.Catalog.Title, len(loop.Catalog.Operations))
+	if line := confirmationNotice(cfg); line != "" {
+		fmt.Println(line)
+	}
 	for _, line := range loop.Catalog.Joins() {
 		fmt.Println(line)
 	}
@@ -119,7 +123,7 @@ func diffAgainst(cmd checkCmd, cat *catalog.Catalog) error {
 	if err != nil {
 		return err
 	}
-	lines := catalog.SurfaceRegressions(base.Operations, catalog.Facts(cat), agentmeta.ChangedConfirmations(base.Confirmations, agentmeta.Confirmations(curAgent)))
+	lines := catalog.SurfaceRegressions(base.Operations, catalog.Facts(cat), agentmeta.ChangedConfirmations(base.Confirmations, agentmeta.Confirmations(curAgent)), !src.cfg.Confirms())
 	lines = append(lines, eval.Drift(base.Cases, eval.Expects(cases))...)
 	if len(lines) == 0 {
 		return nil
@@ -224,6 +228,9 @@ func baselineFromConfig(root, ref, configPath string, casePaths []string) (base 
 	if err := applyAgent(cat, cfg.AgentFile); err != nil {
 		return baseline{}, err
 	}
+	if !cfg.Confirms {
+		cat.ClearConfirmation()
+	}
 	conf := map[string]*bool{}
 	if cfg.AgentFile != "" {
 		agentFile, err := agentmeta.Load(cfg.AgentFile)
@@ -325,7 +332,7 @@ func loadConfigAt(configPath string) (configFile, error) {
 	if err != nil {
 		return configFile{}, err
 	}
-	return configFile{Contracts: src.cfg.Contracts, RelationsFile: src.cfg.RelationsFile, AgentFile: src.cfg.AgentFile}, nil
+	return configFile{Contracts: src.cfg.Contracts, RelationsFile: src.cfg.RelationsFile, AgentFile: src.cfg.AgentFile, Confirms: src.cfg.Confirms()}, nil
 }
 
 func casesAtRef(root, ref string, paths []string) (out []eval.CaseExpect, err error) {

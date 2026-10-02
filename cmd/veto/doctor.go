@@ -90,6 +90,9 @@ func doctorReport(ctx context.Context, cat *catalog.Catalog, cfg config.File, pi
 	}
 	found, bad := catalogFindings(cat, cfg.Auth, tokenDir(cfg))
 	out = append(out, found...)
+	if line := confirmationNotice(cfg); line != "" {
+		out = append(out, line)
+	}
 	if bad {
 		fail = true
 	}
