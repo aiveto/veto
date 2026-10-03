@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A tagged release pushes `ghcr.io/aiveto/veto` and publishes `io.github.aiveto/veto` to the official MCP registry.
+
 ## v0.1.3 - 2026-10-03
 
 - `capabilities_search` returns `id`, the pack call line, related ids, and `confirmation` when the gate is on. Describe still returns the operation.

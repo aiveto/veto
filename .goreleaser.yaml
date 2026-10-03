@@ -46,3 +46,18 @@ brews:
     directory: Formula
     test: |
       system "#{bin}/veto", "--help"
+
+dockers_v2:
+  - images:
+      - ghcr.io/aiveto/veto
+    tags:
+      - "{{.Version}}"
+      - latest
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    labels:
+      io.modelcontextprotocol.server.name: io.github.aiveto/veto
+      org.opencontainers.image.source: https://github.com/aiveto/veto
+    flags:
+      - "--target=goreleaser"

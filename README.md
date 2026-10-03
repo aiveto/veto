@@ -16,7 +16,7 @@ brew install aiveto/veto/veto
 go install github.com/aiveto/veto/cmd/veto@latest
 ```
 
-`brew` does not need Go. `go install` needs Go 1.27.1. Binaries are on [GitHub Releases](https://github.com/aiveto/veto/releases).
+`brew` does not need Go. `go install` needs Go 1.27.1. Binaries are on [GitHub Releases](https://github.com/aiveto/veto/releases). A release also pushes `ghcr.io/aiveto/veto`.
 
 ## See veto in action
 
