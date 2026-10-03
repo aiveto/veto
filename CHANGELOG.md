@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `capabilities_search` returns `id`, the pack call line, related ids, and `confirmation` when the gate is on. Describe still returns the operation.
+
 ## v0.1.2 - 2026-10-03
 
 - `brew install aiveto/veto/veto` installs the release binary from the `aiveto/homebrew-veto` tap.

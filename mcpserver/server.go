@@ -16,6 +16,14 @@ import (
 )
 
 type (
+	// SearchHit is one search result on the wire. Describe still returns the operation.
+	SearchHit struct {
+		ID           string   `json:"id"`
+		Call         string   `json:"call"`
+		Related      []string `json:"related,omitempty"`
+		Confirmation bool     `json:"confirmation,omitempty"`
+	}
+
 	InvokeResult struct {
 		Status      string       `json:"status"`
 		ApprovalID  string       `json:"approval_id,omitempty"`
@@ -37,12 +45,35 @@ type (
 	}
 )
 
-func (s *Server) Search(query string, offset, limit int) []catalog.Match {
-	var syns map[string][]string
-	if s.Semantics != nil {
-		syns = s.Semantics.AllSynonyms()
+func (s *Server) Search(query string, offset, limit int) []SearchHit {
+	var (
+		cat  *catalog.Catalog
+		syns map[string][]string
+	)
+	if s != nil {
+		cat = s.Catalog
+		if s.Semantics != nil {
+			syns = s.Semantics.AllSynonyms()
+		}
 	}
-	return catalog.SearchPage(s.Catalog, query, syns, offset, limit)
+	matches := catalog.SearchPage(cat, query, syns, offset, limit)
+	if len(matches) == 0 {
+		return nil
+	}
+	out := make([]SearchHit, 0, len(matches))
+	for _, m := range matches {
+		note := ""
+		if s != nil && s.Semantics != nil {
+			note = s.Semantics.Note(m.Operation.ID).Text()
+		}
+		out = append(out, SearchHit{
+			ID:           m.Operation.ID,
+			Call:         runctx.OperationLine(cat, m.Operation, note),
+			Related:      m.Related,
+			Confirmation: m.Operation.RequiresConfirmation,
+		})
+	}
+	return out
 }
 
 func (s *Server) Describe(operationID string) ([]byte, error) {

@@ -205,7 +205,7 @@ Cursor and Claude Desktop both take this server entry. Use a config path the `ve
 
 The env block is what `veto approve` in another shell must share, or set `approval_store` for Valkey or Redis. [veto-demo](https://github.com/aiveto/veto-demo) `make mcp` prints a complete block.
 
-`veto serve` listens on stdio. The registered tools are `capabilities_search`, `capabilities_describe`, and `capabilities_invoke`. `--pin orders.get` also registers that operation id. `--grouped` registers one tool per resource.
+`veto serve` listens on stdio. The registered tools are `capabilities_search`, `capabilities_describe`, and `capabilities_invoke`. `--pin orders.get` also registers that operation id. `--grouped` registers one tool per resource. Search returns `id`, the pack call line, related ids, and `confirmation` when the gate is on. Describe still returns the operation.
 
 `capabilities_invoke` arguments:
 
