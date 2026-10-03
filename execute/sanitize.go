@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-func Sanitize(req *http.Request) (method, rawURL string, headers map[string]string, body string) {
+func sanitize(req *http.Request) (method, rawURL string, headers map[string]string, body string) {
 	if req == nil {
 		return "", "", nil, ""
 	}

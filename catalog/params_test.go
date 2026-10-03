@@ -1,10 +1,9 @@
-package execute_test
+package catalog_test
 
 import (
 	"testing"
 
 	"github.com/aiveto/veto/catalog"
-	"github.com/aiveto/veto/execute"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -16,13 +15,13 @@ func TestCheckParamsRequiresAJSONObject(t *testing.T) {
 			Name: "body", In: "body", Required: true, Schema: `{"type":"object"}`,
 		}},
 	}
-	err := execute.CheckParams(op, map[string]string{"body": "not-json"})
+	err := op.CheckParams(map[string]string{"body": "not-json"})
 	require.ErrorContains(t, err, "JSON object")
-	err = execute.CheckParams(op, map[string]string{"body": "[1]"})
+	err = op.CheckParams(map[string]string{"body": "[1]"})
 	require.ErrorContains(t, err, "JSON object")
-	err = execute.CheckParams(op, map[string]string{"body": `{"a":1}{"b":2}`})
+	err = op.CheckParams(map[string]string{"body": `{"a":1}{"b":2}`})
 	require.ErrorContains(t, err, "JSON object")
-	assert.NoError(t, execute.CheckParams(op, map[string]string{"body": `{"a":1}`}))
+	assert.NoError(t, op.CheckParams(map[string]string{"body": `{"a":1}`}))
 }
 
 func TestCheckParamsRejectsUnserializable(t *testing.T) {
@@ -32,6 +31,6 @@ func TestCheckParamsRejectsUnserializable(t *testing.T) {
 			Name: "id", In: "path", Required: true, Style: "matrix", Schema: `{"type":"string"}`,
 		}},
 	}
-	err := execute.CheckParams(op, map[string]string{"id": "abc"})
+	err := op.CheckParams(map[string]string{"id": "abc"})
 	assert.ErrorContains(t, err, "cannot be serialized")
 }

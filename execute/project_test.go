@@ -6,13 +6,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aiveto/veto/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestProjectPageDoesNotOverflow(t *testing.T) {
 	raw := []byte(`[{"id":"a"},{"id":"b"}]`)
-	body, page, _, err := projectBody(raw, Projection{Fields: []string{"id"}, Offset: 1, Limit: math.MaxInt}, false, 1<<20)
+	body, page, _, err := projectBody(raw, runtime.Projection{Fields: []string{"id"}, Offset: 1, Limit: math.MaxInt}, false, 1<<20)
 	require.NoError(t, err)
 	assert.JSONEq(t, `[{"id":"b"}]`, string(body))
 	require.NotNil(t, page)
@@ -22,7 +23,7 @@ func TestProjectPageDoesNotOverflow(t *testing.T) {
 
 func TestProjectPageRejectsANegativeWindow(t *testing.T) {
 	raw := []byte(`[{"id":"a"},{"id":"b"}]`)
-	for _, p := range []Projection{
+	for _, p := range []runtime.Projection{
 		{Fields: []string{"id"}, Offset: -1, Limit: 1},
 		{Fields: []string{"id"}, Offset: 0, Limit: -1},
 	} {
@@ -54,7 +55,7 @@ func FuzzProjectPage(f *testing.F) {
 			fmt.Fprintf(&b, `{"id":"%d"}`, i)
 		}
 		b.WriteByte(']')
-		_, _, _, err := projectBody([]byte(b.String()), Projection{Fields: []string{"id"}, Offset: offset, Limit: limit}, false, 1<<20)
+		_, _, _, err := projectBody([]byte(b.String()), runtime.Projection{Fields: []string{"id"}, Offset: offset, Limit: limit}, false, 1<<20)
 		if offset < 0 || limit < 0 {
 			require.Error(t, err)
 			return
@@ -65,12 +66,12 @@ func FuzzProjectPage(f *testing.F) {
 
 func TestProjectRejectsCorruptJSONWhenTheBodyIsComplete(t *testing.T) {
 	raw := []byte(`{"id":1,"broken":NOT_JSON}`)
-	body, page, truncated, err := projectBody(raw, Projection{Fields: []string{"id"}}, false, 1<<20)
+	body, page, truncated, err := projectBody(raw, runtime.Projection{Fields: []string{"id"}}, false, 1<<20)
 	require.Error(t, err)
 	assert.Nil(t, body)
 	assert.Nil(t, page)
 	assert.False(t, truncated)
-	body, _, truncated, err = projectBody(raw, Projection{Fields: []string{"id"}}, true, 1<<20)
+	body, _, truncated, err = projectBody(raw, runtime.Projection{Fields: []string{"id"}}, true, 1<<20)
 	require.NoError(t, err)
 	assert.True(t, truncated)
 	assert.JSONEq(t, `{"id":1}`, string(body))

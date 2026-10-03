@@ -14,7 +14,7 @@ func writeQuery(q url.Values, p catalog.Param, raw string) {
 	if raw == "" {
 		return
 	}
-	if p.Style == "" || !structured(p.Schema) {
+	if p.Style == "" || !p.Structured() {
 		q.Set(p.Name, raw)
 		return
 	}
@@ -72,37 +72,6 @@ func writeDelimited(q url.Values, p catalog.Param, value any, sep, raw string) {
 	default:
 		q.Set(p.Name, raw)
 	}
-}
-
-func structured(schema string) bool {
-	switch schemaType(schema) {
-	case "array", "object":
-		return true
-	default:
-		return false
-	}
-}
-
-func schemaType(schema string) string {
-	if schema == "" {
-		return ""
-	}
-	var doc struct {
-		Type any `json:"type"`
-	}
-	if err := json.Unmarshal([]byte(schema), &doc); err != nil {
-		return ""
-	}
-	switch t := doc.Type.(type) {
-	case string:
-		return t
-	case []any:
-		if len(t) == 1 {
-			s, _ := t[0].(string)
-			return s
-		}
-	}
-	return ""
 }
 
 func decodeStructured(raw string) (any, bool) {

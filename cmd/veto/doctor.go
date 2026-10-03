@@ -12,7 +12,6 @@ import (
 	"github.com/aiveto/veto/auth"
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/config"
-	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/mcpserver"
 	"github.com/spf13/cobra"
 )
@@ -126,7 +125,7 @@ func catalogFindings(cat *catalog.Catalog, names config.Sources, dir string) ([]
 			out = append(out, op.ID+": fallback id")
 		}
 		for _, p := range op.Params {
-			why := execute.Unserializable(p)
+			why := p.Unserializable()
 			if why == "" {
 				continue
 			}

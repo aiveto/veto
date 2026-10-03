@@ -5,13 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/aiveto/veto/auth"
 	"github.com/aiveto/veto/catalog"
-	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/policy"
 	"github.com/aiveto/veto/result"
 	"github.com/aiveto/veto/telemetry"
@@ -141,7 +139,7 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 	if err != nil {
 		return rt.record(ctx, Result{Status: "error", OperationID: op.ID}), err
 	}
-	if err := execute.CheckParams(op, args); err != nil {
+	if err := op.CheckParams(args); err != nil {
 		res := Result{Status: "error", OperationID: op.ID}
 		if _, ok := errors.AsType[result.ParamError](err); ok {
 			res.Code = "missing_param"
@@ -202,9 +200,9 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 	if rt.Exec == nil {
 		return rt.record(ctx, Result{Status: "error"}), errors.New("missing executor")
 	}
-	ctx = execute.WithIdempotency(ctx, req.Idempotency)
+	ctx = WithIdempotency(ctx, req.Idempotency)
 	if len(req.Fields) > 0 || req.Limit > 0 || req.Offset > 0 {
-		ctx = execute.WithProjection(ctx, execute.Projection{
+		ctx = WithProjection(ctx, Projection{
 			Fields: req.Fields,
 			Offset: req.Offset,
 			Limit:  req.Limit,
@@ -249,15 +247,15 @@ func (rt *Runtime) Preview(ctx context.Context, req Request) (Preview, error) {
 	args, err := wire(req.Arguments)
 	if err != nil {
 		out.Errors = append(out.Errors, err.Error())
-	} else if err := execute.CheckParams(op, args); err != nil {
+	} else if err := op.CheckParams(args); err != nil {
 		out.Errors = append(out.Errors, err.Error())
 	}
-	draft, err := execute.DraftRequest(ctx, rt.requestBase(op), op, args)
-	if err != nil {
-		out.Errors = append(out.Errors, err.Error())
-	} else {
-		method, rawURL, headers, body := execute.Sanitize(draft)
-		out.Request = HTTPRequest{Method: method, URL: rawURL, Headers: headers, Body: body}
+	if drafter, ok := rt.Exec.(Drafter); ok {
+		draft, err := drafter.Draft(ctx, op, args)
+		if err != nil {
+			out.Errors = append(out.Errors, err.Error())
+		}
+		out.Request = draft
 	}
 	ctx = policy.WithInput(ctx, policy.Input{
 		Params:    args,
@@ -300,18 +298,6 @@ func (rt *Runtime) notify(ctx context.Context, notice policy.Notice) error {
 		return fmt.Errorf("approval webhook: %w", err)
 	}
 	return nil
-}
-
-func (rt *Runtime) requestBase(op *catalog.Operation) string {
-	if base, ok := rt.Exec.(interface{ UpstreamBase() string }); ok {
-		if v := strings.TrimSpace(base.UpstreamBase()); v != "" {
-			return v
-		}
-	}
-	if op == nil {
-		return ""
-	}
-	return op.BaseURL
 }
 
 func (rt *Runtime) operation(id string) *catalog.Operation {
