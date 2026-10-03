@@ -145,6 +145,19 @@ func TestApprovalWebhookIsACommandOrURL(t *testing.T) {
 	assert.ErrorContains(t, err, "approval_webhook")
 }
 
+func TestApprovalTTLReplacesTheDefault(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "veto.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("approval_ttl: 30m\n"), 0o600))
+	cfg, err := config.Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, 30*time.Minute, cfg.ApprovalTTL)
+
+	require.NoError(t, os.WriteFile(path, []byte("approval_ttl: -1s\n"), 0o600))
+	_, err = config.Load(path)
+	assert.ErrorContains(t, err, "approval_ttl")
+}
+
 func TestCallersNameEnvVars(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "veto.yaml")
 	require.NoError(t, os.WriteFile(path, []byte("callers:\n  ada: ADA_CALLER_TOKEN\n  grace: GRACE_CALLER_TOKEN\n"), 0o600))

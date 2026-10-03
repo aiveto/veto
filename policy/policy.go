@@ -24,6 +24,9 @@ import (
 	"github.com/google/uuid"
 )
 
+// ErrUnknownApproval is an id approve cannot find, or one that is already consumed or expired.
+var ErrUnknownApproval = errors.New("unknown approval")
+
 type inputKey struct{}
 
 const (
@@ -148,30 +151,6 @@ func NewState() *State {
 	}
 }
 
-// ApplyEnv points state at the approval directory serve and approve share.
-// A signing secret makes the approved id a token. The pending id stays a handle.
-func ApplyEnv(s *State) error {
-	if s == nil {
-		return errors.New("missing approval state")
-	}
-	dir := os.Getenv("VETO_APPROVAL_NONCE_DIR")
-	secret := os.Getenv("VETO_APPROVAL_SECRET")
-	if dir == "" && secret == "" {
-		var err error
-		dir, err = DefaultApprovalDir()
-		if err != nil {
-			return err
-		}
-	}
-	if dir != "" {
-		s.SetNonceDir(dir)
-	}
-	if secret != "" {
-		return s.SetSigner([]byte(secret), 0)
-	}
-	return nil
-}
-
 func DefaultApprovalDir() (string, error) {
 	root, err := os.UserConfigDir()
 	if err != nil {
@@ -190,8 +169,11 @@ func (s *State) SetNonceDir(dir string) {
 }
 
 func (s *State) SetSigner(secret []byte, ttl time.Duration) error {
-	if s == nil || len(secret) == 0 {
-		return nil
+	if s == nil {
+		return errors.New("missing approval state")
+	}
+	if len(secret) == 0 {
+		return errors.New("approval secret is empty")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -260,13 +242,13 @@ func (s *State) Approve(id string) (string, error) {
 	defer s.mu.Unlock()
 	rec, ok := s.loadLocked(id)
 	if !ok || rec.Status == statusConsumed || expired(rec, s.clock()) {
-		return "", errors.New("unknown approval")
+		return "", ErrUnknownApproval
 	}
 	if rec.Status == statusApproved && rec.ApprovedID != "" {
 		return rec.ApprovedID, nil
 	}
 	if rec.Status != statusPending {
-		return "", errors.New("unknown approval")
+		return "", ErrUnknownApproval
 	}
 	approved := uuid.NewString()
 	if len(s.secret) > 0 {

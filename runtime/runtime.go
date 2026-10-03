@@ -17,6 +17,9 @@ import (
 	"github.com/aiveto/veto/telemetry"
 )
 
+// ErrInvalidApproval is an approved id that does not match this caller, operation, and parameters.
+var ErrInvalidApproval = errors.New("invalid approval")
+
 type (
 	// Executor performs the HTTP call. It does not apply policy.
 	Executor interface {
@@ -72,6 +75,7 @@ type (
 
 	// Runtime resolves, validates, checks policy, verifies approval, executes, shapes, and records.
 	// A nil Gate is created on first use. Copies made before that call do not share the gate.
+	// Runtime is stored and returned by value, so the publish lock stays off the struct.
 	Runtime struct {
 		Catalog *catalog.Catalog
 		Policy  policy.Hook
@@ -84,7 +88,8 @@ type (
 	}
 )
 
-// lazyGate publishes a nil Gate. It is not stored on Runtime, so a Runtime value stays copyable.
+// lazyGate publishes a nil Gate.
+// Runtime is stored and returned by value, so this lock cannot be a field on it.
 var lazyGate sync.Mutex
 
 // invokeGate publishes one gate. A gate set before the first call is kept.
@@ -154,6 +159,14 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 		return rt.record(ctx, Result{Status: "error"}), err
 	}
 	if decision == policy.DecisionConfirmationNeeded {
+		if rt.State == nil {
+			err := errors.New("confirmation state is not set")
+			return rt.record(ctx, Result{
+				Status:      "error",
+				OperationID: req.Operation,
+				Error:       err.Error(),
+			}), err
+		}
 		ctx, span := telemetry.StartSpan(ctx, "policy.confirmation")
 		defer span.End()
 		span.SetAttributes(telemetry.Attr("operation.id", req.Operation))
@@ -170,7 +183,6 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 			}
 			if err := rt.notify(ctx, policy.Notice{ID: id, Operation: req.Operation, Caller: caller}); err != nil {
 				res.Error = err.Error()
-				return rt.record(ctx, res), err
 			}
 			return rt.record(ctx, res), nil
 		}
@@ -179,7 +191,7 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 			return rt.record(ctx, Result{Status: "error"}), err
 		}
 		if !ok {
-			return rt.record(ctx, Result{Status: "error"}), errors.New("invalid approval")
+			return rt.record(ctx, Result{Status: "error", OperationID: req.Operation, Error: ErrInvalidApproval.Error()}), ErrInvalidApproval
 		}
 		span.SetAttributes(telemetry.Attr("approval.id", req.Approval))
 		decision = policy.DecisionAllow

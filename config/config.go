@@ -50,6 +50,7 @@ type File struct {
 	Caller          string            `yaml:"caller"`
 	Callers         map[string]string `yaml:"callers"`
 	Confirmation    *bool             `yaml:"confirmation"`
+	ApprovalTTL     time.Duration     `yaml:"approval_ttl"`
 	ApprovalWebhook Webhook           `yaml:"approval_webhook"`
 	Permissions     []string          `yaml:"permissions"`
 	MemoryFile      string            `yaml:"memory_file"`
@@ -249,6 +250,9 @@ func (f *File) validate() error {
 	}
 	if err := f.ApprovalWebhook.validate(); err != nil {
 		return err
+	}
+	if f.ApprovalTTL < 0 {
+		return errors.New("approval_ttl is negative")
 	}
 	return nil
 }

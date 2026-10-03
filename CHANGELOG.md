@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- `trace_export: stdout` uses the same attribute allowlist as `trace_export: otlp`. A response body is not exported.
+- A destructive invoke with no confirmation state returns an error and does not call HTTP. `SetSigner` rejects an empty secret. `ErrUnknownApproval` and `ErrInvalidApproval` identify those failures.
+- A failed approval webhook still returns the pending id. The error is on the result. Upstream HTTP does not run.
+- `approval_ttl` in `veto.yaml` sets the signed approval lifetime. Unset keeps 15 minutes. A bundle cannot set it.
+- `GET /healthz` and `GET /readyz` on `veto serve --http` answer 200 without `Veto-Caller`. They report that this process is up.
+- MCP tools carry `readOnlyHint` and `destructiveHint`. Search and describe are read-only. Invoke is destructive.
 - `confirmation: false` in `veto.yaml` turns the confirmation gate off for every operation in that deployment. Unset leaves it on. `agent.yaml` can still exempt one operation when the key is unset. Doctor and check print `confirmation is off`. A bundle cannot set the key.
 - A page walk that stops because the page cap or the byte budget is reached stays `truncated` after field selection. A complete walk stays complete.
 - A generated CLI keeps `--help-json`, and `--confirm` on a destructive command. A parameter with one of those names is registered under a different flag, so the command does not panic.

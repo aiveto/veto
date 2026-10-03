@@ -20,12 +20,41 @@ import (
 	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/mcpserver"
 	"github.com/aiveto/veto/openapi"
+	"github.com/aiveto/veto/runtime"
 	"github.com/aiveto/veto/semantics"
 	"github.com/aiveto/veto/telemetry"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestHealthDoesNotNeedACaller(t *testing.T) {
+	const secret = "caller-secret-value"
+	cat := &catalog.Catalog{}
+	cat.Finalize()
+	calls := runtime.Runtime{Catalog: cat}
+	handler, err := mcpserver.Handler(&mcpserver.Server{Catalog: cat, Calls: &calls}, mcpserver.Options{}, []mcpserver.Identity{
+		{ID: "ada", Token: secret},
+	})
+	require.NoError(t, err)
+	for _, path := range []string{"/healthz", "/readyz"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code, path)
+		assert.Equal(t, "ok\n", rec.Body.String())
+		assert.NotContains(t, rec.Body.String(), secret)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/healthz", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
+	req = httptest.NewRequest(http.MethodGet, "/", nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	assert.NotContains(t, rec.Body.String(), secret)
+}
 
 func TestHTTPTwoCallersDoNotShareApprovalsOrTokens(t *testing.T) {
 	const (
@@ -105,6 +134,16 @@ func TestHTTPTwoCallersDoNotShareApprovalsOrTokens(t *testing.T) {
 		names = append(names, tool.Name)
 	}
 	assert.ElementsMatch(t, []string{"capabilities_search", "capabilities_describe", "capabilities_invoke"}, names)
+	byName := map[string]*mcp.Tool{}
+	for _, tool := range listed.Tools {
+		byName[tool.Name] = tool
+	}
+	require.NotNil(t, byName["capabilities_search"].Annotations)
+	assert.True(t, byName["capabilities_search"].Annotations.ReadOnlyHint)
+	require.NotNil(t, byName["capabilities_invoke"].Annotations)
+	assert.False(t, byName["capabilities_invoke"].Annotations.ReadOnlyHint)
+	require.NotNil(t, byName["capabilities_invoke"].Annotations.DestructiveHint)
+	assert.True(t, *byName["capabilities_invoke"].Annotations.DestructiveHint)
 
 	previewText := callTool(t, ada, map[string]any{
 		"operation_id": "orders.delete",

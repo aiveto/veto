@@ -267,10 +267,35 @@ func newApproveCommand() *cobra.Command {
 
 func approveID(id string) (string, error) {
 	state := policy.NewState()
-	if err := policy.ApplyEnv(state); err != nil {
+	if err := applyApprovalEnv(state, 0); err != nil {
 		return "", err
 	}
 	return state.Approve(id)
+}
+
+// applyApprovalEnv points state at the approval directory serve and approve share.
+// The directory and the signing secret come from the environment. ttl is the signed approval lifetime.
+// Zero ttl keeps the 15 minute default. An empty secret leaves the approval unsigned.
+func applyApprovalEnv(s *policy.State, ttl time.Duration) error {
+	if s == nil {
+		return errors.New("missing approval state")
+	}
+	dir := os.Getenv("VETO_APPROVAL_NONCE_DIR")
+	secret := os.Getenv("VETO_APPROVAL_SECRET")
+	if dir == "" && secret == "" {
+		var err error
+		dir, err = policy.DefaultApprovalDir()
+		if err != nil {
+			return err
+		}
+	}
+	if dir != "" {
+		s.SetNonceDir(dir)
+	}
+	if secret != "" {
+		return s.SetSigner([]byte(secret), ttl)
+	}
+	return nil
 }
 
 func newValidateCommand() *cobra.Command {
@@ -953,7 +978,7 @@ func buildLoopBundle(contracts []string, configPath, bundlePath, agentPath, rela
 	if err != nil {
 		return nil, config.File{}, err
 	}
-	if err := policy.ApplyEnv(loop.State); err != nil {
+	if err := applyApprovalEnv(loop.State, cfg.ApprovalTTL); err != nil {
 		return nil, config.File{}, err
 	}
 	loop.Flows = flows

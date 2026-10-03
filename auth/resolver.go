@@ -37,6 +37,7 @@ type (
 	Resolver struct {
 		schemes        map[string]Scheme
 		extra          map[string]credentials.Provider
+		mu             sync.Mutex
 		dir            string
 		http           *http.Client
 		now            func() time.Time
@@ -88,7 +89,22 @@ func (r *Resolver) SetProvider(name string, src credentials.Provider) {
 	if r == nil || name == "" || src == nil {
 		return
 	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.extra == nil {
+		r.extra = map[string]credentials.Provider{}
+	}
 	r.extra[name] = src
+}
+
+func (r *Resolver) lookupExtra(name string) (credentials.Provider, bool) {
+	if r == nil || name == "" {
+		return nil, false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	src, ok := r.extra[name]
+	return src, ok
 }
 
 // Configured returns the scheme named in config.
@@ -104,7 +120,7 @@ func (r *Resolver) Has(name string) bool {
 	if r == nil {
 		return false
 	}
-	if _, ok := r.extra[name]; ok {
+	if _, ok := r.lookupExtra(name); ok {
 		return true
 	}
 	_, ok := r.schemes[name]
@@ -115,7 +131,7 @@ func (r *Resolver) Ready(ctx context.Context, a catalog.Auth) bool {
 	if r == nil {
 		return false
 	}
-	if _, ok := r.extra[a.Name]; ok {
+	if _, ok := r.lookupExtra(a.Name); ok {
 		return true
 	}
 	s, ok := r.schemes[a.Name]
@@ -181,7 +197,7 @@ func (r *Resolver) Refreshable(name string) bool {
 	if r == nil {
 		return false
 	}
-	if _, ok := r.extra[name]; ok {
+	if _, ok := r.lookupExtra(name); ok {
 		return true
 	}
 	s, ok := r.schemes[name]
@@ -201,7 +217,7 @@ func (r *Resolver) Provider(a catalog.Auth) (credentials.Provider, bool) {
 	if r == nil || a.Name == "" {
 		return nil, false
 	}
-	if src, ok := r.extra[a.Name]; ok {
+	if src, ok := r.lookupExtra(a.Name); ok {
 		return extraProvider{r: r, a: a, src: src}, true
 	}
 	if _, ok := r.schemes[a.Name]; ok {

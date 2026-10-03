@@ -44,6 +44,23 @@ func Attr(key, value string) attribute.KeyValue {
 	return attribute.String(key, value)
 }
 
+func traceExporter(export string) (sdktrace.SpanExporter, error) {
+	var exp sdktrace.SpanExporter
+	var err error
+	switch export {
+	case "stdout":
+		exp, err = stdouttrace.New()
+	case "otlp":
+		exp, err = otlptracehttp.New(context.Background())
+	default:
+		return nil, fmt.Errorf("trace export %q is not in this slice", export)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("%s trace: %w", export, err)
+	}
+	return allowExporter{next: exp}, nil
+}
+
 func Allowed(key string) bool {
 	switch key {
 	case "operation.id", "decision", "http.method", "http.status", "approval.id", "flow.name", "tools", ToolNameAttr, OperationIDAttr:
@@ -57,21 +74,9 @@ func Install(export string) (func(context.Context) error, error) {
 	if export == "" {
 		return func(context.Context) error { return nil }, nil
 	}
-	var exp sdktrace.SpanExporter
-	var err error
-	switch export {
-	case "stdout":
-		exp, err = stdouttrace.New()
-	case "otlp":
-		exp, err = otlptracehttp.New(context.Background())
-		if err == nil {
-			exp = allowExporter{next: exp}
-		}
-	default:
-		return nil, fmt.Errorf("trace export %q is not in this slice", export)
-	}
+	exp, err := traceExporter(export)
 	if err != nil {
-		return nil, fmt.Errorf("%s trace: %w", export, err)
+		return nil, err
 	}
 	var tp *sdktrace.TracerProvider
 	if export == "otlp" {

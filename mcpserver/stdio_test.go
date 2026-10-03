@@ -2,12 +2,45 @@ package mcpserver
 
 import (
 	"errors"
+	"net/http"
 	"testing"
 
+	"github.com/aiveto/veto/catalog"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestToolAnnotationsFollowTheOperation(t *testing.T) {
+	search := readOnlyAnnotations()
+	assert.True(t, search.ReadOnlyHint)
+	require.NotNil(t, search.DestructiveHint)
+	assert.False(t, *search.DestructiveHint)
+
+	invoke := invokeAnnotations(true)
+	assert.False(t, invoke.ReadOnlyHint)
+	require.NotNil(t, invoke.DestructiveHint)
+	assert.True(t, *invoke.DestructiveHint)
+
+	get := operationAnnotations(&catalog.Operation{Method: http.MethodGet, SideEffect: catalog.SideEffectNone})
+	assert.True(t, get.ReadOnlyHint)
+	del := operationAnnotations(&catalog.Operation{Method: http.MethodDelete, Kind: catalog.KindDelete, SideEffect: catalog.SideEffectDestructive})
+	assert.False(t, del.ReadOnlyHint)
+	require.NotNil(t, del.DestructiveHint)
+	assert.True(t, *del.DestructiveHint)
+
+	cat := &catalog.Catalog{Operations: []catalog.Operation{
+		{ID: "orders.get", Method: http.MethodGet, Group: "orders", SideEffect: catalog.SideEffectNone},
+		{ID: "orders.delete", Method: http.MethodDelete, Group: "orders", Kind: catalog.KindDelete, SideEffect: catalog.SideEffectDestructive},
+		{ID: "customers.get", Method: http.MethodGet, Group: "customers", SideEffect: catalog.SideEffectNone},
+	}}
+	orders := groupAnnotations(cat, "orders")
+	assert.False(t, orders.ReadOnlyHint)
+	require.NotNil(t, orders.DestructiveHint)
+	assert.True(t, *orders.DestructiveHint)
+	customers := groupAnnotations(cat, "customers")
+	assert.True(t, customers.ReadOnlyHint)
+}
 
 func TestMissingParamStaysStructuredOnTheToolResult(t *testing.T) {
 	cases := []struct {
