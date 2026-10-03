@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.4 - 2026-10-03
+
 - A tagged release pushes `ghcr.io/aiveto/veto` and publishes `io.github.aiveto/veto` to the official MCP registry.
 
 ## v0.1.3 - 2026-10-03
