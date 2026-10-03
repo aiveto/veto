@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.3 - 2026-10-03
+
 - `capabilities_search` returns `id`, the pack call line, related ids, and `confirmation` when the gate is on. Describe still returns the operation.
 
 ## v0.1.2 - 2026-10-03
