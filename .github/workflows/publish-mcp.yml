@@ -36,8 +36,10 @@ jobs:
         run: |
           VERSION=${VERSION#v}
           for i in 1 2 3 4 5 6; do
+            token=$(curl -fsS "https://ghcr.io/token?service=ghcr.io&scope=repository:aiveto/veto:pull" | jq -r .token)
             code=$(curl -s -o /dev/null -w '%{http_code}' \
               -H 'Accept: application/vnd.oci.image.index.v1+json' \
+              -H "Authorization: Bearer ${token}" \
               "https://ghcr.io/v2/aiveto/veto/manifests/${VERSION}")
             if [ "$code" = 200 ]; then
               exit 0
