@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.0 - 2026-10-02
+
 - `trace_export: stdout` uses the same attribute allowlist as `trace_export: otlp`. A response body is not exported.
 - A destructive invoke with no confirmation state returns an error and does not call HTTP. `SetSigner` rejects an empty secret. `ErrUnknownApproval` and `ErrInvalidApproval` identify those failures.
 - A failed approval webhook still returns the pending id. The error is on the result. Upstream HTTP does not run.

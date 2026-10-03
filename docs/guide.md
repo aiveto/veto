@@ -4,13 +4,11 @@ Point `veto` at OpenAPI files you already have. The agent gets three tools. Dest
 
 ## Install
 
-From a checkout of this repo:
-
 ```bash
-go install ./cmd/veto
+go install github.com/aiveto/veto/cmd/veto@latest
 ```
 
-That installs the `veto` command. `go run ./cmd/veto` is the same binary.
+That installs the `veto` command. From a checkout of this repo, `go install ./cmd/veto` and `go run ./cmd/veto` are the same binary.
 
 The container image builds that binary. Running the image runs `veto --help`.
 
