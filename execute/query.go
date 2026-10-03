@@ -2,8 +2,9 @@ package execute
 
 import (
 	"encoding/json"
+	"maps"
 	"net/url"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -30,7 +31,7 @@ func writeQuery(q url.Values, p catalog.Param, raw string) {
 			q.Set(p.Name, raw)
 			return
 		}
-		for _, key := range sortedKeys(obj) {
+		for _, key := range slices.Sorted(maps.Keys(obj)) {
 			q.Add(p.Name+"["+key+"]", scalar(obj[key]))
 		}
 	case "spaceDelimited":
@@ -57,7 +58,7 @@ func writeDelimited(q url.Values, p catalog.Param, value any, sep, raw string) {
 		}
 		q.Set(p.Name, strings.Join(parts, sep))
 	case map[string]any:
-		keys := sortedKeys(v)
+		keys := slices.Sorted(maps.Keys(v))
 		if p.Explode {
 			for _, key := range keys {
 				q.Add(key, scalar(v[key]))
@@ -87,15 +88,6 @@ func decodeStructured(raw string) (any, bool) {
 	default:
 		return nil, false
 	}
-}
-
-func sortedKeys(obj map[string]any) []string {
-	keys := make([]string, 0, len(obj))
-	for key := range obj {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return keys
 }
 
 func scalar(v any) string {

@@ -92,9 +92,9 @@ func TestClientTimeoutEndsAHungCall(t *testing.T) {
 		<-r.Context().Done()
 	}))
 	defer ts.Close()
-	resp, err := execute.InvokeResponse(context.Background(), execute.Config{
+	resp, err := execute.InvokeResponse(context.Background(), execute.Client{
 		BaseURL: ts.URL,
-		Client:  &http.Client{Timeout: 30 * time.Millisecond},
+		HTTP:    &http.Client{Timeout: 30 * time.Millisecond},
 	}, op, map[string]string{"id": "1"})
 	if resp != nil && resp.Body != nil {
 		require.NoError(t, resp.Body.Close())

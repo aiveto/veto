@@ -322,15 +322,7 @@ func (rt *Runtime) decide(ctx context.Context, op *catalog.Operation) (policy.De
 	if ferr != nil {
 		return floor, ferr
 	}
-	if floor == policy.DecisionDeny {
-		decision = policy.DecisionDeny
-	} else if floor == policy.DecisionConfirmationNeeded && decision != policy.DecisionDeny {
-		decision = policy.DecisionConfirmationNeeded
-	}
-	if op != nil && op.RequiresConfirmation && decision != policy.DecisionDeny {
-		return policy.DecisionConfirmationNeeded, nil
-	}
-	return decision, nil
+	return policy.Combine(decision, floor, op), nil
 }
 
 func (rt *Runtime) record(ctx context.Context, res Result) Result {

@@ -7,9 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -24,56 +25,41 @@ import (
 
 const DefaultMaxResponseBytes int64 = 1 << 20
 
-type (
-	Config struct {
-		BaseURL         string
-		Client          *http.Client
-		RecordBody      bool
-		Auth            map[string]string // secret by scheme name; never read from yaml
-		Creds           *auth.Resolver
-		MaxBody         int64
-		Project         runtime.Projection
-		FollowRedirects bool
-	}
-
-	Client struct {
-		BaseURL         string
-		HTTP            *http.Client
-		RecordBody      bool
-		Auth            map[string]string
-		Creds           *auth.Resolver
-		FollowPages     int
-		FollowRedirects bool
-		MaxBody         int64
-		Fields          []string
-		Limit           int
-	}
-)
+type Client struct {
+	BaseURL         string
+	HTTP            *http.Client
+	RecordBody      bool
+	Auth            map[string]string
+	Creds           *auth.Resolver
+	FollowPages     int
+	FollowRedirects bool
+	MaxBody         int64
+	Fields          []string
+	Limit           int
+	Project         runtime.Projection
+}
 
 func (c Client) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, params map[string]string) (result.HTTPResult, error) {
 	project := c.projection(ctx)
 	follow := op != nil && c.FollowPages > 1 && len(op.Page) > 0
-	callProject := project
+	call := c
+	call.Project = project
 	// Page cursors live on the raw body. Project the merged body after the walk.
 	if follow && len(project.Fields) > 0 {
-		callProject = runtime.Projection{}
+		call.Project = runtime.Projection{}
 	}
-	cfg := Config{
-		BaseURL: c.BaseURL, Client: c.HTTP, RecordBody: c.RecordBody, Auth: c.Auth, Creds: c.Creds, MaxBody: c.MaxBody,
-		Project: callProject, FollowRedirects: c.FollowRedirects,
-	}
-	resp, view, err := invokeResponse(ctx, cfg, op, params)
+	resp, view, err := invokeResponse(ctx, call, op, params)
 	if err != nil {
 		return result.HTTPResult{}, err
 	}
-	body, err := readBody(resp, cfg.MaxBody)
+	body, err := readBody(resp, call.MaxBody)
 	if err != nil {
 		return result.HTTPResult{}, err
 	}
 	code, retryable := classify(resp.StatusCode)
 	out := result.HTTPResult{Status: resp.StatusCode, Body: body, Code: code, Retryable: retryable}
 	if follow {
-		merged, cut, err := followPages(ctx, cfg, op, params, body, c.FollowPages)
+		merged, cut, err := followPages(ctx, call, op, params, body, c.FollowPages)
 		if err != nil {
 			return result.HTTPResult{}, err
 		}
@@ -83,7 +69,7 @@ func (c Client) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, par
 		}
 	}
 	if follow && len(project.Fields) > 0 {
-		shaped, projected, err := shapeBody(resp.StatusCode, []byte(out.Body), false, Config{Project: project, MaxBody: c.MaxBody})
+		shaped, projected, err := shapeBody(resp.StatusCode, []byte(out.Body), false, Client{Project: project, MaxBody: c.MaxBody})
 		if err != nil {
 			return result.HTTPResult{}, err
 		}
@@ -103,13 +89,13 @@ func (c Client) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, par
 	return out, nil
 }
 
-func InvokeResponse(ctx context.Context, cfg Config, op *catalog.Operation, params map[string]string) (*http.Response, error) {
+func InvokeResponse(ctx context.Context, cfg Client, op *catalog.Operation, params map[string]string) (*http.Response, error) {
 	resp, _, err := invokeResponse(ctx, cfg, op, params)
 	return resp, err
 }
 
-func invokeResponse(ctx context.Context, cfg Config, op *catalog.Operation, params map[string]string) (*http.Response, View, error) {
-	cfg.Client = auth.WithEnvProxy(cfg.Client)
+func invokeResponse(ctx context.Context, cfg Client, op *catalog.Operation, params map[string]string) (*http.Response, View, error) {
+	cfg.HTTP = auth.WithEnvProxy(cfg.HTTP)
 	ctx, span := telemetry.StartSpan(ctx, "execute.invoke")
 	defer span.End()
 	span.SetAttributes(
@@ -139,12 +125,12 @@ func invokeResponse(ctx context.Context, cfg Config, op *catalog.Operation, para
 	if err != nil {
 		return nil, View{}, err
 	}
-	cfg.Client = boundRedirects(cfg.Client, len(creds) > 0, cfg.FollowRedirects)
+	cfg.HTTP = boundRedirects(cfg.HTTP, len(creds) > 0, cfg.FollowRedirects)
 	if names := paramNames(params); names != "" {
 		span.SetAttributes(telemetry.Attr("params", names))
 	}
 
-	resp, err := doRetry(cfg.Client, req, op)
+	resp, err := doRetry(cfg.HTTP, req, op)
 	if err != nil {
 		return nil, View{}, scrubTransport(err, secrets, queryKeys)
 	}
@@ -180,7 +166,7 @@ type readResponse struct {
 	cut  bool
 }
 
-func retryUnauthorized(ctx context.Context, cfg Config, op *catalog.Operation, req *http.Request, secrets, queryKeys []string) (readResponse, error) {
+func retryUnauthorized(ctx context.Context, cfg Client, op *catalog.Operation, req *http.Request, secrets, queryKeys []string) (readResponse, error) {
 	_, creds, err := obtainAuth(ctx, cfg, op, req, true)
 	if err != nil {
 		return readResponse{}, err
@@ -198,7 +184,7 @@ func retryUnauthorized(ctx context.Context, cfg Config, op *catalog.Operation, r
 		}
 		req.Body = body
 	}
-	resp, err := cfg.Client.Do(req)
+	resp, err := cfg.HTTP.Do(req)
 	if err != nil {
 		return readResponse{}, scrubTransport(err, secrets, queryKeys)
 	}
@@ -515,15 +501,7 @@ func headerValue(p catalog.Param, params map[string]string) string {
 }
 
 func paramNames(params map[string]string) string {
-	if len(params) == 0 {
-		return ""
-	}
-	keys := make([]string, 0, len(params))
-	for k := range params {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return strings.Join(keys, ",")
+	return strings.Join(slices.Sorted(maps.Keys(params)), ",")
 }
 
 func readBody(resp *http.Response, limit int64) (string, error) {

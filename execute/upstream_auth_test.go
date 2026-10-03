@@ -129,9 +129,9 @@ func TestQueryKeyIsScrubbedFromTheErrorAndTrace(t *testing.T) {
 	rec, err := telemetry.Record()
 	require.NoError(t, err)
 	defer func() { require.NoError(t, rec.Stop(context.Background())) }()
-	resp, err := execute.InvokeResponse(context.Background(), execute.Config{
+	resp, err := execute.InvokeResponse(context.Background(), execute.Client{
 		BaseURL: "http://127.0.0.1:9",
-		Client:  &http.Client{Transport: errTrip{}},
+		HTTP:    &http.Client{Transport: errTrip{}},
 		Auth:    map[string]string{"queryAuth": secret},
 	}, op, nil)
 	if resp != nil && resp.Body != nil {

@@ -67,7 +67,7 @@ func TestRetryOnlyWhenTheCallIsIdempotent(t *testing.T) {
 				w.WriteHeader(http.StatusBadGateway)
 			}))
 			defer ts.Close()
-			resp, err := execute.InvokeResponse(context.Background(), execute.Config{BaseURL: ts.URL}, tc.op, tc.params)
+			resp, err := execute.InvokeResponse(context.Background(), execute.Client{BaseURL: ts.URL}, tc.op, tc.params)
 			require.NoError(t, err)
 			require.NoError(t, resp.Body.Close())
 			assert.Equal(t, tc.hits, hits.Load())
@@ -119,7 +119,7 @@ func TestRetryHonorsRetryAfter(t *testing.T) {
 			}))
 			defer ts.Close()
 			start := time.Now()
-			resp, err := execute.InvokeResponse(context.Background(), execute.Config{BaseURL: ts.URL}, op, map[string]string{"body": `{"name":"a"}`})
+			resp, err := execute.InvokeResponse(context.Background(), execute.Client{BaseURL: ts.URL}, op, map[string]string{"body": `{"name":"a"}`})
 			elapsed := time.Since(start)
 			require.NoError(t, err)
 			require.NoError(t, resp.Body.Close())
@@ -145,7 +145,7 @@ func TestRetryAfterStopsWhenTheContextIsCanceled(t *testing.T) {
 		cancel()
 	}()
 	start := time.Now()
-	resp, err := execute.InvokeResponse(ctx, execute.Config{BaseURL: ts.URL}, op, nil)
+	resp, err := execute.InvokeResponse(ctx, execute.Client{BaseURL: ts.URL}, op, nil)
 	if resp != nil && resp.Body != nil {
 		_ = resp.Body.Close()
 	}

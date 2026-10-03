@@ -44,9 +44,9 @@ func TestCredentialedRedirectStaysOnOrigin(t *testing.T) {
 		Params: []catalog.Param{{Name: "id", In: "path", Required: true}},
 		Auth:   []catalog.Auth{{Name: "key", Header: "X-Key", Kind: "apiKey"}},
 	}
-	cfg := Config{
+	cfg := Client{
 		BaseURL: origin.URL,
-		Client:  origin.Client(),
+		HTTP:    origin.Client(),
 		Auth:    map[string]string{"key": "secret"},
 	}
 	resp, err := InvokeResponse(t.Context(), cfg, op, map[string]string{"id": "1"})
@@ -65,7 +65,7 @@ func TestCredentialedRedirectStaysOnOrigin(t *testing.T) {
 	}))
 	t.Cleanup(same.Close)
 	cfg.BaseURL = same.URL
-	cfg.Client = same.Client()
+	cfg.HTTP = same.Client()
 	resp, err = InvokeResponse(t.Context(), cfg, op, map[string]string{"id": "1"})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = resp.Body.Close() })
@@ -73,7 +73,7 @@ func TestCredentialedRedirectStaysOnOrigin(t *testing.T) {
 
 	cfg.FollowRedirects = true
 	cfg.BaseURL = origin.URL
-	cfg.Client = origin.Client()
+	cfg.HTTP = origin.Client()
 	resp, err = InvokeResponse(t.Context(), cfg, op, map[string]string{"id": "1"})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = resp.Body.Close() })
@@ -82,9 +82,9 @@ func TestCredentialedRedirectStaysOnOrigin(t *testing.T) {
 
 func TestRegisteredProviderAdaptsAnUnsupportedScheme(t *testing.T) {
 	basic := catalog.Auth{Name: "basic", Kind: "unsupported", Type: "http", Scheme: "basic"}
-	err := requirementError(t.Context(), Config{}, []catalog.Auth{basic})
+	err := requirementError(t.Context(), Client{}, []catalog.Auth{basic})
 	require.ErrorContains(t, err, "not supported")
 	r := auth.New(auth.Options{Dir: t.TempDir()})
 	r.SetProvider("basic", staticProvider{})
-	require.NoError(t, requirementError(t.Context(), Config{Creds: r}, []catalog.Auth{basic}))
+	require.NoError(t, requirementError(t.Context(), Client{Creds: r}, []catalog.Auth{basic}))
 }

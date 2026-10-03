@@ -14,16 +14,19 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/aiveto/veto/catalog"
+	"github.com/aiveto/veto/internal/atomicfile"
 	"github.com/aiveto/veto/telemetry"
 	"github.com/google/uuid"
 )
+
+const defaultApprovalTTL = 15 * time.Minute
 
 // ErrUnknownApproval is an id approve cannot find, or one that is already consumed or expired.
 var ErrUnknownApproval = errors.New("unknown approval")
@@ -122,20 +125,13 @@ func (w Wrapped) Check(ctx context.Context, op *catalog.Operation) (Decision, er
 	if base == DecisionDeny {
 		return DecisionDeny, nil
 	}
-	if base == DecisionConfirmationNeeded || (op != nil && op.RequiresConfirmation) {
+	if withRequired(base, op) == DecisionConfirmationNeeded {
 		return DecisionConfirmationNeeded, nil
 	}
 	if stopped {
-		if allowNeedsConfirmation(around, op) {
-			return DecisionConfirmationNeeded, nil
-		}
-		return around, nil
+		return withRequired(around, op), nil
 	}
 	return base, nil
-}
-
-func allowNeedsConfirmation(decision Decision, op *catalog.Operation) bool {
-	return decision == DecisionAllow && op != nil && op.RequiresConfirmation
 }
 
 const (
@@ -193,7 +189,7 @@ func (s *State) SetSigner(secret []byte, ttl time.Duration) error {
 	s.nonceDir = dir
 	s.ttl = ttl
 	if s.ttl <= 0 {
-		s.ttl = 15 * time.Minute
+		s.ttl = defaultApprovalTTL
 	}
 	if s.now == nil {
 		s.now = time.Now
@@ -357,23 +353,7 @@ func (s *State) writeLocked(rec confirmation) error {
 	if err != nil {
 		return fmt.Errorf("approval: %w", err)
 	}
-	path := filepath.Join(dir, rec.ID+".json")
-	tmp, err := os.CreateTemp(dir, rec.ID+".*.tmp")
-	if err != nil {
-		return fmt.Errorf("approval: %w", err)
-	}
-	tmpName := tmp.Name()
-	_, werr := tmp.Write(body)
-	cerr := tmp.Close()
-	if werr != nil || cerr != nil {
-		_ = os.Remove(tmpName)
-		if werr != nil {
-			return fmt.Errorf("approval: %w", werr)
-		}
-		return fmt.Errorf("approval: %w", cerr)
-	}
-	if err := os.Rename(tmpName, path); err != nil {
-		_ = os.Remove(tmpName)
+	if err := atomicfile.Write(filepath.Join(dir, rec.ID+".json"), body, 0); err != nil {
 		return fmt.Errorf("approval: %w", err)
 	}
 	return nil
@@ -511,7 +491,7 @@ func (s *State) clock() time.Time {
 func (s *State) deadline() time.Time {
 	ttl := s.ttl
 	if ttl <= 0 {
-		ttl = 15 * time.Minute
+		ttl = defaultApprovalTTL
 	}
 	return s.clock().Add(ttl)
 }
@@ -539,19 +519,11 @@ func (b Builtin) Check(ctx context.Context, op *catalog.Operation) (Decision, er
 }
 
 func ConfirmSentence(operationID string, params map[string]string) string {
-	keys := make([]string, 0, len(params))
-	for k := range params {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
 	var b strings.Builder
 	b.WriteString("confirm ")
 	b.WriteString(operationID)
-	for _, k := range keys {
-		b.WriteByte(' ')
-		b.WriteString(k)
-		b.WriteByte('=')
-		b.WriteString(params[k])
+	for _, k := range slices.Sorted(maps.Keys(params)) {
+		fmt.Fprintf(&b, " %s=%s", k, params[k])
 	}
 	return b.String()
 }
@@ -561,6 +533,34 @@ func Check(ctx context.Context, hook Hook, op *catalog.Operation) (Decision, err
 		hook = Builtin{}
 	}
 	return hook.Check(ctx, op)
+}
+
+// Combine returns the stricter of a and b. A required confirmation upgrades an allow.
+func Combine(a, b Decision, op *catalog.Operation) Decision {
+	return withRequired(stricter(a, b), op)
+}
+
+func stricter(a, b Decision) Decision {
+	if a == DecisionDeny || b == DecisionDeny {
+		return DecisionDeny
+	}
+	if a == DecisionConfirmationNeeded || b == DecisionConfirmationNeeded {
+		return DecisionConfirmationNeeded
+	}
+	if a != "" {
+		return a
+	}
+	return b
+}
+
+func withRequired(d Decision, op *catalog.Operation) Decision {
+	if d == DecisionDeny {
+		return d
+	}
+	if op != nil && op.RequiresConfirmation {
+		return DecisionConfirmationNeeded
+	}
+	return d
 }
 
 func signApproval(secret []byte, caller, opID string, params map[string]string, exp time.Time) string {
@@ -573,29 +573,21 @@ func signApproval(secret []byte, caller, opID string, params map[string]string, 
 }
 
 func (s *State) consumeSigned(caller, token, opID string, params map[string]string, now time.Time) (bool, error) {
-	parts := strings.Split(token, ".")
-	if len(parts) != 4 || parts[0] != "v1" || !plainNonce(parts[2]) {
+	unix, nonce, sum, ok := parseApproval(token, now)
+	if !ok {
 		return false, nil
 	}
-	unix, err := strconv.ParseInt(parts[1], 10, 64)
-	if err != nil || !now.Before(time.Unix(unix, 0)) {
-		return rejectToken()
-	}
-	got, err := base64.RawURLEncoding.DecodeString(parts[3])
-	if err != nil {
-		return rejectToken()
-	}
 	mac := hmac.New(sha256.New, s.secret)
-	_, _ = mac.Write([]byte(approvalPayload(caller, opID, params, unix, parts[2])))
-	if !hmac.Equal(got, mac.Sum(nil)) {
+	_, _ = mac.Write([]byte(approvalPayload(caller, opID, params, unix, nonce)))
+	if !hmac.Equal(sum, mac.Sum(nil)) {
 		return false, nil
 	}
 	if s.nonceDir == "" {
 		return false, errors.New("approval nonce dir is not set")
 	}
-	nonce := filepath.Base(parts[2])
-	if nonce != parts[2] || !plainNonce(nonce) {
-		return rejectToken()
+	nonce = filepath.Base(nonce)
+	if nonce == "" || nonce == "." || !plainNonce(nonce) {
+		return false, nil
 	}
 	f, err := os.OpenFile(filepath.Join(s.nonceDir, nonce), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
@@ -615,8 +607,20 @@ func (s *State) consumeSigned(caller, token, opID string, params map[string]stri
 	return true, nil
 }
 
-func rejectToken() (bool, error) {
-	return false, nil
+func parseApproval(token string, now time.Time) (unix int64, nonce string, sum []byte, ok bool) {
+	parts := strings.Split(token, ".")
+	if len(parts) != 4 || parts[0] != "v1" || !plainNonce(parts[2]) {
+		return 0, "", nil, false
+	}
+	unix, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil || !now.Before(time.Unix(unix, 0)) {
+		return 0, "", nil, false
+	}
+	sum, err = base64.RawURLEncoding.DecodeString(parts[3])
+	if err != nil {
+		return 0, "", nil, false
+	}
+	return unix, parts[2], sum, true
 }
 
 func plainNonce(nonce string) bool {
@@ -632,24 +636,10 @@ func plainNonce(nonce string) bool {
 }
 
 func approvalPayload(caller, opID string, params map[string]string, exp int64, nonce string) string {
-	keys := make([]string, 0, len(params))
-	for k := range params {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
 	var b strings.Builder
-	b.WriteString(opID)
-	b.WriteByte('\n')
-	b.WriteString(caller)
-	b.WriteByte('\n')
-	b.WriteString(strconv.FormatInt(exp, 10))
-	b.WriteByte('\n')
-	b.WriteString(nonce)
-	for _, k := range keys {
-		b.WriteByte('\n')
-		b.WriteString(k)
-		b.WriteByte('=')
-		b.WriteString(params[k])
+	fmt.Fprintf(&b, "%s\n%s\n%d\n%s", opID, caller, exp, nonce)
+	for _, k := range slices.Sorted(maps.Keys(params)) {
+		fmt.Fprintf(&b, "\n%s=%s", k, params[k])
 	}
 	return b.String()
 }

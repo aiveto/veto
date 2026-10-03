@@ -2,13 +2,15 @@ package memory
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sync"
+
+	"github.com/aiveto/veto/internal/atomicfile"
 )
 
 const maxItemBytes = 1 << 20
@@ -118,29 +120,14 @@ func (l *Log) rewrite(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	dir := filepath.Dir(l.path)
-	tmp, err := os.CreateTemp(dir, filepath.Base(l.path)+".*.tmp")
-	if err != nil {
-		return fmt.Errorf("write memory: %w", err)
-	}
-	tmpName := tmp.Name()
-	enc := json.NewEncoder(tmp)
-	var writeErr error
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
 	for _, item := range items {
 		if err := enc.Encode(item); err != nil {
-			writeErr = fmt.Errorf("write memory: %w", err)
-			break
+			return fmt.Errorf("write memory: %w", err)
 		}
 	}
-	if err := tmp.Close(); err != nil && writeErr == nil {
-		writeErr = fmt.Errorf("write memory: %w", err)
-	}
-	if writeErr != nil {
-		_ = os.Remove(tmpName)
-		return writeErr
-	}
-	if err := os.Rename(tmpName, l.path); err != nil {
-		_ = os.Remove(tmpName)
+	if err := atomicfile.Write(l.path, buf.Bytes(), 0); err != nil {
 		return fmt.Errorf("write memory: %w", err)
 	}
 	return nil

@@ -4,9 +4,9 @@ package replay
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/aiveto/veto/telemetry"
@@ -50,12 +50,7 @@ func (v View) String() string {
 	var b strings.Builder
 	for _, s := range v.Steps {
 		b.WriteString(s.Name)
-		keys := make([]string, 0, len(s.Attrs))
-		for k := range s.Attrs {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
+		for _, k := range slices.Sorted(maps.Keys(s.Attrs)) {
 			fmt.Fprintf(&b, " %s=%s", k, s.Attrs[k])
 		}
 		b.WriteByte('\n')

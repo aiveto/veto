@@ -40,7 +40,7 @@ func (c Client) projection(ctx context.Context) runtime.Projection {
 
 // A named field list keeps the capped bytes. The call can return those fields
 // and mark truncation. With no fields, the cap is still an error.
-func consumeBody(resp *http.Response, cfg Config) ([]byte, bool, error) {
+func consumeBody(resp *http.Response, cfg Client) ([]byte, bool, error) {
 	if resp == nil || resp.Body == nil {
 		return nil, false, nil
 	}
@@ -57,7 +57,7 @@ func consumeBody(resp *http.Response, cfg Config) ([]byte, bool, error) {
 	return raw, cut, nil
 }
 
-func shapeBody(status int, raw []byte, cut bool, cfg Config) ([]byte, View, error) {
+func shapeBody(status int, raw []byte, cut bool, cfg Client) ([]byte, View, error) {
 	if len(cfg.Project.Fields) == 0 || status < 200 || status >= 300 {
 		if cut {
 			return nil, View{}, fmt.Errorf("response exceeds %d bytes", bodyLimit(cfg.MaxBody))

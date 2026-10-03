@@ -41,7 +41,7 @@ contracts:
 relations_file: relations.yaml
 ```
 
-That is the file `init` writes. Paths are relative to `veto.yaml`. An `http` or `https` URL is fetched as written. Add `auth` when a scheme needs a credential. A string names the environment variable that holds the token. A login, client credentials, or a command is the other form. Secrets stay out of this file. Unset keys keep the defaults (`model: scripted`, `policy: builtin`, in-process execution).
+That is the file `init` writes. Paths are relative to `veto.yaml`. An `http` or `https` URL is fetched as written. Add `auth` when a scheme needs a credential. A string names the environment variable that holds the token. A login, client credentials, or a command is the other form. Secrets stay out of this file. Unset keys keep the defaults (`model: scripted`, `policy: builtin`).
 
 ```yaml
 auth:

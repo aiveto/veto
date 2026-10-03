@@ -40,7 +40,7 @@ func TestJSONBodySetsContentHeaders(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	resp, err := execute.InvokeResponse(context.Background(), execute.Config{BaseURL: ts.URL}, op, map[string]string{"body": raw})
+	resp, err := execute.InvokeResponse(context.Background(), execute.Client{BaseURL: ts.URL}, op, map[string]string{"body": raw})
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
 	assert.JSONEq(t, raw, gotBody)
@@ -66,9 +66,9 @@ func TestMissingRequiredInputDoesNotCallDo(t *testing.T) {
 			op := loadSpec(t, tc.spec).ByID(tc.op)
 			require.NotNil(t, op)
 			trip := &failTrip{}
-			resp, err := execute.InvokeResponse(context.Background(), execute.Config{
+			resp, err := execute.InvokeResponse(context.Background(), execute.Client{
 				BaseURL: "http://127.0.0.1:9",
-				Client:  &http.Client{Transport: trip},
+				HTTP:    &http.Client{Transport: trip},
 			}, op, tc.params)
 			if resp != nil && resp.Body != nil {
 				require.NoError(t, resp.Body.Close())
@@ -109,7 +109,7 @@ func TestVersionedMediaTypeAndHeaderDefault(t *testing.T) {
 
 	send := func(params map[string]string) {
 		t.Helper()
-		resp, err := execute.InvokeResponse(context.Background(), execute.Config{BaseURL: ts.URL}, op, params)
+		resp, err := execute.InvokeResponse(context.Background(), execute.Client{BaseURL: ts.URL}, op, params)
 		require.NoError(t, err)
 		require.NoError(t, resp.Body.Close())
 	}
@@ -133,7 +133,7 @@ func TestNoBodySchemaOmitsContentType(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer ts.Close()
-	resp, err := execute.InvokeResponse(context.Background(), execute.Config{BaseURL: ts.URL}, op, map[string]string{"id": "1"})
+	resp, err := execute.InvokeResponse(context.Background(), execute.Client{BaseURL: ts.URL}, op, map[string]string{"id": "1"})
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
 	assert.Empty(t, gotType)
