@@ -1,15 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" role="img" aria-label="veto. The model proposes. Veto decides. Your API executes.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" role="img" aria-label="The model proposes. Veto decides. Your API executes.">
   <rect width="1280" height="640" fill="#F4F1EA"/>
-  <g fill="#1A1916" transform="translate(72 96) scale(0.7)">
-    <rect x="168" y="156" width="76" height="354" rx="28"/>
-    <rect x="396" y="156" width="76" height="354" rx="28"/>
-    <rect x="196" y="156" width="248" height="96"/>
-    <rect x="168" y="156" width="304" height="72" rx="28"/>
-    <rect x="268" y="400" width="104" height="36" rx="8"/>
-  </g>
-  <g fill="#1A1916" font-family="ui-sans-serif, system-ui, sans-serif" font-size="48" font-weight="590">
-    <text x="580" y="268">The model proposes.</text>
-    <text x="580" y="340">Veto decides.</text>
-    <text x="580" y="412">Your API executes.</text>
+  <g fill="#1A1916" font-family="ui-sans-serif, system-ui, sans-serif" font-size="64" font-weight="590">
+    <text x="96" y="250">The model proposes.</text>
+    <text x="96" y="340">Veto decides.</text>
+    <text x="96" y="430">Your API executes.</text>
   </g>
 </svg>
