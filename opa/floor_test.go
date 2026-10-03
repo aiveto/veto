@@ -60,9 +60,9 @@ func TestConfirmationDoesNotGrantAMissingPermission(t *testing.T) {
 	assert.Equal(t, "denied", first.Status)
 	assert.Equal(t, int32(0), hits.Load())
 
-	pending, err := rt.State.RequestFor("ada", "orders.get", map[string]string{"id": "123"})
+	pending, err := rt.State.RequestFor(t.Context(), "ada", "orders.get", map[string]string{"id": "123"})
 	require.NoError(t, err)
-	approved, err := rt.State.Approve(pending)
+	approved, err := rt.State.Approve(t.Context(), pending)
 	require.NoError(t, err)
 	second, err := rt.Invoke(context.Background(), runtime.Request{
 		Operation: "orders.get",
@@ -107,7 +107,7 @@ func TestGrantedPermissionStillConfirmsOnce(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "confirmation_required", pending.Status)
 	assert.Equal(t, int32(0), hits.Load())
-	approved, err := rt.State.Approve(pending.ApprovalID)
+	approved, err := rt.State.Approve(t.Context(), pending.ApprovalID)
 	require.NoError(t, err)
 	sent, err := rt.Invoke(context.Background(), runtime.Request{
 		Operation: "orders.get",

@@ -64,9 +64,9 @@ contracts:
 	assert.Equal(t, "denied", out.Status)
 	assert.Equal(t, int32(0), hits.Load())
 
-	pending, err := loop.State.RequestFor("", "orders.get", map[string]string{"id": "123"})
+	pending, err := loop.State.RequestFor(t.Context(), "", "orders.get", map[string]string{"id": "123"})
 	require.NoError(t, err)
-	approved, err := loop.State.Approve(pending)
+	approved, err := loop.State.Approve(t.Context(), pending)
 	require.NoError(t, err)
 	again, err := loop.Invoke(context.Background(), "orders.get", map[string]string{"id": "123"}, approved)
 	require.NoError(t, err)

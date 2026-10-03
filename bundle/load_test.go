@@ -120,6 +120,14 @@ contracts:
 `,
 			want: "approval_store",
 		},
+		{
+			name: "invoke limit",
+			body: `invoke_limit: 8
+contracts:
+  - orders.yaml
+`,
+			want: "invoke_limit",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

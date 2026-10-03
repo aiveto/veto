@@ -338,6 +338,7 @@ func buildLoopBundle(contracts []string, configPath, bundlePath, agentPath, rela
 	if err := applyApprovalConfig(loop.State, cfg); err != nil {
 		return nil, config.File{}, err
 	}
+	loop.SetInvokeLimit(cfg.InvokeLimit)
 	loop.Flows = flows
 	if err := applyProviders(loop, cfg); err != nil {
 		return nil, cfg, err

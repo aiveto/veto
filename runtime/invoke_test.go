@@ -91,7 +91,7 @@ func TestDeleteWaitsForApproval(t *testing.T) {
 	_, err = rt.Invoke(context.Background(), req)
 	require.ErrorIs(t, err, runtime.ErrInvalidApproval)
 	assert.Equal(t, int32(0), hits.Load())
-	approved, err := rt.State.Approve(first.ApprovalID)
+	approved, err := rt.State.Approve(t.Context(), first.ApprovalID)
 	require.NoError(t, err)
 	req.Approval = approved
 	second, err := rt.Invoke(context.Background(), req)

@@ -44,6 +44,7 @@ type File struct {
 	Page            string            `yaml:"page"`
 	ResponseFields  []string          `yaml:"response_fields"`
 	ResponseLimit   int               `yaml:"response_limit"`
+	InvokeLimit     int               `yaml:"invoke_limit"`
 	Caller          string            `yaml:"caller"`
 	Callers         map[string]string `yaml:"callers"`
 	Confirmation    *bool             `yaml:"confirmation"`
@@ -190,6 +191,9 @@ func (f *File) validate() error {
 	}
 	if f.ResponseLimit < 0 {
 		return errors.New("response_limit is negative")
+	}
+	if f.InvokeLimit < 0 {
+		return errors.New("invoke_limit is negative")
 	}
 	for name, src := range f.Auth {
 		if err := src.validate(name); err != nil {

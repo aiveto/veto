@@ -212,7 +212,7 @@ func run{{.GoName}}(args []string) {
 			fmt.Fprintln(os.Stderr, "confirmation required")
 			os.Exit(2)
 		}
-		approved, aerr := c.Calls.State.Approve(call.ApprovalID)
+		approved, aerr := c.Calls.State.Approve(context.Background(), call.ApprovalID)
 		if aerr != nil {
 			fmt.Fprintln(os.Stderr, aerr)
 			os.Exit(1)

@@ -442,7 +442,7 @@ The generated client calls through the same gate.
 
 Token files are local. `token_dir` and `VETO_TOKEN_DIR` name that directory. They are not a remote session store.
 
-Invoke allows 16 calls in one second in this process, counted per caller. The next call stops before policy, a token URL, and upstream HTTP. That limit stays on.
+`invoke_limit` is calls per second per caller in this process. Unset or 0 is 16. The next call stops before policy, a token URL, and upstream HTTP. A bundle cannot set it.
 
 Veto is not backend auth. The API still authenticates the caller, stores the data, and enforces its own authorization and quotas.
 
