@@ -212,7 +212,7 @@ func TestConcurrentFirstInvokeSharesTheGate(t *testing.T) {
 		Params: []catalog.Param{{Name: "id", In: "path", Required: true}},
 	}}}
 	cat.Finalize()
-	rt := &runtime.Runtime{Catalog: cat, State: policy.NewState(), Exec: allowExec{}}
+	rt := &runtime.Runtime{Catalog: cat, State: policy.NewState(), Exec: allowExec{}, Gate: &runtime.InvokeGate{}}
 	const n = 32
 	var ready sync.WaitGroup
 	ready.Add(n)

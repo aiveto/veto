@@ -85,3 +85,7 @@ linters:
       - path: policy/state_test\.go
         linters: [gosec]
         text: "G702:"
+      # Confirmation ids are checked with plainID before they join the store path.
+      - path: policy/store\.go
+        linters: [gosec]
+        text: "G703:"

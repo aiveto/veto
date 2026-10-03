@@ -10,14 +10,13 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/aiveto/veto/bundle"
 	"github.com/aiveto/veto/catalog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestBundleCheckRunsOrdersAndCustomers(t *testing.T) {
-	t.Cleanup(func() { require.NoError(t, bundle.Release()) })
+	t.Cleanup(releaseBundles)
 	dir := ordersCustomersBundle(t)
 	cfgPath, err := filepath.Abs("../../testdata/veto.yaml")
 	require.NoError(t, err)
@@ -35,7 +34,7 @@ func TestBundleCheckRunsOrdersAndCustomers(t *testing.T) {
 }
 
 func TestBundleKeepsDeploymentAuth(t *testing.T) {
-	t.Cleanup(func() { require.NoError(t, bundle.Release()) })
+	t.Cleanup(releaseBundles)
 	dir := ordersCustomersBundle(t)
 	cfgPath := filepath.Join(t.TempDir(), "veto.yaml")
 	body := fmt.Sprintf(`bundle: %s

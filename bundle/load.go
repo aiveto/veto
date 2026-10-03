@@ -24,29 +24,24 @@ const maxBundleBytes int64 = 64 << 20
 type Loaded struct {
 	Config config.File
 
+	mu     sync.Mutex
 	temp   string
 	closed bool
 }
-
-var (
-	mu   sync.Mutex
-	held []*Loaded
-)
 
 // Close removes an extracted archive. A directory bundle stays where it is.
 func (l *Loaded) Close() error {
 	if l == nil {
 		return nil
 	}
-	mu.Lock()
+	l.mu.Lock()
 	if l.closed {
-		mu.Unlock()
+		l.mu.Unlock()
 		return nil
 	}
 	l.closed = true
 	temp := l.temp
-	held = dropHeld(held, l)
-	mu.Unlock()
+	l.mu.Unlock()
 	if temp == "" {
 		return nil
 	}
@@ -54,38 +49,6 @@ func (l *Loaded) Close() error {
 		return fmt.Errorf("remove bundle: %w", err)
 	}
 	return nil
-}
-
-// Release removes every extracted archive still held.
-func Release() error {
-	mu.Lock()
-	all := append([]*Loaded(nil), held...)
-	held = nil
-	mu.Unlock()
-	var err error
-	for _, l := range all {
-		err = errors.Join(err, l.Close())
-	}
-	return err
-}
-
-func hold(l *Loaded) {
-	if l == nil || l.temp == "" {
-		return
-	}
-	mu.Lock()
-	held = append(held, l)
-	mu.Unlock()
-}
-
-func dropHeld(all []*Loaded, l *Loaded) []*Loaded {
-	out := make([]*Loaded, 0, len(all))
-	for _, item := range all {
-		if item != l {
-			out = append(out, item)
-		}
-	}
-	return out
 }
 
 // Load reads a bundle directory or zip the same way config.Load reads a file that points at those paths.
@@ -136,9 +99,7 @@ func load(bundlePath string) (*Loaded, error) {
 	if err := scanExtra(located, manifest, cfg.Contracts); err != nil {
 		return fail(err)
 	}
-	loaded := &Loaded{Config: cfg, temp: temp}
-	hold(loaded)
-	return loaded, nil
+	return &Loaded{Config: cfg, temp: temp}, nil
 }
 
 func open(bundlePath string) (string, string, error) {
