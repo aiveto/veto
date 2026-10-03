@@ -11,10 +11,10 @@ import (
 
 func TestClaimIsOnceAcrossClients(t *testing.T) {
 	srv := miniredis.RunT(t)
-	a, err := Dial("redis://" + srv.Addr())
+	a, err := Dial(t.Context(), "redis://"+srv.Addr())
 	require.NoError(t, err)
 	t.Cleanup(a.Close)
-	b, err := Dial(srv.Addr())
+	b, err := Dial(t.Context(), srv.Addr())
 	require.NoError(t, err)
 	t.Cleanup(b.Close)
 
@@ -40,6 +40,6 @@ func TestClaimIsOnceAcrossClients(t *testing.T) {
 }
 
 func TestDialRejectsAnEmptyURL(t *testing.T) {
-	_, err := Dial("  ")
+	_, err := Dial(t.Context(), "  ")
 	require.Error(t, err)
 }

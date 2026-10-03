@@ -335,7 +335,7 @@ func buildLoopBundle(contracts []string, configPath, bundlePath, agentPath, rela
 	if err != nil {
 		return nil, config.File{}, err
 	}
-	if err := applyApprovalConfig(loop.State, cfg); err != nil {
+	if err := applyApprovalConfig(context.Background(), loop.State, cfg); err != nil {
 		return nil, config.File{}, err
 	}
 	loop.SetInvokeLimit(cfg.InvokeLimit)

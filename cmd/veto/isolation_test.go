@@ -37,7 +37,7 @@ func TestApprovalFilesStayOutOfTheUserDir(t *testing.T) {
 	require.NoError(t, err)
 	before := dirNames(t, user)
 	state := policy.NewState()
-	require.NoError(t, applyApprovalEnv(state))
+	require.NoError(t, applyApprovalEnv(t.Context(), state))
 	_, err = state.RequestFor(t.Context(), "", "orders.delete", map[string]string{"id": "123"})
 	require.NoError(t, err)
 	assert.Equal(t, before, dirNames(t, user))
