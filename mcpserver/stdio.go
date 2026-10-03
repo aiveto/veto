@@ -25,6 +25,8 @@ type (
 		Pins       []string
 		DirectPins bool
 		Grouped    bool
+		// ChatApproval lets an elicitation answer approve a held call. RunStdio turns it on.
+		ChatApproval bool
 	}
 
 	searchArgs struct {
@@ -50,6 +52,7 @@ type (
 )
 
 func RunStdio(ctx context.Context, srv *Server, opt Options) error {
+	opt.ChatApproval = true
 	return newMCP(srv, opt).Run(ctx, &mcp.StdioTransport{})
 }
 
@@ -93,10 +96,10 @@ func register(server *mcp.Server, srv *Server, opt Options) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "capabilities_invoke",
-		Description: "Invoke an operation through policy and HTTP. params values are strings. params.body may be a JSON object and is sent as the request body. confirmation_required includes a pending id. That id does not run the call. A host that supports elicitation asks the person; accept runs the call, and decline leaves the pending id. veto approve records the approval and prints the id a later invoke accepts once. preview stops before a token URL and before upstream HTTP. fields names the JSON fields a successful call returns. With no fields, the body is unchanged.",
+		Description: "Invoke an operation through policy and HTTP. params values are strings. params.body may be a JSON object and is sent as the request body. confirmation_required includes a pending id. That id does not run the call. When chat approval is on and the host supports elicitation, the host asks the person; accept runs the call, and decline leaves the pending id. veto approve records the approval and prints the id a later invoke accepts once. preview stops before a token URL and before upstream HTTP. fields names the JSON fields a successful call returns. With no fields, the body is unchanged.",
 		Annotations: invokeAnnotations(true),
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args invokeArgs) (*mcp.CallToolResult, any, error) {
-		return invokeCall(ctx, req, srv, args)
+		return invokeCall(ctx, req, srv, args, opt.ChatApproval)
 	})
 
 	if opt.Grouped {
@@ -111,7 +114,7 @@ func register(server *mcp.Server, srv *Server, opt Options) {
 				if op == nil || op.Group != group {
 					return toolError(fmt.Errorf("operation %q is not in group %s", args.OperationID, group))
 				}
-				return invokeCall(ctx, req, srv, args)
+				return invokeCall(ctx, req, srv, args, opt.ChatApproval)
 			})
 		}
 	}
@@ -129,13 +132,13 @@ func register(server *mcp.Server, srv *Server, opt Options) {
 				Annotations: operationAnnotations(op),
 			}, func(ctx context.Context, req *mcp.CallToolRequest, args invokeArgs) (*mcp.CallToolResult, any, error) {
 				args.OperationID = pinnedID
-				return invokeCall(ctx, req, srv, args)
+				return invokeCall(ctx, req, srv, args, opt.ChatApproval)
 			})
 		}
 	}
 }
 
-func invokeCall(ctx context.Context, req *mcp.CallToolRequest, srv *Server, args invokeArgs) (*mcp.CallToolResult, any, error) {
+func invokeCall(ctx context.Context, req *mcp.CallToolRequest, srv *Server, args invokeArgs, chat bool) (*mcp.CallToolResult, any, error) {
 	caller := callerID(ctx, req)
 	if args.Preview {
 		out, err := srv.Preview(ctx, runtime.Request{
@@ -146,7 +149,7 @@ func invokeCall(ctx context.Context, req *mcp.CallToolRequest, srv *Server, args
 		return previewToolResult(out, err)
 	}
 	answered := false
-	if reply, ok := elicitationReply(req); ok {
+	if reply, ok := elicitationReply(req); ok && chat {
 		answered = true
 		if reply == nil || reply.Action != "accept" {
 			return invokeToolResult(InvokeResult{
@@ -172,7 +175,7 @@ func invokeCall(ctx context.Context, req *mcp.CallToolRequest, srv *Server, args
 		Offset:    args.Offset,
 		Limit:     args.Limit,
 	})
-	if !answered && res.Status == "confirmation_required" && clientCanElicit(req) {
+	if !answered && res.Status == "confirmation_required" && chat && clientCanElicit(req) {
 		return elicitConfirmation(res), nil, nil
 	}
 	return invokeToolResult(res, err)

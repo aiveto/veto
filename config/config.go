@@ -53,6 +53,7 @@ type File struct {
 	Confirmation    *bool             `yaml:"confirmation"`
 	ApprovalTTL     time.Duration     `yaml:"approval_ttl"`
 	ApprovalWebhook Webhook           `yaml:"approval_webhook"`
+	ChatApproval    bool              `yaml:"chat_approval"`
 	Permissions     []string          `yaml:"permissions"`
 	MemoryFile      string            `yaml:"memory_file"`
 }

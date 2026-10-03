@@ -198,7 +198,7 @@ Cursor and Claude Desktop both take this server entry. Use a config path the `ve
 }
 ```
 
-`operation_id` is the catalog id. `params` is an object. Path, query, and header values are strings, keyed by parameter name. `body` is the request body: a string is sent as written, and a JSON object is encoded as JSON and sent. There is no schema compiler in that step. `approval_id` is empty on the first call. A `confirmation_required` result carries a pending id. That id does not run the call. A host that supports elicitation asks the person to accept or decline. Accept records the approval and runs the call. Decline leaves the pending id. A host without elicitation returns that id, and `veto approve <id>` records the approval and prints an approved id. A later invoke with that approved id runs once.
+`operation_id` is the catalog id. `params` is an object. Path, query, and header values are strings, keyed by parameter name. `body` is the request body: a string is sent as written, and a JSON object is encoded as JSON and sent. There is no schema compiler in that step. `approval_id` is empty on the first call. A `confirmation_required` result carries a pending id. That id does not run the call. Over stdio, a host that supports elicitation asks the person to accept or decline. Accept records the approval and runs the call. Decline leaves the pending id. Over `--http` that form needs `chat_approval: true` in `veto.yaml`, because the remote client is the one answering it. Otherwise the result carries the pending id, and `veto approve <id>` records the approval and prints an approved id. A later invoke with that approved id runs once.
 
 `response_fields` in `veto.yaml`, or `fields` on this invoke, names the JSON fields returned after a successful call. A list also returns `page` with `offset`, `limit`, and `returned`. `truncated` is true when the response cap cuts the body or the page stops before the end. `response_limit` is the page size when the invoke omits `limit`. With no fields named, the body is unchanged. The cap stays. `--keep-sensitive` is still what records a response body, and secrets are still removed from the trace.
 
@@ -418,7 +418,7 @@ The generated client calls through the same gate.
 
 `veto serve` defaults to stdio. `--http` is one process at `127.0.0.1:7433`.
 
-Approval nonces are local files. `VETO_APPROVAL_SECRET` signs the yes. `VETO_APPROVAL_NONCE_DIR` is the nonce directory on that machine. Two machines that share the signing secret and not the nonce directory can both accept a yes until expiry.
+Approval nonces are local files. `VETO_APPROVAL_SECRET` signs the yes. `VETO_APPROVAL_NONCE_DIR` is the nonce directory on that machine. Two machines that share the signing secret and not the nonce directory can both accept a yes until expiry. More than one `veto serve` needs the same `VETO_APPROVAL_SECRET` and `VETO_APPROVAL_NONCE_DIR` on one shared volume.
 
 Token files are local. `token_dir` and `VETO_TOKEN_DIR` name that directory. They are not a remote session store.
 

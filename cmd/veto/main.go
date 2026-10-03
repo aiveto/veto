@@ -525,7 +525,9 @@ func runServe(cmd serveCmd, c *cobra.Command) {
 			fmt.Fprintf(os.Stderr, "serve: %v\n", err)
 			fail()
 		}
-		handler, err := mcpserver.Handler(srv, opt, ids)
+		httpOpt := opt
+		httpOpt.ChatApproval = cfg.ChatApproval
+		handler, err := mcpserver.Handler(srv, httpOpt, ids)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "serve: %v\n", err)
 			fail()
