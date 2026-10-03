@@ -46,7 +46,7 @@ func TestGroupedAddsOneToolPerResource(t *testing.T) {
 func TestDescribeIncludesLinkAndSchema(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
-	srv := &mcpserver.Server{Catalog: cat, Semantics: semantics.NewDerived(cat)}
+	srv := &mcpserver.Server{Catalog: cat, Semantics: semantics.New(cat)}
 	b, err := srv.Describe("orders.list")
 	require.NoError(t, err)
 	text := string(b)
@@ -66,7 +66,7 @@ func TestDescribeMatchesThePack(t *testing.T) {
 	rels, err := catalog.ParseRelations(relData)
 	require.NoError(t, err)
 	require.NoError(t, catalog.ApplyRelations(cat, rels))
-	sem := semantics.NewDerived(cat)
+	sem := semantics.New(cat)
 	op := cat.ByID("orders.get")
 	line := runctx.OperationLine(cat, *op, sem.Note(op.ID).Text())
 	pack := runctx.NewBuilder(8192).Build(cat, nil, op, sem, nil)

@@ -9,12 +9,14 @@ import (
 	"net/url"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/aiveto/veto/agent"
 	"github.com/aiveto/veto/auth"
 	"github.com/aiveto/veto/credentials"
 	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/policy"
+	"github.com/aiveto/veto/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -152,6 +154,44 @@ func TestDeniedExchangeSkipsTheTokenURL(t *testing.T) {
 	assert.Equal(t, "denied", call.Status)
 	assert.Equal(t, int32(0), tokenHits.Load())
 	assert.Equal(t, int32(0), upstreamHits.Load())
+}
+
+func TestInvokeLimitStopsBeforeATokenURL(t *testing.T) {
+	var tokenHits, upHits atomic.Int32
+	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tokenHits.Add(1)
+		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "exchanged-token", "expires_in": 3600})
+	}))
+	t.Cleanup(tokenSrv.Close)
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upHits.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(up.Close)
+	t.Setenv("VETO_SECRET", "super-secret")
+	cat := loadSpec(t, bearerSpec)
+	loop, err := agent.New(cat, nil, execute.Client{
+		BaseURL: up.URL,
+		Creds: auth.New(auth.Options{Schemes: []auth.Scheme{{
+			Name: "bearerAuth", Source: "token_exchange", TokenURL: tokenSrv.URL,
+			ClientID: "veto", ClientSecretEnv: "VETO_SECRET", Subject: "invoke",
+		}}, Dir: t.TempDir(), HTTP: tokenSrv.Client()}),
+	})
+	require.NoError(t, err)
+	rt := loop.Runtime()
+	rt.Gate = &runtime.InvokeGate{Per: 1, Window: time.Hour}
+	req := runtime.Request{Operation: "orders.get", Caller: "ada", Arguments: map[string]any{"id": "1"}}
+	ctx := auth.WithUserToken(t.Context(), "caller-token")
+	first, err := rt.Invoke(ctx, req)
+	require.NoError(t, err)
+	assert.Equal(t, "ok", first.Status)
+	assert.Equal(t, int32(1), tokenHits.Load())
+	assert.Equal(t, int32(1), upHits.Load())
+	limited, err := rt.Invoke(ctx, req)
+	require.NoError(t, err)
+	assert.Equal(t, "limited", limited.Status)
+	assert.Equal(t, int32(1), tokenHits.Load())
+	assert.Equal(t, int32(1), upHits.Load())
 }
 
 type signProvider struct {

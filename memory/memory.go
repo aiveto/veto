@@ -16,18 +16,18 @@ type (
 		Tags    []string `json:"Tags"`
 	}
 
-	LocalMap struct {
+	Map struct {
 		mu    sync.RWMutex
 		items map[string]Item
 		order []string
 	}
 )
 
-func NewLocalMap() *LocalMap {
-	return &LocalMap{items: map[string]Item{}}
+func New() *Map {
+	return &Map{items: map[string]Item{}}
 }
 
-func (m *LocalMap) Store(ctx context.Context, item Item) error {
+func (m *Map) Store(ctx context.Context, item Item) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -43,7 +43,7 @@ func (m *LocalMap) Store(ctx context.Context, item Item) error {
 	return nil
 }
 
-func (m *LocalMap) Search(ctx context.Context, query string) ([]Item, error) {
+func (m *Map) Search(ctx context.Context, query string) ([]Item, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -59,7 +59,7 @@ func (m *LocalMap) Search(ctx context.Context, query string) ([]Item, error) {
 	return out, nil
 }
 
-func (m *LocalMap) Recent(ctx context.Context, n int) ([]Item, error) {
+func (m *Map) Recent(ctx context.Context, n int) ([]Item, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -84,7 +84,7 @@ func (m *LocalMap) Recent(ctx context.Context, n int) ([]Item, error) {
 	return out, nil
 }
 
-func (m *LocalMap) Delete(ctx context.Context, id string) error {
+func (m *Map) Delete(ctx context.Context, id string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}

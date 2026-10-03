@@ -61,7 +61,7 @@ func (n Note) Text() string {
 	return n.Sentence + " " + n.Relation
 }
 
-func NewDerived(cat *catalog.Catalog) *Derived {
+func New(cat *catalog.Catalog) *Derived {
 	d := &Derived{cat: cat, notes: map[string]Note{}}
 	for _, op := range cat.Operations {
 		syns := deriveSynonyms(op)

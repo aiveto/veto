@@ -1,5 +1,5 @@
-// Package valkeystore is a policy.Store for more than one veto process.
-package valkeystore
+// Package valkey is a policy.Store for more than one veto process.
+package valkey
 
 import (
 	"context"

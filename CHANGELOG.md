@@ -2,7 +2,10 @@
 
 ## Unreleased
 
+## v0.1.2 - 2026-10-03
+
 - `brew install aiveto/veto/veto` installs the release binary from the `aiveto/homebrew-veto` tap.
+- `memory.New` and `semantics.New` are the constructors. The replica store package is `valkey`.
 
 ## v0.1.1 - 2026-10-03
 

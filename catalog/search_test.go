@@ -38,7 +38,7 @@ func TestTagsAndPathNounAreSearchable(t *testing.T) {
 		ID: "widgets.ping", Group: "widgets", Tags: []string{"retire"}, Name: "Ping", Description: "Ping",
 	}}}
 	cat.Finalize()
-	sem := semantics.NewDerived(cat)
+	sem := semantics.New(cat)
 	var sawRetire, sawNoun bool
 	for _, s := range sem.AllSynonyms()["widgets.ping"] {
 		if s == "retire" {
@@ -70,7 +70,13 @@ func TestSearchPageReturnsTheNextWindow(t *testing.T) {
 	next := catalog.SearchPage(cat, "item.get", nil, 3, 3)
 	require.Len(t, first, 3)
 	require.Len(t, next, 3)
-	assert.NotEqual(t, first[0].Operation.ID, next[0].Operation.ID)
+	seen := map[string]bool{}
+	for _, m := range first {
+		seen[m.Operation.ID] = true
+	}
+	for _, m := range next {
+		assert.False(t, seen[m.Operation.ID], m.Operation.ID)
+	}
 }
 
 func TestSearchPageClampsTheWindow(t *testing.T) {
@@ -100,10 +106,31 @@ func FuzzSearchPage(f *testing.F) {
 	})
 }
 
+func TestSearchSynonymsFindTheOperation(t *testing.T) {
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
+	require.NoError(t, err)
+	sem := semantics.New(cat)
+	cases := []struct {
+		q, want string
+	}{
+		{q: "remove", want: "orders.delete"},
+		{q: "retire", want: "orders.delete"},
+		{q: "fetch", want: "orders.get"},
+		{q: "read", want: "orders.get"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.q, func(t *testing.T) {
+			matches := catalog.Search(cat, tc.q, sem.AllSynonyms())
+			require.NotEmpty(t, matches)
+			assert.Equal(t, tc.want, matches[0].Operation.ID)
+		})
+	}
+}
+
 func TestSearchRetireFindsDelete(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
-	base := semantics.NewDerived(cat)
+	base := semantics.New(cat)
 	overlay, err := os.ReadFile("../testdata/semantics.yaml")
 	require.NoError(t, err)
 	sem, err := semantics.ParseOverlay(overlay, base)

@@ -68,6 +68,73 @@ func TestInvokeSendsObjectOrStringBody(t *testing.T) {
 	}
 }
 
+func TestInvokeRejectsABodyOutsideTheSchema(t *testing.T) {
+	const secret = "s3cret-value"
+	var hits int
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer ts.Close()
+	path := filepath.Join(t.TempDir(), "spec.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(typedBodySpec), 0o600))
+	cat, err := openapi.Load(context.Background(), path)
+	require.NoError(t, err)
+	loop, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
+	require.NoError(t, err)
+	ctx := context.Background()
+	server := mcp.NewServer(&mcp.Implementation{Name: "veto", Version: "0.1.0"}, nil)
+	calls := loop.Runtime()
+	register(server, &Server{Catalog: cat, Calls: &calls}, Options{})
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	_, err = server.Connect(ctx, serverTransport, nil)
+	require.NoError(t, err)
+	session, err := mcp.NewClient(&mcp.Implementation{Name: "client", Version: "0.1.0"}, nil).Connect(ctx, clientTransport, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, session.Close()) })
+	res, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "capabilities_invoke",
+		Arguments: map[string]any{
+			"operation_id": "customers.create",
+			"params":       map[string]any{"body": map[string]any{"name": "ada", "age": secret}},
+		},
+	})
+	require.NoError(t, err)
+	require.True(t, res.IsError)
+	require.NotEmpty(t, res.Content)
+	text, ok := res.Content[0].(*mcp.TextContent)
+	require.True(t, ok)
+	assert.Contains(t, text.Text, `"code":"invalid_body"`)
+	assert.Contains(t, text.Text, "/age")
+	assert.NotContains(t, text.Text, secret)
+	assert.Equal(t, 0, hits)
+}
+
+const typedBodySpec = `openapi: 3.0.3
+info:
+  title: Customers
+  version: "1"
+servers:
+  - url: http://127.0.0.1:9
+paths:
+  /customers:
+    post:
+      operationId: customers.create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: {type: string}
+                age: {type: integer}
+      responses:
+        "201":
+          description: created
+`
+
 const versionBodySpec = `openapi: 3.0.3
 info:
   title: Customers

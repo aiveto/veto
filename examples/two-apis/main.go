@@ -44,7 +44,7 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	sem := semantics.NewDerived(cat)
+	sem := semantics.New(cat)
 	sentence, err := checkSurface(cat, sem)
 	if err != nil {
 		return err

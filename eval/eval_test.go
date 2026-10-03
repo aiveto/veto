@@ -31,12 +31,24 @@ func (h *hitExec) InvokeHTTPResult(context.Context, *catalog.Operation, map[stri
 	return result.HTTPResult{Status: 200, Code: "ok"}, nil
 }
 
+func TestDeleteOrder123RequiresConfirmation(t *testing.T) {
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
+	require.NoError(t, err)
+	exec := &hitExec{}
+	loop, err := agent.New(cat, semantics.New(cat), exec)
+	require.NoError(t, err)
+	c, err := eval.LoadCase("../testdata/cases/delete.yaml")
+	require.NoError(t, err)
+	require.NoError(t, (&eval.Runner{Loop: loop}).Run(context.Background(), c))
+	assert.Zero(t, exec.calls)
+}
+
 func TestNeighborCaseSelectsTheRelationAndDropsBilling(t *testing.T) {
 	cat := threeAPIs(t)
 	cases, err := eval.LoadCases([]string{"../testdata/cases"})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"delete-requires-confirmation", "order-selects-neighbor"}, names(cases))
-	sem := semantics.NewDerived(cat)
+	sem := semantics.New(cat)
 	loop, err := agent.New(cat, sem, nil)
 	require.NoError(t, err)
 	r := &eval.Runner{Loop: loop}
@@ -72,7 +84,7 @@ func TestNoHTTPFailsWhenTheCallRuns(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
 	exec := &hitExec{}
-	loop, err := agent.New(cat, semantics.NewDerived(cat), exec)
+	loop, err := agent.New(cat, semantics.New(cat), exec)
 	require.NoError(t, err)
 	loop.Model = pickGet{}
 	err = (&eval.Runner{Loop: loop}).Run(context.Background(), &eval.Case{

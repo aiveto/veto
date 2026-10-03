@@ -2,6 +2,7 @@ package runtime_test
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -181,6 +182,7 @@ func TestInvokeRejectsUnserializable(t *testing.T) {
 }
 
 func TestInvokeRejectsABodyOutsideTheSchemaBeforeHTTP(t *testing.T) {
+	const secret = "s3cret-value"
 	var hits atomic.Int32
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)
@@ -192,17 +194,20 @@ func TestInvokeRejectsABodyOutsideTheSchemaBeforeHTTP(t *testing.T) {
 		PathTemplate: "/customers",
 		Params: []catalog.Param{{
 			Name: "body", In: "body", Required: true, MediaType: "application/json",
-			Schema: `{"type":"object","properties":{"name":{"type":"string"}}}`,
+			Schema: `{"type":"object","required":["name"],"properties":{"name":{"type":"string"},"age":{"type":"integer"}}}`,
 		}},
 	}}}
 	cat.Finalize()
 	rt := runtime.Runtime{Catalog: cat, State: policy.NewState(), Exec: execute.Client{BaseURL: ts.URL}}
 	out, err := rt.Invoke(context.Background(), runtime.Request{
 		Operation: "customers.create",
-		Arguments: map[string]any{"body": map[string]any{"name": 7}},
+		Arguments: map[string]any{"body": map[string]any{"name": "ada", "age": secret}},
 	})
 	require.Error(t, err)
 	assert.Equal(t, "invalid_body", out.Code)
+	assert.Contains(t, err.Error(), "/age")
+	assert.NotContains(t, err.Error(), secret)
+	assert.NotContains(t, out.Error, secret)
 	assert.Equal(t, int32(0), hits.Load())
 }
 
@@ -217,17 +222,29 @@ func TestConcurrentFirstInvokeSharesTheGate(t *testing.T) {
 	var ready sync.WaitGroup
 	ready.Add(n)
 	start := make(chan struct{})
+	var ok, limited atomic.Int32
 	errCh := make(chan error, n)
 	var wg sync.WaitGroup
 	for range n {
 		wg.Go(func() {
 			ready.Done()
 			<-start
-			_, err := rt.Invoke(context.Background(), runtime.Request{
+			out, err := rt.Invoke(context.Background(), runtime.Request{
 				Operation: "orders.get",
 				Arguments: runtime.FromStrings(map[string]string{"id": "1"}),
 			})
-			errCh <- err
+			if err != nil {
+				errCh <- err
+				return
+			}
+			switch out.Status {
+			case "ok":
+				ok.Add(1)
+			case "limited":
+				limited.Add(1)
+			default:
+				errCh <- fmt.Errorf("status %s", out.Status)
+			}
 		})
 	}
 	ready.Wait()
@@ -237,6 +254,29 @@ func TestConcurrentFirstInvokeSharesTheGate(t *testing.T) {
 	for err := range errCh {
 		require.NoError(t, err)
 	}
+	assert.Equal(t, int32(16), ok.Load())
+	assert.Equal(t, int32(16), limited.Load())
+}
+
+func TestDiscoveryOnlyDoesNotCallHTTP(t *testing.T) {
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
+	require.NoError(t, err)
+	op := cat.ByID("orders.get")
+	require.NotNil(t, op)
+	op.Exposure = catalog.ExposureDiscovery
+	var hits atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+	}))
+	defer ts.Close()
+	rt := runtime.Runtime{Catalog: cat, State: policy.NewState(), Exec: execute.Client{BaseURL: ts.URL}}
+	out, err := rt.Invoke(context.Background(), runtime.Request{
+		Operation: "orders.get",
+		Arguments: runtime.FromStrings(map[string]string{"id": "1"}),
+	})
+	require.ErrorContains(t, err, "discovery-only")
+	assert.Equal(t, "not_callable", out.Code)
+	assert.Equal(t, int32(0), hits.Load())
 }
 
 func TestMissingParamSkipsHTTP(t *testing.T) {

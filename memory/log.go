@@ -19,14 +19,14 @@ const maxItemBytes = 1 << 20
 type Log struct {
 	path  string
 	mu    sync.Mutex
-	inner *LocalMap
+	inner *Map
 }
 
 func NewLog(path string) (*Log, error) {
 	if path == "" {
 		return nil, errors.New("memory file required")
 	}
-	l := &Log{path: path, inner: NewLocalMap()}
+	l := &Log{path: path, inner: New()}
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {

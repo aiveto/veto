@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/aiveto/veto/catalog"
+	"github.com/aiveto/veto/openapi"
 	"github.com/aiveto/veto/policy"
 	"github.com/aiveto/veto/result"
 	"github.com/aiveto/veto/runtime"
@@ -78,6 +79,34 @@ func TestConfirmationDoesNotGrantAMissingPermission(t *testing.T) {
 	third, err := rt.Invoke(context.Background(), runtime.Request{Operation: "orders.get", Arguments: args, Caller: "ada"})
 	require.NoError(t, err)
 	assert.Equal(t, "denied", third.Status)
+	assert.Equal(t, int32(0), hits.Load())
+}
+
+func TestRegoAllowStillConfirmsADelete(t *testing.T) {
+	path := writeRego(t, `package veto
+
+import rego.v1
+
+default decision := "allow"
+`)
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
+	require.NoError(t, err)
+	eng, err := New(context.Background(), path, "", policy.Builtin{})
+	require.NoError(t, err)
+	var hits atomic.Int32
+	rt := runtime.Runtime{
+		Catalog: cat,
+		Policy:  eng,
+		Base:    policy.Builtin{},
+		State:   policy.NewState(),
+		Exec:    hitExec{hits: &hits},
+	}
+	out, err := rt.Invoke(context.Background(), runtime.Request{
+		Operation: "orders.delete",
+		Arguments: runtime.FromStrings(map[string]string{"id": "123"}),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "confirmation_required", out.Status)
 	assert.Equal(t, int32(0), hits.Load())
 }
 

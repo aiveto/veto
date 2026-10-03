@@ -179,6 +179,70 @@ func TestDefaultNonceDirFollowsTheSecret(t *testing.T) {
 	assert.Contains(t, a, "approval-nonces")
 }
 
+func TestSignedApprovalExpiresAndIsSwept(t *testing.T) {
+	dir := t.TempDir()
+	when := time.Unix(1_700_000_000, 0)
+	s := NewState()
+	s.SetNonceDir(dir)
+	require.NoError(t, s.SetSigner([]byte("secret"), time.Minute))
+	s.now = func() time.Time { return when }
+	params := map[string]string{"id": "1"}
+	cases := []struct {
+		name string
+		age  time.Duration
+		want bool
+	}{
+		{name: "inside ttl", age: 30 * time.Second, want: true},
+		{name: "at ttl", age: time.Minute, want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s.now = func() time.Time { return when }
+			pending, err := s.RequestFor(t.Context(), "", "orders.delete", params)
+			require.NoError(t, err)
+			approved, err := s.Approve(t.Context(), pending)
+			require.NoError(t, err)
+			require.True(t, strings.HasPrefix(approved, "v1."))
+			s.now = func() time.Time { return when.Add(tc.age) }
+			ok, err := s.ConsumeFor(t.Context(), "", approved, "orders.delete", params)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, ok)
+			if tc.want {
+				return
+			}
+			_, err = os.Stat(filepath.Join(dir, "confirmations", pending+".json"))
+			assert.ErrorIs(t, err, os.ErrNotExist)
+		})
+	}
+}
+
+func TestSignedApprovalIsOneUseAcrossStates(t *testing.T) {
+	params := map[string]string{"id": "1"}
+	now := func() time.Time { return time.Unix(1_700_000_000, 0) }
+	for round := range 20 {
+		dir := t.TempDir()
+		issued := withSigner(t, dir, []byte("secret"), now)
+		pending, err := issued.RequestFor(t.Context(), "", "orders.delete", params)
+		require.NoError(t, err)
+		approved, err := issued.Approve(t.Context(), pending)
+		require.NoError(t, err)
+		require.True(t, strings.HasPrefix(approved, "v1."))
+		var wins atomic.Int32
+		var wg sync.WaitGroup
+		for range 24 {
+			wg.Go(func() {
+				other := withSigner(t, dir, []byte("secret"), now)
+				ok, err := other.ConsumeFor(t.Context(), "", approved, "orders.delete", params)
+				if err == nil && ok {
+					wins.Add(1)
+				}
+			})
+		}
+		wg.Wait()
+		assert.Equal(t, int32(1), wins.Load(), "round %d", round)
+	}
+}
+
 func TestUnsignedApprovalExpiresAndIsSwept(t *testing.T) {
 	dir := t.TempDir()
 	when := time.Unix(1_700_000_000, 0)

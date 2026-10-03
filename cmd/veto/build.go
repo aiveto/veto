@@ -295,7 +295,7 @@ func buildLoopBundle(contracts []string, configPath, bundlePath, agentPath, rela
 	if err := cat.SelectServer(cfg.Server); err != nil {
 		return nil, config.File{}, err
 	}
-	var sem agent.Notes = semantics.NewDerived(cat)
+	var sem agent.Notes = semantics.New(cat)
 	if cfg.SemanticsFile != "" {
 		data, err := os.ReadFile(cfg.SemanticsFile)
 		if err != nil {
@@ -350,7 +350,7 @@ func buildLoopBundle(contracts []string, configPath, bundlePath, agentPath, rela
 func applyProviders(loop *agent.Loop, cfg config.File) error {
 	switch cfg.Memory {
 	case "local":
-		loop.Memory = memory.NewLocalMap()
+		loop.Memory = memory.New()
 	case "file":
 		log, err := memory.NewLog(cfg.MemoryFile)
 		if err != nil {

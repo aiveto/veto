@@ -42,6 +42,24 @@ func TestReplayShowsConfirmationAndOmitsTheMessage(t *testing.T) {
 	assert.NotContains(t, open.String(), "Delete order 123")
 }
 
+func TestReplayShowsUserTextOnlyWhenAsked(t *testing.T) {
+	spans := []telemetry.Span{{
+		Name: "agent.run",
+		Attrs: map[string]string{
+			"operation.id": "orders.delete",
+			"user_message": "Delete order 123",
+			"params":       `{"id":"123"}`,
+		},
+	}}
+	open := replay.FromSpans(spans, false).String()
+	assert.Contains(t, open, "Delete order 123")
+	assert.Contains(t, open, `params={"id":"123"}`)
+	redacted := replay.FromSpans(spans, true).String()
+	assert.NotContains(t, redacted, "Delete order 123")
+	assert.NotContains(t, redacted, "params=")
+	assert.Contains(t, redacted, "operation.id=orders.delete")
+}
+
 func TestRedactDropsAttributesOutsideTheAllowlist(t *testing.T) {
 	spans := []telemetry.Span{{
 		Name: "model.request",
