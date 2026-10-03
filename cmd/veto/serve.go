@@ -43,8 +43,8 @@ func newServeCommand() *cobra.Command {
 	c.Flags().BoolVar(&cmd.stdio, "stdio", true, "Listen on stdio for MCP.")
 	c.Flags().BoolVar(&cmd.http, "http", false, "Listen for MCP on Streamable HTTP. Requires the Veto-Caller header.")
 	c.Flags().StringVar(&cmd.addr, "addr", mcpserver.DefaultAddr, "Listen address for --http.")
-	c.Flags().StringArrayVar(&cmd.pin, "pin", nil, "Pin operation ids.")
-	c.Flags().BoolVar(&cmd.directPins, "direct-pins", false, "Register direct MCP tools for pinned ids only.")
+	c.Flags().StringArrayVar(&cmd.pin, "pin", nil, "Register a direct MCP tool for this operation id.")
+	c.Flags().BoolVar(&cmd.directPins, "direct-pins", false, "Register pinned ids as tools. Implied by --pin.")
 	c.Flags().BoolVar(&cmd.grouped, "grouped", false, "Register one MCP tool per resource.")
 	c.Flags().StringVar(&cmd.baseURL, "base-url", "", "Override the server URL on every operation. Empty uses each contract server.")
 	return c
@@ -94,7 +94,7 @@ func runServe(cmd serveCmd, c *cobra.Command) {
 		Semantics: loop.Semantics,
 		Calls:     &calls,
 	}
-	opt := mcpserver.Options{Pins: cmd.pin, DirectPins: cmd.directPins, Grouped: cmd.grouped}
+	opt := serveOptions(cmd)
 	if cmd.http {
 		ids, err := mcpserver.Identities(cfg.Callers, os.Getenv)
 		if err != nil {
@@ -133,6 +133,14 @@ func runServe(cmd serveCmd, c *cobra.Command) {
 		fail()
 	}
 	finish()
+}
+
+func serveOptions(cmd serveCmd) mcpserver.Options {
+	return mcpserver.Options{
+		Pins:       cmd.pin,
+		DirectPins: cmd.directPins || len(cmd.pin) > 0,
+		Grouped:    cmd.grouped,
+	}
 }
 
 func stdioTraceConflict(stdio bool, export string) error {

@@ -9,7 +9,7 @@
 - `veto.yaml` drops `decision`, `execution`, `subagents`, and `telemetry`. Each accepted one value. `replay_redact` is a bool.
 - Relative paths in `veto.yaml` share one resolver. Approvals, tokens, and the memory log share one atomic file write. `execute.InvokeResponse` takes `Client`. Policy decisions combine through `policy.Combine`.
 - Confirmation uses a store and a signer. `SetNonceDir` and `SetSigner` attach the file and HMAC adapters. The CLI holds extracted bundles. A generated client constructs the invoke gate.
-- `policy.Store` is public. Memory and Files ship. `valkeystore` is the replica store (Valkey or Redis). `approval_store` names the URL env.
+- `policy.Store` is public. Memory and Files ship. `valkeystore` is the replica store (Valkey or Redis). `approval_store` names the URL env. `veto approve --config` reads that key and `approval_ttl`. `--pin` registers the pinned tool.
 - A JSON request body is checked against its schema before HTTP. A mismatch returns `invalid_body` with the field path. The value is not echoed.
 
 ## v0.1.0 - 2026-10-02

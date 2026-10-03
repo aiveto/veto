@@ -13,12 +13,13 @@ import (
 )
 
 func newApproveCommand() *cobra.Command {
-	return &cobra.Command{
+	var configPath string
+	cmd := &cobra.Command{
 		Use:   "approve <id>",
 		Short: "Record approval for a pending confirmation.",
 		Args:  cobra.ExactArgs(1),
 		Run: func(_ *cobra.Command, args []string) {
-			approved, err := approveID(args[0])
+			approved, err := approveID(args[0], configPath)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "approve: %v\n", err)
 				exitMain(1)
@@ -26,14 +27,32 @@ func newApproveCommand() *cobra.Command {
 			fmt.Println(approved)
 		},
 	}
+	cmd.Flags().StringVar(&configPath, "config", "", "Path to veto.yaml. Reads approval_store and approval_ttl.")
+	return cmd
 }
 
-func approveID(id string) (string, error) {
+func approveID(id, configPath string) (string, error) {
 	state := policy.NewState()
-	if err := applyApprovalEnv(state); err != nil {
+	if err := applyApprovalCLI(state, configPath); err != nil {
 		return "", err
 	}
 	return state.Approve(id)
+}
+
+func applyApprovalCLI(s *policy.State, configPath string) error {
+	if configPath == "" {
+		if _, err := os.Stat("veto.yaml"); err == nil {
+			configPath = "veto.yaml"
+		}
+	}
+	if configPath != "" {
+		cfg, err := config.Load(configPath)
+		if err != nil {
+			return err
+		}
+		return applyApprovalConfig(s, cfg)
+	}
+	return applyApprovalEnv(s)
 }
 
 // applyApprovalEnv points state at the store serve and approve share.

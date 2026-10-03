@@ -15,9 +15,12 @@ import (
 )
 
 const (
-	statusPending      = "pending"
-	statusApproved     = "approved"
-	statusConsumed     = "consumed"
+	// StatusPending is a recorded call that has not been approved.
+	StatusPending = "pending"
+	// StatusApproved is a yes that ConsumeFor accepts once.
+	StatusApproved = "approved"
+	// StatusConsumed is a yes that already ran.
+	StatusConsumed     = "consumed"
 	defaultApprovalTTL = 15 * time.Minute
 )
 
@@ -129,7 +132,7 @@ func (s *State) RequestFor(caller, opID string, params map[string]string) (strin
 		ID:          id,
 		OperationID: opID,
 		Params:      cloneParams(params),
-		Status:      statusPending,
+		Status:      StatusPending,
 		Caller:      caller,
 		Expiry:      s.deadline().Unix(),
 	}
@@ -145,16 +148,16 @@ func (s *State) Approve(id string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	rec, ok := s.records.Get(id)
-	if !ok || rec.Status == statusConsumed || expired(rec, s.clock()) {
+	if !ok || rec.Status == StatusConsumed || expired(rec, s.clock()) {
 		if ok && expired(rec, s.clock()) {
 			s.records.Remove(rec)
 		}
 		return "", ErrUnknownApproval
 	}
-	if rec.Status == statusApproved && rec.ApprovedID != "" {
+	if rec.Status == StatusApproved && rec.ApprovedID != "" {
 		return rec.ApprovedID, nil
 	}
-	if rec.Status != statusPending {
+	if rec.Status != StatusPending {
 		return "", ErrUnknownApproval
 	}
 	approved := uuid.NewString()
@@ -165,7 +168,7 @@ func (s *State) Approve(id string) (string, error) {
 		}
 		approved = s.tokens.sign(rec.Caller, rec.OperationID, rec.Params, exp)
 	}
-	rec.Status = statusApproved
+	rec.Status = StatusApproved
 	rec.ApprovedID = approved
 	if err := s.records.Put(rec); err != nil {
 		return "", err
@@ -179,7 +182,7 @@ func (s *State) ConsumeFor(caller, approvalID, opID string, params map[string]st
 	defer s.mu.Unlock()
 	now := s.clock()
 	rec, ok := s.records.FindApproved(approvalID)
-	if !ok || rec.Status != statusApproved || rec.ApprovedID != approvalID {
+	if !ok || rec.Status != StatusApproved || rec.ApprovedID != approvalID {
 		return false, nil
 	}
 	if rec.Caller != caller || rec.OperationID != opID || !maps.Equal(rec.Params, params) || expired(rec, now) {
@@ -198,7 +201,7 @@ func (s *State) ConsumeFor(caller, approvalID, opID string, params map[string]st
 	if err != nil || !ok {
 		return ok, err
 	}
-	rec.Status = statusConsumed
+	rec.Status = StatusConsumed
 	if err := s.records.Put(rec); err != nil {
 		return false, err
 	}
@@ -209,7 +212,7 @@ func (s *State) Pending(id string) *PendingConfirmation {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	rec, ok := s.records.Get(id)
-	if !ok || rec.Status != statusPending {
+	if !ok || rec.Status != StatusPending {
 		return nil
 	}
 	return &PendingConfirmation{ID: rec.ID, OperationID: rec.OperationID, Params: cloneParams(rec.Params)}

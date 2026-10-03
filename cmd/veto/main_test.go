@@ -63,6 +63,39 @@ func TestHelpJSONStaysOffTheHumanHelpPath(t *testing.T) {
 	}
 }
 
+func TestApproveReadsStoreFromConfig(t *testing.T) {
+	srv := miniredis.RunT(t)
+	t.Setenv("VALKEY_URL", "redis://"+srv.Addr())
+	t.Setenv("VETO_APPROVAL_STORE", "")
+	t.Setenv("VETO_APPROVAL_SECRET", "test-secret")
+	t.Setenv("VETO_APPROVAL_NONCE_DIR", t.TempDir())
+	path := filepath.Join(t.TempDir(), "veto.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("approval_store: VALKEY_URL\napproval_ttl: 30m\n"), 0o600))
+	cfg, err := config.Load(path)
+	require.NoError(t, err)
+	caller := policy.NewState()
+	require.NoError(t, applyApprovalConfig(caller, cfg))
+	pending, err := caller.RequestFor("", "orders.delete", map[string]string{"id": "123"})
+	require.NoError(t, err)
+	approved, err := approveID(pending, path)
+	require.NoError(t, err)
+	other := policy.NewState()
+	require.NoError(t, applyApprovalConfig(other, cfg))
+	ok, err := other.ConsumeFor("", approved, "orders.delete", map[string]string{"id": "123"})
+	require.NoError(t, err)
+	assert.True(t, ok)
+	ok, err = caller.ConsumeFor("", approved, "orders.delete", map[string]string{"id": "123"})
+	require.NoError(t, err)
+	assert.False(t, ok)
+}
+
+func TestPinRegistersADirectTool(t *testing.T) {
+	opt := serveOptions(serveCmd{pin: []string{"orders.get"}})
+	assert.True(t, opt.DirectPins)
+	assert.Equal(t, []string{"orders.get"}, opt.Pins)
+	assert.False(t, serveOptions(serveCmd{}).DirectPins)
+}
+
 func TestApprovalStoreIsSharedAcrossStates(t *testing.T) {
 	srv := miniredis.RunT(t)
 	t.Setenv("VETO_APPROVAL_STORE", "redis://"+srv.Addr())
@@ -72,7 +105,7 @@ func TestApprovalStoreIsSharedAcrossStates(t *testing.T) {
 	require.NoError(t, applyApprovalEnv(caller))
 	pending, err := caller.RequestFor("", "orders.delete", map[string]string{"id": "123"})
 	require.NoError(t, err)
-	approved, err := approveID(pending)
+	approved, err := approveID(pending, "")
 	require.NoError(t, err)
 	other := policy.NewState()
 	require.NoError(t, applyApprovalEnv(other))
@@ -92,7 +125,7 @@ func TestApproveRecordsAnIDTheCallerCannotMint(t *testing.T) {
 	require.NoError(t, applyApprovalEnv(caller))
 	pending, err := caller.RequestFor("", "orders.delete", map[string]string{"id": "123"})
 	require.NoError(t, err)
-	approved, err := approveID(pending)
+	approved, err := approveID(pending, "")
 	require.NoError(t, err)
 	assert.NotEqual(t, pending, approved)
 	assert.True(t, strings.HasPrefix(approved, "v1."))
