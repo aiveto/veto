@@ -1,6 +1,6 @@
 <img src="docs/veto-social.png" width="1280" alt="veto makes it possible for an AI agent to call your API with context and semantics. A hundred endpoints stay 3 tools.">
 
-**Point veto at the OpenAPI you already have. The agent gets three tools. A delete waits for a person. Your APIs stay where they run.**
+**Turn existing OpenAPI services into tools AI agents can discover and call under your rules.**
 
 The model may request a call. Veto checks policy, holds a destructive call until confirmation is stored, then fetches credentials and sends HTTP. A declared relation becomes the next call. A trace records the decision.
 
