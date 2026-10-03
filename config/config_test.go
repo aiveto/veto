@@ -29,7 +29,6 @@ func TestLoadResolvesFilesAndDefaults(t *testing.T) {
 	cfg, err := config.Load("../testdata/veto.yaml")
 	require.NoError(t, err)
 	assert.Equal(t, "scripted", cfg.Model)
-	assert.Equal(t, "off", cfg.Subagents)
 	assert.Empty(t, cfg.TraceExport)
 	assert.True(t, strings.HasSuffix(cfg.SemanticsFile, "semantics.yaml"))
 	assert.True(t, strings.HasSuffix(cfg.FlowFile, "flow.yaml"))
@@ -69,12 +68,6 @@ func TestKnownProviderKeysLoad(t *testing.T) {
 			}
 			if tc.want.Policy != "" {
 				assert.Equal(t, tc.want.Policy, cfg.Policy)
-			}
-			if tc.want.Execution != "" {
-				assert.Equal(t, tc.want.Execution, cfg.Execution)
-			}
-			if tc.want.Decision != "" {
-				assert.Equal(t, tc.want.Decision, cfg.Decision)
 			}
 			if tc.want.Memory != "" {
 				assert.Equal(t, tc.want.Memory, cfg.Memory)
@@ -201,10 +194,7 @@ func TestUnusableProviderKeysFail(t *testing.T) {
 		want string
 	}{
 		{name: "memory file without a path", body: "memory: file\n", want: "memory_file"},
-		{name: "subagents", body: "subagents: on\n", want: "subagents"},
 		{name: "unknown policy", body: "policy: other\n", want: "unsupported policy provider"},
-		{name: "unknown execution", body: "execution: other\n", want: "not in this slice"},
-		{name: "unknown decision", body: "decision: other\n", want: "not in this slice"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
