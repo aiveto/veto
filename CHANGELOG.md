@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `brew install aiveto/veto/veto` installs the release binary from the `aiveto/homebrew-veto` tap.
+
 ## v0.1.1 - 2026-10-03
 
 - Over stdio, a host that supports elicitation asks the person to accept a held call. Accept runs it. Decline leaves the pending id for `veto approve`. Over `--http`, `chat_approval: true` turns the form on.

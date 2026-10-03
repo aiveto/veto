@@ -33,3 +33,16 @@ checksum:
 
 changelog:
   sort: asc
+
+brews:
+  - name: veto
+    homepage: https://github.com/aiveto/veto
+    description: Turn existing OpenAPI services into tools AI agents can discover and call under your rules.
+    license: Apache-2.0
+    repository:
+      owner: aiveto
+      name: homebrew-veto
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    test: |
+      system "#{bin}/veto", "--help"

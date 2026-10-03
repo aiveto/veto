@@ -9,10 +9,14 @@ The model may request a call. Veto checks policy, requires approval for a destru
 Connect an MCP client, or embed the Go runtime. MCP, the CLI, eval, and a generated Go client share that runtime. The client calls the catalog through search, describe, and invoke. A hundred endpoints do not become a hundred tools. Your services stay where they already run.
 
 ```bash
+brew install aiveto/veto/veto
+```
+
+```bash
 go install github.com/aiveto/veto/cmd/veto@latest
 ```
 
-Needs Go 1.27.1. Binaries are on [GitHub Releases](https://github.com/aiveto/veto/releases).
+`brew` does not need Go. `go install` needs Go 1.27.1. Binaries are on [GitHub Releases](https://github.com/aiveto/veto/releases).
 
 ## See veto in action
 
