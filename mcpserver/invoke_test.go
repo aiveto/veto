@@ -63,6 +63,29 @@ func TestInvokeDeleteRequiresApprovalBeforeHTTP(t *testing.T) {
 	assert.NotEmpty(t, doc["approval_id"])
 }
 
+func TestInvokeDeleteRunsWhenConfirmationIsOff(t *testing.T) {
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
+	require.NoError(t, err)
+	op := cat.ByID("orders.delete")
+	require.NotNil(t, op)
+	op.RequiresConfirmation = false
+	var hits atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer ts.Close()
+	sem := semantics.NewDerived(cat)
+	loop, err := agent.New(cat, sem, execute.Client{BaseURL: ts.URL})
+	require.NoError(t, err)
+	calls := loop.Runtime()
+	srv := &mcpserver.Server{Catalog: cat, Semantics: sem, Calls: &calls}
+	got, err := srv.Invoke(context.Background(), "orders.delete", map[string]string{"id": "123"}, "")
+	require.NoError(t, err)
+	assert.Equal(t, "ok", got.Status)
+	assert.Equal(t, int32(1), hits.Load())
+}
+
 func TestInvokeJSONCarriesCodeAndRetryable(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)

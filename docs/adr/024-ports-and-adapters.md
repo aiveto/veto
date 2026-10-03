@@ -1,5 +1,7 @@
 # ADR 024: Core stays business, edges hold process and I/O
 
+Superseded in part by [ADR 025](025-export-store.md): `policy.Store` is public. Memory and Files ship. `valkeystore` is the replica adapter.
+
 ## Context
 
 `policy.State` mixed the confirmation use case with file writes and HMAC. `bundle` kept a process-wide list of extracted zips. `runtime` used a package mutex so a copied Runtime could lazy-create a limiter. Core was growing edge jobs: process lifetime, disk, and a global lock.

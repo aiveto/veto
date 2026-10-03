@@ -1,7 +1,6 @@
 package execute
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/aiveto/veto/catalog"
+	"github.com/aiveto/veto/internal/jsonfield"
 )
 
 func followPages(ctx context.Context, cfg Client, op *catalog.Operation, params map[string]string, body string, pageCap int) (string, bool, error) {
@@ -85,7 +85,7 @@ func nextPage(mapping map[string]string, body string) (map[string]string, bool) 
 	}
 	out := make(map[string]string, len(mapping))
 	for name, expr := range mapping {
-		val, ok := jsonField(body, responseField(expr))
+		val, ok := jsonfield.String(body, responseField(expr))
 		if !ok || val == "" {
 			return nil, false
 		}
@@ -125,29 +125,6 @@ func pageItems(body string) ([]json.RawMessage, bool) {
 		return nil, false
 	}
 	return items, true
-}
-
-func jsonField(body, field string) (string, bool) {
-	var obj map[string]json.RawMessage
-	if json.Unmarshal([]byte(body), &obj) != nil {
-		return "", false
-	}
-	raw, ok := obj[field]
-	if !ok {
-		return "", false
-	}
-	raw = bytes.TrimSpace(raw)
-	if len(raw) == 0 || string(raw) == "null" {
-		return "", false
-	}
-	if raw[0] == '"' {
-		var s string
-		if json.Unmarshal(raw, &s) != nil {
-			return "", false
-		}
-		return s, true
-	}
-	return string(raw), true
 }
 
 func cloneParams(in map[string]string) map[string]string {

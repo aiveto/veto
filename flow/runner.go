@@ -2,13 +2,12 @@
 package flow
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
 
+	"github.com/aiveto/veto/internal/jsonfield"
 	"github.com/aiveto/veto/internal/yamlfile"
 	"gopkg.in/yaml.v3"
 )
@@ -94,7 +93,7 @@ func (r *Runner) Run(ctx context.Context, def *Definition, params map[string]str
 		if i > 0 {
 			prev := def.Steps[i-1]
 			if prev.Output != "" {
-				val, ok := jsonField(lastBody, prev.Output)
+				val, ok := jsonfield.String(lastBody, prev.Output)
 				if !ok {
 					return results, fmt.Errorf("step %s: output %s is missing", prev.Operation, prev.Output)
 				}
@@ -122,27 +121,4 @@ func cloneParams(in map[string]string) map[string]string {
 	out := make(map[string]string, len(in))
 	maps.Copy(out, in)
 	return out
-}
-
-func jsonField(body, field string) (string, bool) {
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(body), &obj); err != nil {
-		return "", false
-	}
-	raw, ok := obj[field]
-	if !ok {
-		return "", false
-	}
-	raw = bytes.TrimSpace(raw)
-	if len(raw) == 0 || string(raw) == "null" {
-		return "", false
-	}
-	if raw[0] == '"' {
-		var s string
-		if err := json.Unmarshal(raw, &s); err != nil {
-			return "", false
-		}
-		return s, true
-	}
-	return string(raw), true
 }

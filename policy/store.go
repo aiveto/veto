@@ -47,10 +47,10 @@ func (m *Memory) Put(rec Record) error {
 		m.approved = map[string]string{}
 	}
 	m.pending[rec.ID] = rec
-	if rec.ApprovedID != "" && rec.Status == statusApproved {
+	if rec.ApprovedID != "" && rec.Status == StatusApproved {
 		m.approved[rec.ApprovedID] = rec.ID
 	}
-	if rec.Status == statusConsumed {
+	if rec.Status == StatusConsumed {
 		delete(m.approved, rec.ApprovedID)
 	}
 	return nil
@@ -70,7 +70,7 @@ func (m *Memory) FindApproved(id string) (Record, bool) {
 		return Record{}, false
 	}
 	rec, ok := m.pending[pendingID]
-	if !ok || rec.ApprovedID != id || rec.Status != statusApproved {
+	if !ok || rec.ApprovedID != id || rec.Status != StatusApproved {
 		m.Remove(rec)
 		delete(m.approved, id)
 		return Record{}, false
@@ -113,7 +113,7 @@ func (f *Files) Get(id string) (Record, bool) {
 func (f *Files) FindApproved(id string) (Record, bool) {
 	if rec, ok := f.Memory.FindApproved(id); ok {
 		disk, ok := f.read(rec.ID)
-		if !ok || disk.ApprovedID != id || disk.Status != statusApproved {
+		if !ok || disk.ApprovedID != id || disk.Status != StatusApproved {
 			f.Remove(rec)
 		} else {
 			_ = f.Memory.Put(disk)
@@ -129,7 +129,7 @@ func (f *Files) FindApproved(id string) (Record, bool) {
 			continue
 		}
 		rec, ok := f.read(strings.TrimSuffix(entry.Name(), ".json"))
-		if !ok || rec.ApprovedID != id || rec.Status != statusApproved {
+		if !ok || rec.ApprovedID != id || rec.Status != StatusApproved {
 			continue
 		}
 		_ = f.Memory.Put(rec)

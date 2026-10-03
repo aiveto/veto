@@ -74,9 +74,9 @@ One fact lives in one place. No fluff docs. No second doc that repeats the first
 README: what veto is, the module path, and the three commands. No tour.
 
 ```
-veto validate --contract testdata/orders.yaml
-veto serve --contract testdata/orders.yaml --stdio
-veto eval --contract testdata/orders.yaml --case testdata/delete.yaml
+veto validate --config testdata/veto.yaml
+veto serve --config testdata/veto.yaml --stdio
+veto eval --config testdata/veto.yaml --case testdata/delete.yaml
 ```
 
 Tests use the standard `testing` package and testify. They lock behavior: graph grouping, search through synonyms, context pack omits the raw spec, delete does not hit the test server until approved, eval passes, MCP tool list is the three capabilities plus pins.

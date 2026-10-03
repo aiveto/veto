@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/aiveto/veto/catalog"
+	"github.com/aiveto/veto/internal/jsonfield"
 )
 
 const maxFollowCalls = 8
@@ -66,7 +67,7 @@ func paramsFromLink(link catalog.OpLink, body string, target *catalog.Operation)
 	if i := strings.LastIndex(field, "."); i >= 0 {
 		field = field[i+1:]
 	}
-	val, ok := jsonField(body, field)
+	val, ok := jsonfield.String(body, field)
 	if !ok {
 		return nil, false, fmt.Errorf("operation %s: response field %s is missing", link.From, field)
 	}
@@ -84,7 +85,7 @@ func evalResponseExpr(expr, body string) (string, error) {
 		if field == "" || strings.Contains(field, "/") {
 			return "", fmt.Errorf("response expression %q is not a field", expr)
 		}
-		val, ok := jsonField(body, field)
+		val, ok := jsonfield.String(body, field)
 		if !ok {
 			return "", fmt.Errorf("response field %s is missing", field)
 		}
@@ -199,29 +200,6 @@ func jsonNull(raw []byte) bool {
 }
 
 func rawScalar(raw []byte) (string, bool) {
-	raw = bytes.TrimSpace(raw)
-	if len(raw) == 0 || string(raw) == "null" {
-		return "", false
-	}
-	if raw[0] == '"' {
-		var s string
-		if err := json.Unmarshal(raw, &s); err != nil {
-			return "", false
-		}
-		return s, true
-	}
-	return string(raw), true
-}
-
-func jsonField(body, field string) (string, bool) {
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(body), &obj); err != nil {
-		return "", false
-	}
-	raw, ok := obj[field]
-	if !ok {
-		return "", false
-	}
 	raw = bytes.TrimSpace(raw)
 	if len(raw) == 0 || string(raw) == "null" {
 		return "", false

@@ -60,12 +60,12 @@ func (s *Store) Put(rec policy.Record) error {
 	if err := s.set(ctx, recPrefix+rec.ID, string(body), ttl); err != nil {
 		return err
 	}
-	if rec.ApprovedID != "" && rec.Status == "approved" {
+	if rec.ApprovedID != "" && rec.Status == policy.StatusApproved {
 		if err := s.set(ctx, approvedPrefix+rec.ApprovedID, rec.ID, ttl); err != nil {
 			return err
 		}
 	}
-	if rec.Status == "consumed" && rec.ApprovedID != "" {
+	if rec.Status == policy.StatusConsumed && rec.ApprovedID != "" {
 		_ = s.c.Do(ctx, s.c.B().Del().Key(approvedPrefix+rec.ApprovedID).Build()).Error()
 	}
 	return nil
@@ -81,7 +81,7 @@ func (s *Store) FindApproved(approvedID string) (policy.Record, bool) {
 		return policy.Record{}, false
 	}
 	rec, ok := s.load(recPrefix + id)
-	if !ok || rec.ApprovedID != approvedID || rec.Status != "approved" {
+	if !ok || rec.ApprovedID != approvedID || rec.Status != policy.StatusApproved {
 		return policy.Record{}, false
 	}
 	return rec, true
