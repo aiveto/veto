@@ -1,0 +1,60 @@
+name: publish-mcp
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version without the v prefix
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Stamp server.json
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          VERSION=${VERSION#v}
+          jq --arg v "$VERSION" \
+            '.version = $v | .packages[0].identifier = "ghcr.io/aiveto/veto:" + $v' \
+            server.json > server.tmp && mv server.tmp server.json
+      - name: Wait until the GHCR image is public
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          VERSION=${VERSION#v}
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' \
+              -H 'Accept: application/vnd.oci.image.index.v1+json' \
+              "https://ghcr.io/v2/aiveto/veto/manifests/${VERSION}")
+            if [ "$code" = 200 ]; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Set ghcr.io/aiveto/veto public: GitHub → aiveto → Packages → veto → Package settings → Change visibility → Public"
+          exit 1
+      - name: Install mcp-publisher
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+      - name: Publish to the MCP registry
+        run: |
+          ./mcp-publisher login github-oidc
+          for i in 1 2 3 4 5; do
+            ./mcp-publisher publish && exit 0
+            sleep 15
+          done
+          echo "mcp-publisher publish failed"
+          exit 1

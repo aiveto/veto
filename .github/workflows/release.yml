@@ -36,30 +36,18 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
       - name: Make the GHCR package public
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if ! gh api --method PATCH \
+          gh api --method PATCH \
             "/orgs/${GITHUB_REPOSITORY_OWNER}/packages/container/veto" \
-            -f visibility=public; then
-            echo "Set ghcr.io/aiveto/veto public in GitHub Packages, then re-run."
-            exit 1
-          fi
-      - name: Stamp server.json
-        run: |
-          VERSION=${GITHUB_REF_NAME#v}
-          jq --arg v "$VERSION" \
-            '.version = $v | .packages[0].identifier = "ghcr.io/aiveto/veto:" + $v' \
-            server.json > server.tmp && mv server.tmp server.json
-      - name: Install mcp-publisher
-        run: |
-          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
-      - name: Publish to the MCP registry
-        run: |
-          ./mcp-publisher login github-oidc
-          for i in 1 2 3 4 5; do
-            ./mcp-publisher publish && exit 0
-            sleep 15
-          done
-          echo "mcp-publisher publish failed"
-          exit 1
+            -f visibility=public
+  mcp:
+    needs: goreleaser
+    uses: ./.github/workflows/publish-mcp.yml
+    with:
+      version: ${{ github.ref_name }}
+    permissions:
+      contents: read
+      id-token: write
