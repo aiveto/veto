@@ -107,4 +107,4 @@ Approvals default to this process. Serve and `veto approve` share files on one m
 
 Your host owns the model. Your API still authenticates the caller and enforces its own authorization.
 
-[Setup guide](docs/guide.md) | [Current limits](docs/guide.md#limits)
+[Setup guide](docs/guide.md) | [Current limits](docs/guide.md#limits) | [Roadmap](docs/roadmap.md)

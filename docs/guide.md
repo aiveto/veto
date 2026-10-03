@@ -449,3 +449,5 @@ Veto is not backend auth. The API still authenticates the caller, stores the dat
 Veto is not an agent framework. The host owns the model.
 
 Veto is not an API gateway replacement. It does not sit in front of every client.
+
+What comes next is on the [roadmap](roadmap.md).
