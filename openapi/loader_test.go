@@ -55,7 +55,7 @@ func TestLoadReadsAnHTTPContract(t *testing.T) {
 	}))
 	defer missing.Close()
 	_, err = openapi.Load(context.Background(), missing.URL)
-	assert.ErrorContains(t, err, "404")
+	require.ErrorContains(t, err, "404")
 
 	huge := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.Copy(w, strings.NewReader(strings.Repeat("a", 8<<20+1)))
