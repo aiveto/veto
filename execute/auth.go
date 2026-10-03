@@ -11,7 +11,7 @@ import (
 	"github.com/aiveto/veto/credentials"
 )
 
-func obtainAuth(ctx context.Context, cfg Config, op *catalog.Operation, req *http.Request, force bool) (bool, []credentials.Credential, error) {
+func obtainAuth(ctx context.Context, cfg Client, op *catalog.Operation, req *http.Request, force bool) (bool, []credentials.Credential, error) {
 	groups := op.Requirements
 	if len(groups) == 0 && len(op.Auth) > 0 {
 		groups = [][]catalog.Auth{op.Auth}
@@ -56,7 +56,7 @@ func obtainAuth(ctx context.Context, cfg Config, op *catalog.Operation, req *htt
 	return refresh, creds, nil
 }
 
-func providerFor(cfg Config, a catalog.Auth) (credentials.Provider, error) {
+func providerFor(cfg Client, a catalog.Auth) (credentials.Provider, error) {
 	if cfg.Creds != nil {
 		if p, ok := cfg.Creds.Provider(a); ok {
 			return p, nil
@@ -97,7 +97,7 @@ func applyCredentials(req *http.Request, creds []credentials.Credential) ([]stri
 	return secrets, queryKeys, nil
 }
 
-func selectRequirement(ctx context.Context, cfg Config, groups [][]catalog.Auth) ([]catalog.Auth, error) {
+func selectRequirement(ctx context.Context, cfg Client, groups [][]catalog.Auth) ([]catalog.Auth, error) {
 	var why error
 	for _, group := range groups {
 		if err := requirementError(ctx, cfg, group); err != nil {
@@ -114,7 +114,7 @@ func selectRequirement(ctx context.Context, cfg Config, groups [][]catalog.Auth)
 	return nil, why
 }
 
-func requirementError(ctx context.Context, cfg Config, group []catalog.Auth) error {
+func requirementError(ctx context.Context, cfg Client, group []catalog.Auth) error {
 	for _, a := range group {
 		if suppliedByLogin(cfg, group, a) {
 			continue
@@ -135,7 +135,7 @@ func requirementError(ctx context.Context, cfg Config, group []catalog.Auth) err
 	return nil
 }
 
-func withUserTokens(cfg Config, group []catalog.Auth) []catalog.Auth {
+func withUserTokens(cfg Client, group []catalog.Auth) []catalog.Auth {
 	out := append([]catalog.Auth(nil), group...)
 	apiHeader := groupUserAPIKey(cfg, group)
 	for i, a := range out {
@@ -153,7 +153,7 @@ func withUserTokens(cfg Config, group []catalog.Auth) []catalog.Auth {
 	return out
 }
 
-func groupUserAPIKey(cfg Config, group []catalog.Auth) string {
+func groupUserAPIKey(cfg Client, group []catalog.Auth) string {
 	var header string
 	for _, a := range group {
 		if a.Kind != "apiKey" || a.Header == "" || ownCredential(cfg, a) {
@@ -167,7 +167,7 @@ func groupUserAPIKey(cfg Config, group []catalog.Auth) string {
 	return header
 }
 
-func suppliedByLogin(cfg Config, group []catalog.Auth, a catalog.Auth) bool {
+func suppliedByLogin(cfg Client, group []catalog.Auth, a catalog.Auth) bool {
 	if a.Kind != "apiKey" || a.Header == "" || ownCredential(cfg, a) {
 		return false
 	}
@@ -191,7 +191,7 @@ func suppliedUserAPIKey(group []catalog.Auth, a catalog.Auth) bool {
 	return false
 }
 
-func loginCanSupply(cfg Config, name, header string) bool {
+func loginCanSupply(cfg Client, name, header string) bool {
 	if cfg.Creds == nil || header == "" {
 		return false
 	}
@@ -202,7 +202,7 @@ func loginCanSupply(cfg Config, name, header string) bool {
 	return s.UserHeader == "" || s.UserHeader == header
 }
 
-func ownCredential(cfg Config, a catalog.Auth) bool {
+func ownCredential(cfg Client, a catalog.Auth) bool {
 	if cfg.Creds != nil && cfg.Creds.Has(a.Name) {
 		return true
 	}

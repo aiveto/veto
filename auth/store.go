@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/aiveto/veto/internal/atomicfile"
 )
 
 type storedToken struct {
@@ -45,34 +47,7 @@ func writeToken(dir, scheme string, tok storedToken) error {
 	if err != nil {
 		return fmt.Errorf("store token: %w", err)
 	}
-	raw = append(raw, '\n')
-	tmp, err := os.CreateTemp(dir, ".token-*")
-	if err != nil {
-		return fmt.Errorf("store token: %w", err)
-	}
-	tmpName := tmp.Name()
-	ok := false
-	defer func() {
-		if !ok {
-			_ = os.Remove(tmpName)
-		}
-	}()
-	if err := tmp.Chmod(0o600); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("store token: %w", err)
-	}
-	if _, err := tmp.Write(raw); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("store token: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("store token: %w", err)
-	}
-	if err := os.Rename(tmpName, path); err != nil {
-		return fmt.Errorf("store token: %w", err)
-	}
-	ok = true
-	if err := os.Chmod(path, 0o600); err != nil {
+	if err := atomicfile.Write(path, append(raw, '\n'), 0o600); err != nil {
 		return fmt.Errorf("store token: %w", err)
 	}
 	return nil

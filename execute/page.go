@@ -12,7 +12,7 @@ import (
 	"github.com/aiveto/veto/catalog"
 )
 
-func followPages(ctx context.Context, cfg Config, op *catalog.Operation, params map[string]string, body string, pageCap int) (string, bool, error) {
+func followPages(ctx context.Context, cfg Client, op *catalog.Operation, params map[string]string, body string, pageCap int) (string, bool, error) {
 	items, ok := pageItems(body)
 	if !ok {
 		return body, false, nil

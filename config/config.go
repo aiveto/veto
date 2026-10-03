@@ -100,51 +100,29 @@ func Load(path string) (File, error) {
 	}
 	cfg.applyDefaults()
 	dir := filepath.Dir(path)
-	if cfg.SemanticsFile != "" && !filepath.IsAbs(cfg.SemanticsFile) {
-		cfg.SemanticsFile = filepath.Join(dir, cfg.SemanticsFile)
-	}
-	if cfg.FlowFile != "" && !filepath.IsAbs(cfg.FlowFile) {
-		cfg.FlowFile = filepath.Join(dir, cfg.FlowFile)
-	}
-	if cfg.AgentFile != "" && !filepath.IsAbs(cfg.AgentFile) {
-		cfg.AgentFile = filepath.Join(dir, cfg.AgentFile)
-	}
-	if cfg.RelationsFile != "" && !filepath.IsAbs(cfg.RelationsFile) {
-		cfg.RelationsFile = filepath.Join(dir, cfg.RelationsFile)
-	}
-	if cfg.MemoryFile != "" && !filepath.IsAbs(cfg.MemoryFile) {
-		cfg.MemoryFile = filepath.Join(dir, cfg.MemoryFile)
-	}
-	if cfg.PolicyFile != "" && !filepath.IsAbs(cfg.PolicyFile) {
-		cfg.PolicyFile = filepath.Join(dir, cfg.PolicyFile)
-	}
-	if cfg.PolicyBundle != "" && !filepath.IsAbs(cfg.PolicyBundle) {
-		cfg.PolicyBundle = filepath.Join(dir, cfg.PolicyBundle)
-	}
-	if cfg.TraceFile != "" && !filepath.IsAbs(cfg.TraceFile) {
-		cfg.TraceFile = filepath.Join(dir, cfg.TraceFile)
-	}
+	cfg.SemanticsFile = resolvePath(dir, cfg.SemanticsFile)
+	cfg.FlowFile = resolvePath(dir, cfg.FlowFile)
+	cfg.AgentFile = resolvePath(dir, cfg.AgentFile)
+	cfg.RelationsFile = resolvePath(dir, cfg.RelationsFile)
+	cfg.MemoryFile = resolvePath(dir, cfg.MemoryFile)
+	cfg.PolicyFile = resolvePath(dir, cfg.PolicyFile)
+	cfg.PolicyBundle = resolvePath(dir, cfg.PolicyBundle)
+	cfg.TraceFile = resolvePath(dir, cfg.TraceFile)
+	cfg.TokenDir = resolvePath(dir, cfg.TokenDir)
+	cfg.Bundle = resolvePath(dir, cfg.Bundle)
 	if len(cfg.ApprovalWebhook.Command) > 0 {
 		bin := cfg.ApprovalWebhook.Command[0]
-		if bin != "" && !filepath.IsAbs(bin) && strings.Contains(bin, string(filepath.Separator)) {
-			cfg.ApprovalWebhook.Command[0] = filepath.Join(dir, bin)
+		if strings.Contains(bin, string(filepath.Separator)) {
+			cfg.ApprovalWebhook.Command[0] = resolvePath(dir, bin)
 		}
 	}
-	if cfg.TokenDir != "" && !filepath.IsAbs(cfg.TokenDir) {
-		cfg.TokenDir = filepath.Join(dir, cfg.TokenDir)
-	}
 	for i, name := range cfg.Contracts {
-		if name != "" && !filepath.IsAbs(name) && !remoteContract(name) {
-			cfg.Contracts[i] = filepath.Join(dir, name)
+		if !remoteContract(name) {
+			cfg.Contracts[i] = resolvePath(dir, name)
 		}
 	}
 	for i, name := range cfg.Cases {
-		if name != "" && !filepath.IsAbs(name) {
-			cfg.Cases[i] = filepath.Join(dir, name)
-		}
-	}
-	if cfg.Bundle != "" && !filepath.IsAbs(cfg.Bundle) {
-		cfg.Bundle = filepath.Join(dir, cfg.Bundle)
+		cfg.Cases[i] = resolvePath(dir, name)
 	}
 	if err := cfg.validate(); err != nil {
 		return File{}, err
@@ -548,6 +526,13 @@ func (s Source) validate(name string) error {
 
 func remoteContract(name string) bool {
 	return strings.HasPrefix(name, "https://") || strings.HasPrefix(name, "http://")
+}
+
+func resolvePath(dir, name string) string {
+	if name == "" || filepath.IsAbs(name) {
+		return name
+	}
+	return filepath.Join(dir, name)
 }
 
 // An unset key redacts.

@@ -7,6 +7,7 @@
 - The MCP server version comes from the build. A release sets it. A local build reports `dev`.
 - `read_only: true` and `expose: {tags, paths}` in `veto.yaml` serve part of a contract. A removed operation leaves search, describe, invoke, and the graph. A bundle cannot set these keys.
 - `veto.yaml` drops `decision`, `execution`, `subagents`, and `telemetry`. Each accepted one value. `replay_redact` is a bool.
+- Relative paths in `veto.yaml` share one resolver. Approvals, tokens, and the memory log share one atomic file write. `execute.InvokeResponse` takes `Client`. Policy decisions combine through `policy.Combine`.
 - A JSON request body is checked against its schema before HTTP. A mismatch returns `invalid_body` with the field path. The value is not echoed.
 
 ## v0.1.0 - 2026-10-02
