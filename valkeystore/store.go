@@ -26,7 +26,7 @@ type Store struct {
 }
 
 // Dial opens a RESP server. url is a redis://, valkey://, or host:port.
-func Dial(url string) (*Store, error) {
+func Dial(ctx context.Context, url string) (*Store, error) {
 	url = strings.TrimSpace(url)
 	if url == "" {
 		return nil, errors.New("approval store url is unset")
@@ -43,7 +43,7 @@ func Dial(url string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("approval store: %w", err)
 	}
-	if err := c.Do(context.Background(), c.B().Ping().Build()).Error(); err != nil {
+	if err := c.Do(ctx, c.B().Ping().Build()).Error(); err != nil {
 		c.Close()
 		return nil, fmt.Errorf("approval store: %w", err)
 	}

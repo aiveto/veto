@@ -34,13 +34,13 @@ func newApproveCommand() *cobra.Command {
 
 func approveID(ctx context.Context, id, configPath string) (string, error) {
 	state := policy.NewState()
-	if err := applyApprovalCLI(state, configPath); err != nil {
+	if err := applyApprovalCLI(ctx, state, configPath); err != nil {
 		return "", err
 	}
 	return state.Approve(ctx, id)
 }
 
-func applyApprovalCLI(s *policy.State, configPath string) error {
+func applyApprovalCLI(ctx context.Context, s *policy.State, configPath string) error {
 	if configPath == "" {
 		if _, err := os.Stat("veto.yaml"); err == nil {
 			configPath = "veto.yaml"
@@ -51,18 +51,18 @@ func applyApprovalCLI(s *policy.State, configPath string) error {
 		if err != nil {
 			return err
 		}
-		return applyApprovalConfig(s, cfg)
+		return applyApprovalConfig(ctx, s, cfg)
 	}
-	return applyApprovalEnv(s)
+	return applyApprovalEnv(ctx, s)
 }
 
 // applyApprovalEnv points state at the store serve and approve share.
 // VETO_APPROVAL_STORE is a Valkey or Redis URL. Otherwise the directory and signing secret come from the environment.
-func applyApprovalEnv(s *policy.State) error {
-	return applyApproval(s, 0, os.Getenv("VETO_APPROVAL_STORE"))
+func applyApprovalEnv(ctx context.Context, s *policy.State) error {
+	return applyApproval(ctx, s, 0, os.Getenv("VETO_APPROVAL_STORE"))
 }
 
-func applyApprovalConfig(s *policy.State, cfg config.File) error {
+func applyApprovalConfig(ctx context.Context, s *policy.State, cfg config.File) error {
 	url := os.Getenv("VETO_APPROVAL_STORE")
 	if url == "" && cfg.ApprovalStore != "" {
 		url = os.Getenv(cfg.ApprovalStore)
@@ -70,15 +70,15 @@ func applyApprovalConfig(s *policy.State, cfg config.File) error {
 			return fmt.Errorf("approval store %s is unset", cfg.ApprovalStore)
 		}
 	}
-	return applyApproval(s, cfg.ApprovalTTL, url)
+	return applyApproval(ctx, s, cfg.ApprovalTTL, url)
 }
 
-func applyApproval(s *policy.State, ttl time.Duration, storeURL string) error {
+func applyApproval(ctx context.Context, s *policy.State, ttl time.Duration, storeURL string) error {
 	if s == nil {
 		return errors.New("missing approval state")
 	}
 	if storeURL != "" {
-		st, err := valkeystore.Dial(storeURL)
+		st, err := valkeystore.Dial(ctx, storeURL)
 		if err != nil {
 			return err
 		}
