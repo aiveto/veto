@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.1 - 2026-10-03
+
 - Over stdio, a host that supports elicitation asks the person to accept a held call. Accept runs it. Decline leaves the pending id for `veto approve`. Over `--http`, `chat_approval: true` turns the form on.
 - A contract may be an http or https URL. `veto init` writes that URL into `veto.yaml`.
 - The MCP server version comes from the build. A release sets it. A local build reports `dev`.
