@@ -88,6 +88,7 @@ func TestRegoAllowStillConfirmsADelete(t *testing.T) {
 import rego.v1
 
 default decision := "allow"
+default reason := ""
 `)
 	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
