@@ -3,6 +3,7 @@ module github.com/aiveto/veto
 go 1.27.1
 
 require (
+	github.com/alicebob/miniredis/v2 v2.39.0
 	github.com/getkin/kin-openapi v0.149.0
 	github.com/go-openapi/jsonpointer v1.0.2
 	github.com/google/uuid v1.6.0
@@ -11,6 +12,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.12.1
+	github.com/valkey-io/valkey-go v1.0.78
 	go.opentelemetry.io/otel v1.46.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.46.0
 	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.46.0
@@ -53,6 +55,7 @@ require (
 	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect
 	github.com/yashtewari/glob-intersection v0.2.0 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
+	github.com/yuin/gopher-lua v1.1.1 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.46.0 // indirect
 	go.opentelemetry.io/otel/metric v1.46.0 // indirect

@@ -48,6 +48,7 @@ type File struct {
 	Callers         map[string]string `yaml:"callers"`
 	Confirmation    *bool             `yaml:"confirmation"`
 	ApprovalTTL     time.Duration     `yaml:"approval_ttl"`
+	ApprovalStore   string            `yaml:"approval_store"`
 	ApprovalWebhook Webhook           `yaml:"approval_webhook"`
 	ChatApproval    bool              `yaml:"chat_approval"`
 	ReadOnly        bool              `yaml:"read_only"`
@@ -205,6 +206,9 @@ func (f *File) validate() error {
 	}
 	if f.ApprovalTTL < 0 {
 		return errors.New("approval_ttl is negative")
+	}
+	if f.ApprovalStore != "" && (strings.Contains(f.ApprovalStore, "://") || strings.ContainsAny(f.ApprovalStore, "/:\\")) {
+		return errors.New("approval_store is an environment variable name")
 	}
 	for _, p := range f.Expose.Paths {
 		if !strings.HasPrefix(p, "/") {

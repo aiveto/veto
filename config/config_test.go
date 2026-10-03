@@ -151,6 +151,19 @@ func TestApprovalWebhookIsACommandOrURL(t *testing.T) {
 	assert.ErrorContains(t, err, "approval_webhook")
 }
 
+func TestApprovalStoreIsAnEnvName(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "veto.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("approval_store: VALKEY_URL\n"), 0o600))
+	cfg, err := config.Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, "VALKEY_URL", cfg.ApprovalStore)
+
+	require.NoError(t, os.WriteFile(path, []byte("approval_store: redis://127.0.0.1:6379\n"), 0o600))
+	_, err = config.Load(path)
+	assert.ErrorContains(t, err, "approval_store")
+}
+
 func TestApprovalTTLReplacesTheDefault(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "veto.yaml")

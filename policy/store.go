@@ -12,8 +12,8 @@ import (
 	"github.com/aiveto/veto/internal/atomicfile"
 )
 
-// Store persists confirmation records. Memory is the default. Files is a directory.
-// Claim is consume-once. A Redis store is SETNX on the id, not a package in this module.
+// Store persists confirmation records. Memory is the default. Files is one machine.
+// Claim is consume-once. valkeystore is the replica adapter: SET NX on the pending id.
 type Store interface {
 	Put(Record) error
 	Get(id string) (Record, bool)

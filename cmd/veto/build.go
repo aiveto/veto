@@ -335,7 +335,7 @@ func buildLoopBundle(contracts []string, configPath, bundlePath, agentPath, rela
 	if err != nil {
 		return nil, config.File{}, err
 	}
-	if err := applyApprovalEnv(loop.State, cfg.ApprovalTTL); err != nil {
+	if err := applyApprovalConfig(loop.State, cfg); err != nil {
 		return nil, config.File{}, err
 	}
 	loop.Flows = flows

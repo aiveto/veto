@@ -9,7 +9,7 @@
 - `veto.yaml` drops `decision`, `execution`, `subagents`, and `telemetry`. Each accepted one value. `replay_redact` is a bool.
 - Relative paths in `veto.yaml` share one resolver. Approvals, tokens, and the memory log share one atomic file write. `execute.InvokeResponse` takes `Client`. Policy decisions combine through `policy.Combine`.
 - Confirmation uses a store and a signer. `SetNonceDir` and `SetSigner` attach the file and HMAC adapters. The CLI holds extracted bundles. A generated client constructs the invoke gate.
-- `policy.Store` is public. Memory and Files ship. `SetStore` takes another implementation. Redis is not in this module.
+- `policy.Store` is public. Memory and Files ship. `valkeystore` is the replica store (Valkey or Redis). `approval_store` names the URL env.
 - A JSON request body is checked against its schema before HTTP. A mismatch returns `invalid_body` with the field path. The value is not echoed.
 
 ## v0.1.0 - 2026-10-02
@@ -52,7 +52,7 @@
 - `veto replay --from` prints a redacted trace file. `trace_export: otlp` sends that same attribute set.
 - `memory: file` is an optional turn log. Unset memory stays in the process.
 - `policy: opa` is optional and off unless `policy_file` or `policy_bundle` is set. Builtin permissions and confirmation still apply when Rego allows the call.
-- A confirmation result carries a pending id. `veto approve <id>` records the approval. A later invoke with that approved id runs once. The pending id does not send HTTP. With `VETO_APPROVAL_SECRET` the approved id is a signed token, and a consumed nonce is kept on this machine and is not accepted again. `VETO_APPROVAL_NONCE_DIR` overrides that directory. Unset, confirmation stays in the process.
+- A confirmation result carries a pending id. `veto approve <id>` records the approval. A later invoke with that approved id runs once. The pending id does not send HTTP. With `VETO_APPROVAL_SECRET` the approved id is a signed token. Consume-once is the store: Files, or Valkey or Redis via `approval_store`. Unset, confirmation stays in the process.
 - Path-item parameters, path and operation servers, distinct fallback operation ids, and query `style` and `explode` are honored.
 - `WrapPolicy` wraps the policy already configured. An extension or a replaced allow-all policy cannot skip confirmation or drop a permission denial.
 - `veto check --against` fails when a joined operation disappears, confirmation is dropped without an agent.yaml change, a discovery-only operation becomes callable, a required permission is removed, or an eval expectation changes.

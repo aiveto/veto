@@ -28,6 +28,7 @@ openapi/     Loader to *catalog.Catalog
 semantics/   Provider. Derived notes, file overlay
 runctx/      Context pack. Budget, select, truncate
 policy/      Allow, check, confirm. Run state
+valkeystore/ policy.Store on Valkey or Redis. Claim is SET NX
 flow/        Sequential steps. The model may pick the flow. Code runs it
 agent/       One turn. Completer, scripted default, policy, execute. The follow-up pack goes to the caller
 agent/openai OpenAI HTTP client for the openai provider key
