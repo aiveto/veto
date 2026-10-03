@@ -210,12 +210,6 @@ func defaultNonceDir(secret []byte) (string, error) {
 	return filepath.Join(root, "veto", "approval-nonces", hex.EncodeToString(sum[:16])), nil
 }
 
-// RequestConfirmation records a pending call. The id it returns does not authorize HTTP.
-// A store error means the file was not written, so there is no pending id to approve.
-func (s *State) RequestConfirmation(opID string, params map[string]string) (string, error) {
-	return s.RequestFor("", opID, params)
-}
-
 // RequestFor records a pending call for one caller. The id it returns does not authorize HTTP.
 // A store error means the file was not written, so there is no pending id to approve.
 func (s *State) RequestFor(caller, opID string, params map[string]string) (string, error) {
@@ -277,10 +271,6 @@ func InputFrom(ctx context.Context) Input {
 		in.Params = map[string]string{}
 	}
 	return in
-}
-
-func (s *State) ConsumeConfirmation(approvalID, opID string, params map[string]string) (bool, error) {
-	return s.ConsumeFor("", approvalID, opID, params)
 }
 
 // ConsumeFor accepts an approved id once, and only for the caller that received it.

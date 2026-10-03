@@ -32,7 +32,7 @@ func TestApproveUnknownIsASentinel(t *testing.T) {
 func TestConfirmationKeepsItsOwnParams(t *testing.T) {
 	s := NewState()
 	params := map[string]string{"id": "1"}
-	id, err := s.RequestConfirmation("orders.delete", params)
+	id, err := s.RequestFor("", "orders.delete", params)
 	require.NoError(t, err)
 	params["id"] = "changed"
 	got := s.Pending(id)
@@ -53,7 +53,7 @@ func TestSignedApprovalIsIssuedByApprove(t *testing.T) {
 	dir := t.TempDir()
 	now := func() time.Time { return time.Unix(1_000, 0) }
 	issued := withSigner(t, dir, []byte("secret"), now)
-	pending, err := issued.RequestConfirmation("orders.delete", params)
+	pending, err := issued.RequestFor("", "orders.delete", params)
 	require.NoError(t, err)
 	require.NotNil(t, issued.Pending(pending))
 	assert.False(t, strings.HasPrefix(pending, "v1."))
@@ -70,13 +70,13 @@ func TestSignedApprovalIsIssuedByApprove(t *testing.T) {
 	restarted := withSigner(t, dir, []byte("secret"), now)
 	assert.False(t, consumed(t, restarted, approved, map[string]string{"id": "1"}))
 	other.now = func() time.Time { return time.Unix(1_000, 0).Add(time.Minute) }
-	fresh, err := issued.RequestConfirmation("orders.delete", map[string]string{"id": "1"})
+	fresh, err := issued.RequestFor("", "orders.delete", map[string]string{"id": "1"})
 	require.NoError(t, err)
 	freshID, err := issued.Approve(fresh)
 	require.NoError(t, err)
 	assert.False(t, consumed(t, other, freshID, map[string]string{"id": "1"}))
 	wrong := withSigner(t, dir, []byte("other"), now)
-	again, err := issued.RequestConfirmation("orders.delete", map[string]string{"id": "1"})
+	again, err := issued.RequestFor("", "orders.delete", map[string]string{"id": "1"})
 	require.NoError(t, err)
 	token, err := issued.Approve(again)
 	require.NoError(t, err)
@@ -87,7 +87,7 @@ func TestApproveOnAnotherStateIsTheOnlyWayToRun(t *testing.T) {
 	dir := t.TempDir()
 	caller := NewState()
 	caller.SetNonceDir(dir)
-	pending, err := caller.RequestConfirmation("orders.delete", map[string]string{"id": "9"})
+	pending, err := caller.RequestFor("", "orders.delete", map[string]string{"id": "9"})
 	require.NoError(t, err)
 	assert.False(t, consumed(t, caller, pending, map[string]string{"id": "9"}))
 	approver := NewState()
@@ -105,7 +105,7 @@ func TestRequestConfirmationReturnsTheStoreError(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "confirmations"), []byte("not-a-dir"), 0o600))
 	s := NewState()
 	s.SetNonceDir(dir)
-	id, err := s.RequestConfirmation("orders.delete", map[string]string{"id": "1"})
+	id, err := s.RequestFor("", "orders.delete", map[string]string{"id": "1"})
 	require.Error(t, err)
 	assert.Empty(t, id)
 	assert.Nil(t, s.Pending(id))
@@ -156,7 +156,7 @@ func TestUnsignedApprovalExpiresAndIsSwept(t *testing.T) {
 	s.SetNonceDir(dir)
 	s.now = func() time.Time { return when }
 	params := map[string]string{"id": "1"}
-	pending, err := s.RequestConfirmation("orders.delete", params)
+	pending, err := s.RequestFor("", "orders.delete", params)
 	require.NoError(t, err)
 	raw, err := os.ReadFile(filepath.Join(dir, "confirmations", pending+".json"))
 	require.NoError(t, err)
@@ -177,7 +177,7 @@ func TestUnsignedApprovalIsOneUseAcrossStates(t *testing.T) {
 		dir := t.TempDir()
 		issued := NewState()
 		issued.SetNonceDir(dir)
-		pending, err := issued.RequestConfirmation("orders.delete", params)
+		pending, err := issued.RequestFor("", "orders.delete", params)
 		require.NoError(t, err)
 		approved, err := issued.Approve(pending)
 		require.NoError(t, err)
@@ -215,7 +215,7 @@ func TestUnsignedApprovalIsOneUseAcrossProcesses(t *testing.T) {
 	dir := t.TempDir()
 	issued := NewState()
 	issued.SetNonceDir(dir)
-	pending, err := issued.RequestConfirmation("orders.delete", map[string]string{"id": "1"})
+	pending, err := issued.RequestFor("", "orders.delete", map[string]string{"id": "1"})
 	require.NoError(t, err)
 	approved, err := issued.Approve(pending)
 	require.NoError(t, err)

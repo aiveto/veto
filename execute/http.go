@@ -526,10 +526,6 @@ func paramNames(params map[string]string) string {
 	return strings.Join(keys, ",")
 }
 
-func ReadBody(resp *http.Response) (string, error) {
-	return readBody(resp, 0)
-}
-
 func readBody(resp *http.Response, limit int64) (string, error) {
 	if resp == nil || resp.Body == nil {
 		return "", nil

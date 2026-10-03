@@ -24,22 +24,18 @@ type File struct {
 	Memory          string            `yaml:"memory"`
 	Semantics       string            `yaml:"semantics"`
 	SemanticsFile   string            `yaml:"semantics_file"`
-	Decision        string            `yaml:"decision"`
 	Policy          string            `yaml:"policy"`
 	PolicyFile      string            `yaml:"policy_file"`
 	PolicyBundle    string            `yaml:"policy_bundle"`
 	Environment     string            `yaml:"environment"`
-	Telemetry       string            `yaml:"telemetry"`
 	TraceExport     string            `yaml:"trace_export"`
-	Execution       string            `yaml:"execution"`
-	Subagents       string            `yaml:"subagents"`
 	FlowFile        string            `yaml:"flow_file"`
 	AgentFile       string            `yaml:"agent_file"`
 	RelationsFile   string            `yaml:"relations_file"`
 	Contracts       []string          `yaml:"contracts"`
 	Bundle          string            `yaml:"bundle"`
 	Cases           []string          `yaml:"cases"`
-	ReplayRedact    string            `yaml:"replay_redact"`
+	ReplayRedact    *bool             `yaml:"replay_redact"`
 	TraceFile       string            `yaml:"trace_file"`
 	Timeout         time.Duration     `yaml:"timeout"`
 	Auth            Sources           `yaml:"auth"`
@@ -68,16 +64,11 @@ type Expose struct {
 
 func Defaults() File {
 	return File{
-		Model:       "scripted",
-		Memory:      "local",
-		Semantics:   "derived",
-		Decision:    "default",
-		Policy:      "builtin",
-		Telemetry:   "otel",
-		Execution:   "in-process",
-		Subagents:   "off",
-		TraceExport: "",
-		Timeout:     30 * time.Second,
+		Model:     "scripted",
+		Memory:    "local",
+		Semantics: "derived",
+		Policy:    "builtin",
+		Timeout:   30 * time.Second,
 	}
 }
 
@@ -180,20 +171,8 @@ func (f *File) applyDefaults() {
 	if f.Semantics == "" {
 		f.Semantics = d.Semantics
 	}
-	if f.Decision == "" {
-		f.Decision = d.Decision
-	}
 	if f.Policy == "" {
 		f.Policy = d.Policy
-	}
-	if f.Telemetry == "" {
-		f.Telemetry = d.Telemetry
-	}
-	if f.Execution == "" {
-		f.Execution = d.Execution
-	}
-	if f.Subagents == "" {
-		f.Subagents = d.Subagents
 	}
 	if f.Timeout <= 0 {
 		f.Timeout = d.Timeout
@@ -216,9 +195,6 @@ func (f *File) validate() error {
 	if f.Semantics == "file" && f.SemanticsFile == "" {
 		return errors.New("semantics file provider needs semantics_file")
 	}
-	if f.Decision != "default" {
-		return fmt.Errorf("decision provider %q is not in this slice", f.Decision)
-	}
 	switch f.Policy {
 	case "builtin", "opa":
 	default:
@@ -227,20 +203,8 @@ func (f *File) validate() error {
 	if f.Policy == "opa" && f.PolicyFile != "" && f.PolicyBundle != "" {
 		return errors.New("policy opa takes policy_file or policy_bundle")
 	}
-	if f.Telemetry != "otel" {
-		return fmt.Errorf("telemetry provider %q is not in this slice", f.Telemetry)
-	}
 	if f.TraceExport != "" && f.TraceExport != "stdout" && f.TraceExport != "otlp" {
 		return fmt.Errorf("trace export %q is not in this slice", f.TraceExport)
-	}
-	if f.Execution != "in-process" {
-		return fmt.Errorf("execution provider %q is not in this slice", f.Execution)
-	}
-	if f.Subagents != "off" {
-		return errors.New("subagents are not in this slice")
-	}
-	if f.ReplayRedact != "" && f.ReplayRedact != "true" && f.ReplayRedact != "false" {
-		return fmt.Errorf("replay_redact %q is not true or false", f.ReplayRedact)
 	}
 	if f.Page != "" && f.Page != "follow" {
 		return fmt.Errorf("page %q is not follow", f.Page)
@@ -588,5 +552,5 @@ func remoteContract(name string) bool {
 
 // An unset key redacts.
 func (f *File) Redact() bool {
-	return f.ReplayRedact != "false"
+	return f.ReplayRedact == nil || *f.ReplayRedact
 }

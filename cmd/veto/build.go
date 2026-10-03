@@ -361,12 +361,6 @@ func applyProviders(loop *agent.Loop, cfg config.File) error {
 		}
 		loop.Notify = hook
 	}
-	if cfg.Execution != "in-process" {
-		return fmt.Errorf("execution provider %q is not in this slice", cfg.Execution)
-	}
-	if cfg.Decision != "default" {
-		return fmt.Errorf("decision provider %q is not in this slice", cfg.Decision)
-	}
 	switch cfg.Model {
 	case "scripted":
 		loop.Model = agent.NewScripted()
