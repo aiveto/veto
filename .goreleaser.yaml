@@ -37,7 +37,7 @@ changelog:
 brews:
   - name: veto
     homepage: https://github.com/aiveto/veto
-    description: Turn existing OpenAPI services into tools AI agents can discover and call under your rules.
+    description: Turn OpenAPI services into tools an agent can call under your rules.
     license: Apache-2.0
     repository:
       owner: aiveto
