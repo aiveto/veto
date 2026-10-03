@@ -1,3 +1,4 @@
+// Package flow runs a sequence of steps the model may name.
 package flow
 
 import (

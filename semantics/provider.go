@@ -1,3 +1,4 @@
+// Package semantics derives a note for an operation and applies a file overlay.
 package semantics
 
 import (

@@ -1,3 +1,4 @@
+// Package agentmeta applies an agent.yaml overlay to a catalog.
 package agentmeta
 
 import (

@@ -1,3 +1,4 @@
+// Package generate writes a Go client whose calls go through runtime.Invoke.
 package generate
 
 import (

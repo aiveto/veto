@@ -1,3 +1,4 @@
+// Package openai calls the OpenAI HTTP API for the openai provider key.
 package openai
 
 import (

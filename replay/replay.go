@@ -1,3 +1,4 @@
+// Package replay reads OpenTelemetry spans. User text stays out unless asked.
 package replay
 
 import (

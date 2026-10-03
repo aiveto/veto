@@ -1,3 +1,4 @@
+// Package bundle loads contracts, relations, and check cases. The deployment stays outside.
 package bundle
 
 import (

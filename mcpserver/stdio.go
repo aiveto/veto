@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -15,6 +16,9 @@ import (
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+// Version is the MCP server build. A release sets it with -X.
+var Version = "dev"
 
 type (
 	Options struct {
@@ -50,7 +54,7 @@ func RunStdio(ctx context.Context, srv *Server, opt Options) error {
 }
 
 func newMCP(srv *Server, opt Options) *mcp.Server {
-	server := mcp.NewServer(&mcp.Implementation{Name: "veto", Version: "0.1.0"}, nil)
+	server := mcp.NewServer(&mcp.Implementation{Name: "veto", Version: Version}, nil)
 	register(server, srv, opt)
 	return server
 }
@@ -89,7 +93,7 @@ func register(server *mcp.Server, srv *Server, opt Options) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "capabilities_invoke",
-		Description: "Invoke an operation through policy and HTTP. params values are strings. params.body may be a JSON object and is sent as the request body. confirmation_required includes a pending id. That id does not run the call. veto approve records the approval and prints the id a later invoke accepts once. preview stops before a token URL and before upstream HTTP. fields names the JSON fields a successful call returns. With no fields, the body is unchanged.",
+		Description: "Invoke an operation through policy and HTTP. params values are strings. params.body may be a JSON object and is sent as the request body. confirmation_required includes a pending id. That id does not run the call. A host that supports elicitation asks the person; accept runs the call, and decline leaves the pending id. veto approve records the approval and prints the id a later invoke accepts once. preview stops before a token URL and before upstream HTTP. fields names the JSON fields a successful call returns. With no fields, the body is unchanged.",
 		Annotations: invokeAnnotations(true),
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args invokeArgs) (*mcp.CallToolResult, any, error) {
 		return invokeCall(ctx, req, srv, args)
@@ -141,6 +145,22 @@ func invokeCall(ctx context.Context, req *mcp.CallToolRequest, srv *Server, args
 		})
 		return previewToolResult(out, err)
 	}
+	answered := false
+	if reply, ok := elicitationReply(req); ok {
+		answered = true
+		if reply == nil || reply.Action != "accept" {
+			return invokeToolResult(InvokeResult{
+				Status:      "confirmation_required",
+				ApprovalID:  requestState(req),
+				OperationID: args.OperationID,
+			}, nil)
+		}
+		approved, err := acceptElicitation(srv, req, args.OperationID)
+		if err != nil {
+			return toolError(err)
+		}
+		args.ApprovalID = approved
+	}
 	ctx = auth.WithUserToken(ctx, args.Token)
 	ctx = auth.WithCaller(ctx, caller)
 	res, err := srv.Call(ctx, runtime.Request{
@@ -152,7 +172,63 @@ func invokeCall(ctx context.Context, req *mcp.CallToolRequest, srv *Server, args
 		Offset:    args.Offset,
 		Limit:     args.Limit,
 	})
+	if !answered && res.Status == "confirmation_required" && clientCanElicit(req) {
+		return elicitConfirmation(res), nil, nil
+	}
 	return invokeToolResult(res, err)
+}
+
+func clientCanElicit(req *mcp.CallToolRequest) bool {
+	if req == nil || req.Session == nil {
+		return false
+	}
+	params := req.Session.InitializeParams()
+	return params != nil && params.Capabilities != nil && params.Capabilities.Elicitation != nil
+}
+
+func elicitationReply(req *mcp.CallToolRequest) (*mcp.ElicitResult, bool) {
+	if req == nil || req.Params == nil {
+		return nil, false
+	}
+	raw, ok := req.Params.InputResponses["confirm"]
+	if !ok {
+		return nil, false
+	}
+	reply, ok := raw.(*mcp.ElicitResult)
+	if !ok {
+		return nil, true
+	}
+	return reply, true
+}
+
+func requestState(req *mcp.CallToolRequest) string {
+	if req == nil || req.Params == nil {
+		return ""
+	}
+	return req.Params.RequestState
+}
+
+func acceptElicitation(srv *Server, req *mcp.CallToolRequest, operationID string) (string, error) {
+	if srv == nil || srv.Calls == nil || srv.Calls.State == nil {
+		return "", errors.New("confirmation state is not set")
+	}
+	id := requestState(req)
+	pending := srv.Calls.State.Pending(id)
+	if pending == nil || pending.OperationID != operationID {
+		return "", fmt.Errorf("approval does not match %s", operationID)
+	}
+	return srv.Calls.State.Approve(id)
+}
+
+func elicitConfirmation(res InvokeResult) *mcp.CallToolResult {
+	return &mcp.CallToolResult{
+		InputRequests: mcp.InputRequestMap{
+			"confirm": &mcp.ElicitParams{
+				Message: fmt.Sprintf("Approve %s? The call does not run until you accept.", res.OperationID),
+			},
+		},
+		RequestState: res.ApprovalID,
+	}
 }
 
 func callerID(ctx context.Context, req *mcp.CallToolRequest) string {

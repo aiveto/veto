@@ -1,3 +1,4 @@
+// Package mcpserver serves search, describe, and invoke over one catalog.
 package mcpserver
 
 import (

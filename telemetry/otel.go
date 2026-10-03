@@ -1,3 +1,4 @@
+// Package telemetry exports OpenTelemetry spans. Stdout export is optional.
 package telemetry
 
 import (

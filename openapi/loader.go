@@ -1,19 +1,25 @@
+// Package openapi loads an OpenAPI document into a catalog.
 package openapi
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/aiveto/veto/catalog"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/go-openapi/jsonpointer"
 	"gopkg.in/yaml.v3"
 )
+
+const maxContractBytes = 8 << 20
 
 var pathNoun = regexp.MustCompile(`^/([a-zA-Z0-9_-]+)`)
 
@@ -24,12 +30,51 @@ type rawLink struct {
 	params       map[string]string
 }
 
-// Load reads an OpenAPI 3.0 or 3.1 document. Callbacks and webhooks are rejected.
-// A document with either is not a complete catalog, so load fails instead of dropping them.
-func Load(ctx context.Context, path string) (*catalog.Catalog, error) {
+func readContract(ctx context.Context, path string) ([]byte, error) {
+	if remoteContract(path) {
+		return fetchContract(ctx, path)
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read contract: %w", err)
+	}
+	return data, nil
+}
+
+func remoteContract(path string) bool {
+	return strings.HasPrefix(path, "https://") || strings.HasPrefix(path, "http://")
+}
+
+func fetchContract(ctx context.Context, rawURL string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("read contract: %w", err)
+	}
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("read contract: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("read contract: %s", resp.Status)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxContractBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("read contract: %w", err)
+	}
+	if len(data) > maxContractBytes {
+		return nil, fmt.Errorf("read contract: larger than %d bytes", maxContractBytes)
+	}
+	return data, nil
+}
+
+// Load reads an OpenAPI 3.0 or 3.1 document from a file or an http(s) URL. Callbacks and webhooks are rejected.
+// A document with either is not a complete catalog, so load fails instead of dropping them.
+func Load(ctx context.Context, path string) (*catalog.Catalog, error) {
+	data, err := readContract(ctx, path)
+	if err != nil {
+		return nil, err
 	}
 	if err := rejectDocument(data); err != nil {
 		return nil, err

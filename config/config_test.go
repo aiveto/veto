@@ -12,6 +12,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestLoadLeavesAContractURL(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "veto.yaml")
+	body := "contracts:\n  - https://example.com/openapi.yaml\n  - orders.yaml\n"
+	require.NoError(t, os.WriteFile(path, []byte(body), 0o600))
+	cfg, err := config.Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"https://example.com/openapi.yaml",
+		filepath.Join(dir, "orders.yaml"),
+	}, cfg.Contracts)
+}
+
 func TestLoadResolvesFilesAndDefaults(t *testing.T) {
 	cfg, err := config.Load("../testdata/veto.yaml")
 	require.NoError(t, err)

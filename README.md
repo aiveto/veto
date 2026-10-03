@@ -35,9 +35,9 @@ The trace left the secret out.
 ## A delete waits
 
 ```text
-Agent requests the call        -> pending ID; no upstream HTTP
-Person runs veto approve <id>  -> approved ID
-Agent submits the approved ID  -> one matching invocation
+Agent requests the call                          -> pending ID; no upstream HTTP
+Person accepts the form in the chat              -> one matching invocation
+Host without that form: veto approve <id>        -> approved ID, then the agent submits it once
 ```
 
 The approval is bound to the caller, the operation, and the parameters. Permission and confirmation run before credentials are fetched and before HTTP. An [OPA](docs/guide.md#policy) allow does not skip those checks. A webhook or a command can notify your approval system. The server and `veto approve` share approval storage and signing configuration. `confirmation: false` in [`veto.yaml`](docs/guide.md#one-vetoyaml) turns that gate off for the deployment. Unset leaves it on.
@@ -63,7 +63,7 @@ The tool names are `capabilities_search`, `capabilities_describe`, and `capabili
 
 ## Connect your services
 
-[`veto init`](docs/guide.md#one-vetoyaml) writes `veto.yaml` for the OpenAPI files you name, and a `relations.yaml` stub if you do not have one. If `veto.yaml` is already there, `init` stops.
+[`veto init`](docs/guide.md#one-vetoyaml) writes `veto.yaml` for the OpenAPI files or URLs you name, and a `relations.yaml` stub if you do not have one. If `veto.yaml` is already there, `init` stops.
 
 ```bash
 veto init orders.yaml customers.yaml

@@ -1,3 +1,4 @@
+// Package memory stores turns for one run.
 package memory
 
 import (
