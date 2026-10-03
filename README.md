@@ -1,4 +1,4 @@
-<img src="docs/veto-social.png" width="1280" alt="veto makes it possible for an AI agent to call your API with context and semantics. 500 endpoints turn into 3 tools.">
+<img src="docs/veto-social.png" width="1280" alt="veto makes it possible for an AI agent to call your API with context and semantics. A hundred endpoints stay 3 tools.">
 
 **Turn existing OpenAPI services into tools AI agents can discover and call under your rules.**
 
