@@ -200,6 +200,19 @@ func TestResponseFieldsLoad(t *testing.T) {
 	assert.ErrorContains(t, err, "response_limit")
 }
 
+func TestInvokeLimitLoad(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "veto.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("invoke_limit: 8\n"), 0o600))
+	cfg, err := config.Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, 8, cfg.InvokeLimit)
+
+	path = filepath.Join(t.TempDir(), "veto.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("invoke_limit: -1\n"), 0o600))
+	_, err = config.Load(path)
+	assert.ErrorContains(t, err, "invoke_limit")
+}
+
 func TestUnusableProviderKeysFail(t *testing.T) {
 	cases := []struct {
 		name string

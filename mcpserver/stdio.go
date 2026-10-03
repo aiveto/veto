@@ -158,7 +158,7 @@ func invokeCall(ctx context.Context, req *mcp.CallToolRequest, srv *Server, args
 				OperationID: args.OperationID,
 			}, nil)
 		}
-		approved, err := acceptElicitation(srv, req, args.OperationID)
+		approved, err := acceptElicitation(ctx, srv, req, args.OperationID)
 		if err != nil {
 			return toolError(err)
 		}
@@ -211,16 +211,16 @@ func requestState(req *mcp.CallToolRequest) string {
 	return req.Params.RequestState
 }
 
-func acceptElicitation(srv *Server, req *mcp.CallToolRequest, operationID string) (string, error) {
+func acceptElicitation(ctx context.Context, srv *Server, req *mcp.CallToolRequest, operationID string) (string, error) {
 	if srv == nil || srv.Calls == nil || srv.Calls.State == nil {
 		return "", errors.New("confirmation state is not set")
 	}
 	id := requestState(req)
-	pending := srv.Calls.State.Pending(id)
+	pending := srv.Calls.State.Pending(ctx, id)
 	if pending == nil || pending.OperationID != operationID {
 		return "", fmt.Errorf("approval does not match %s", operationID)
 	}
-	return srv.Calls.State.Approve(id)
+	return srv.Calls.State.Approve(ctx, id)
 }
 
 func elicitConfirmation(res InvokeResult) *mcp.CallToolResult {

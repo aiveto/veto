@@ -131,7 +131,7 @@ func TestMethodOrCallerDenySkipsHTTP(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, int32(0), hits.Load())
 
-	approved, err := rt.State.Approve(pending.ApprovalID)
+	approved, err := rt.State.Approve(t.Context(), pending.ApprovalID)
 	require.NoError(t, err)
 	again.Approval = approved
 	sent, err := rt.Invoke(context.Background(), again)

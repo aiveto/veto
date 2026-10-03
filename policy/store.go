@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,11 +16,11 @@ import (
 // Store persists confirmation records. Memory is the default. Files is one machine.
 // Claim is consume-once. valkeystore is the replica adapter: SET NX on the pending id.
 type Store interface {
-	Put(Record) error
-	Get(id string) (Record, bool)
-	FindApproved(approvedID string) (Record, bool)
-	Claim(id string) (bool, error)
-	Remove(Record)
+	Put(ctx context.Context, rec Record) error
+	Get(ctx context.Context, id string) (Record, bool)
+	FindApproved(ctx context.Context, approvedID string) (Record, bool)
+	Claim(ctx context.Context, id string) (bool, error)
+	Remove(ctx context.Context, rec Record)
 }
 
 // Record is one confirmation.
@@ -39,7 +40,10 @@ type Memory struct {
 	approved map[string]string
 }
 
-func (m *Memory) Put(rec Record) error {
+func (m *Memory) Put(ctx context.Context, rec Record) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if m.pending == nil {
 		m.pending = map[string]Record{}
 	}
@@ -56,13 +60,16 @@ func (m *Memory) Put(rec Record) error {
 	return nil
 }
 
-func (m *Memory) Get(id string) (Record, bool) {
+func (m *Memory) Get(ctx context.Context, id string) (Record, bool) {
+	if ctx.Err() != nil {
+		return Record{}, false
+	}
 	rec, ok := m.pending[id]
 	return rec, ok
 }
 
-func (m *Memory) FindApproved(id string) (Record, bool) {
-	if id == "" {
+func (m *Memory) FindApproved(ctx context.Context, id string) (Record, bool) {
+	if ctx.Err() != nil || id == "" {
 		return Record{}, false
 	}
 	pendingID, ok := m.approved[id]
@@ -71,18 +78,24 @@ func (m *Memory) FindApproved(id string) (Record, bool) {
 	}
 	rec, ok := m.pending[pendingID]
 	if !ok || rec.ApprovedID != id || rec.Status != StatusApproved {
-		m.Remove(rec)
+		m.Remove(ctx, rec)
 		delete(m.approved, id)
 		return Record{}, false
 	}
 	return rec, true
 }
 
-func (m *Memory) Claim(string) (bool, error) {
+func (m *Memory) Claim(ctx context.Context, _ string) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
 	return true, nil
 }
 
-func (m *Memory) Remove(rec Record) {
+func (m *Memory) Remove(ctx context.Context, rec Record) {
+	if ctx.Err() != nil {
+		return
+	}
 	delete(m.pending, rec.ID)
 	if rec.ApprovedID != "" {
 		delete(m.approved, rec.ApprovedID)
@@ -95,28 +108,37 @@ type Files struct {
 	Dir string
 }
 
-func (f *Files) Put(rec Record) error {
+func (f *Files) Put(ctx context.Context, rec Record) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := f.write(rec); err != nil {
 		return err
 	}
-	return f.Memory.Put(rec)
+	return f.Memory.Put(ctx, rec)
 }
 
-func (f *Files) Get(id string) (Record, bool) {
+func (f *Files) Get(ctx context.Context, id string) (Record, bool) {
+	if ctx.Err() != nil {
+		return Record{}, false
+	}
 	if rec, ok := f.read(id); ok {
-		_ = f.Memory.Put(rec)
+		_ = f.Memory.Put(ctx, rec)
 		return rec, true
 	}
-	return f.Memory.Get(id)
+	return f.Memory.Get(ctx, id)
 }
 
-func (f *Files) FindApproved(id string) (Record, bool) {
-	if rec, ok := f.Memory.FindApproved(id); ok {
+func (f *Files) FindApproved(ctx context.Context, id string) (Record, bool) {
+	if ctx.Err() != nil {
+		return Record{}, false
+	}
+	if rec, ok := f.Memory.FindApproved(ctx, id); ok {
 		disk, ok := f.read(rec.ID)
 		if !ok || disk.ApprovedID != id || disk.Status != StatusApproved {
-			f.Remove(rec)
+			f.Remove(ctx, rec)
 		} else {
-			_ = f.Memory.Put(disk)
+			_ = f.Memory.Put(ctx, disk)
 			return disk, true
 		}
 	}
@@ -132,13 +154,16 @@ func (f *Files) FindApproved(id string) (Record, bool) {
 		if !ok || rec.ApprovedID != id || rec.Status != StatusApproved {
 			continue
 		}
-		_ = f.Memory.Put(rec)
+		_ = f.Memory.Put(ctx, rec)
 		return rec, true
 	}
 	return Record{}, false
 }
 
-func (f *Files) Claim(id string) (bool, error) {
+func (f *Files) Claim(ctx context.Context, id string) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
 	id = filepath.Base(id)
 	if !plainID(id) {
 		return false, errors.New("approval id")
@@ -160,13 +185,16 @@ func (f *Files) Claim(id string) (bool, error) {
 	return true, nil
 }
 
-func (f *Files) Remove(rec Record) {
+func (f *Files) Remove(ctx context.Context, rec Record) {
+	if ctx.Err() != nil {
+		return
+	}
 	if id := filepath.Base(rec.ID); plainID(id) {
 		dir := filepath.Join(f.Dir, "confirmations")
 		_ = os.Remove(filepath.Join(dir, id+".json"))
 		_ = os.Remove(filepath.Join(dir, id+".claimed"))
 	}
-	f.Memory.Remove(rec)
+	f.Memory.Remove(ctx, rec)
 }
 
 func (f *Files) write(rec Record) error {

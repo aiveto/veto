@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -27,7 +28,7 @@ func TestSetStoreUsesTheGivenStore(t *testing.T) {
 	s := NewState()
 	got := &captureStore{}
 	s.SetStore(got)
-	_, err := s.RequestFor("", "orders.delete", map[string]string{"id": "1"})
+	_, err := s.RequestFor(t.Context(), "", "orders.delete", map[string]string{"id": "1"})
 	require.NoError(t, err)
 	assert.Equal(t, 1, got.puts)
 }
@@ -37,7 +38,7 @@ func TestSetSignerKeepsANonMemoryStore(t *testing.T) {
 	got := &captureStore{}
 	s.SetStore(got)
 	require.NoError(t, s.SetSigner([]byte("secret"), time.Minute))
-	_, err := s.RequestFor("", "orders.delete", map[string]string{"id": "1"})
+	_, err := s.RequestFor(t.Context(), "", "orders.delete", map[string]string{"id": "1"})
 	require.NoError(t, err)
 	assert.Equal(t, 1, got.puts)
 }
@@ -47,31 +48,31 @@ type captureStore struct {
 	puts int
 }
 
-func (c *captureStore) Put(rec Record) error {
+func (c *captureStore) Put(ctx context.Context, rec Record) error {
 	c.puts++
-	return c.Memory.Put(rec)
+	return c.Memory.Put(ctx, rec)
 }
 
 func TestApproveUnknownIsASentinel(t *testing.T) {
 	s := NewState()
-	_, err := s.Approve("missing")
+	_, err := s.Approve(t.Context(), "missing")
 	require.ErrorIs(t, err, ErrUnknownApproval)
 }
 
 func TestConfirmationKeepsItsOwnParams(t *testing.T) {
 	s := NewState()
 	params := map[string]string{"id": "1"}
-	id, err := s.RequestFor("", "orders.delete", params)
+	id, err := s.RequestFor(t.Context(), "", "orders.delete", params)
 	require.NoError(t, err)
 	params["id"] = "changed"
-	got := s.Pending(id)
+	got := s.Pending(t.Context(), id)
 	require.NotNil(t, got)
 	assert.Equal(t, "1", got.Params["id"])
 	assert.False(t, consumed(t, s, id, map[string]string{"id": "1"}))
-	approved, err := s.Approve(id)
+	approved, err := s.Approve(t.Context(), id)
 	require.NoError(t, err)
 	assert.NotEqual(t, id, approved)
-	assert.Nil(t, s.Pending(approved))
+	assert.Nil(t, s.Pending(t.Context(), approved))
 	assert.False(t, consumed(t, s, id, map[string]string{"id": "1"}))
 	assert.True(t, consumed(t, s, approved, map[string]string{"id": "1"}))
 	assert.False(t, consumed(t, s, approved, map[string]string{"id": "1"}))
@@ -82,14 +83,14 @@ func TestSignedApprovalIsIssuedByApprove(t *testing.T) {
 	dir := t.TempDir()
 	now := func() time.Time { return time.Unix(1_000, 0) }
 	issued := withSigner(t, dir, []byte("secret"), now)
-	pending, err := issued.RequestFor("", "orders.delete", params)
+	pending, err := issued.RequestFor(t.Context(), "", "orders.delete", params)
 	require.NoError(t, err)
-	require.NotNil(t, issued.Pending(pending))
+	require.NotNil(t, issued.Pending(t.Context(), pending))
 	assert.False(t, strings.HasPrefix(pending, "v1."))
-	approved, err := issued.Approve(pending)
+	approved, err := issued.Approve(t.Context(), pending)
 	require.NoError(t, err)
 	assert.True(t, strings.HasPrefix(approved, "v1."))
-	assert.Nil(t, issued.Pending(approved))
+	assert.Nil(t, issued.Pending(t.Context(), approved))
 	assert.False(t, consumed(t, issued, pending, map[string]string{"id": "1"}))
 	params["id"] = "2"
 	other := withSigner(t, dir, []byte("secret"), now)
@@ -99,15 +100,15 @@ func TestSignedApprovalIsIssuedByApprove(t *testing.T) {
 	restarted := withSigner(t, dir, []byte("secret"), now)
 	assert.False(t, consumed(t, restarted, approved, map[string]string{"id": "1"}))
 	other.now = func() time.Time { return time.Unix(1_000, 0).Add(time.Minute) }
-	fresh, err := issued.RequestFor("", "orders.delete", map[string]string{"id": "1"})
+	fresh, err := issued.RequestFor(t.Context(), "", "orders.delete", map[string]string{"id": "1"})
 	require.NoError(t, err)
-	freshID, err := issued.Approve(fresh)
+	freshID, err := issued.Approve(t.Context(), fresh)
 	require.NoError(t, err)
 	assert.False(t, consumed(t, other, freshID, map[string]string{"id": "1"}))
 	wrong := withSigner(t, dir, []byte("other"), now)
-	again, err := issued.RequestFor("", "orders.delete", map[string]string{"id": "1"})
+	again, err := issued.RequestFor(t.Context(), "", "orders.delete", map[string]string{"id": "1"})
 	require.NoError(t, err)
-	token, err := issued.Approve(again)
+	token, err := issued.Approve(t.Context(), again)
 	require.NoError(t, err)
 	assert.False(t, consumed(t, wrong, token, map[string]string{"id": "1"}))
 }
@@ -116,12 +117,12 @@ func TestApproveOnAnotherStateIsTheOnlyWayToRun(t *testing.T) {
 	dir := t.TempDir()
 	caller := NewState()
 	caller.SetNonceDir(dir)
-	pending, err := caller.RequestFor("", "orders.delete", map[string]string{"id": "9"})
+	pending, err := caller.RequestFor(t.Context(), "", "orders.delete", map[string]string{"id": "9"})
 	require.NoError(t, err)
 	assert.False(t, consumed(t, caller, pending, map[string]string{"id": "9"}))
 	approver := NewState()
 	approver.SetNonceDir(dir)
-	approved, err := approver.Approve(pending)
+	approved, err := approver.Approve(t.Context(), pending)
 	require.NoError(t, err)
 	assert.NotEqual(t, pending, approved)
 	assert.False(t, consumed(t, caller, pending, map[string]string{"id": "9"}))
@@ -134,11 +135,11 @@ func TestRequestConfirmationReturnsTheStoreError(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "confirmations"), []byte("not-a-dir"), 0o600))
 	s := NewState()
 	s.SetNonceDir(dir)
-	id, err := s.RequestFor("", "orders.delete", map[string]string{"id": "1"})
+	id, err := s.RequestFor(t.Context(), "", "orders.delete", map[string]string{"id": "1"})
 	require.Error(t, err)
 	assert.Empty(t, id)
-	assert.Nil(t, s.Pending(id))
-	_, approveErr := s.Approve(id)
+	assert.Nil(t, s.Pending(t.Context(), id))
+	_, approveErr := s.Approve(t.Context(), id)
 	require.Error(t, approveErr)
 }
 
@@ -147,14 +148,14 @@ func TestCallersDoNotShareApprovalIDsOrTokens(t *testing.T) {
 	now := func() time.Time { return time.Unix(1_000, 0) }
 	s := withSigner(t, dir, []byte("secret"), now)
 	params := map[string]string{"id": "1"}
-	ada, err := s.RequestFor("ada", "orders.delete", params)
+	ada, err := s.RequestFor(t.Context(), "ada", "orders.delete", params)
 	require.NoError(t, err)
-	grace, err := s.RequestFor("grace", "orders.delete", params)
+	grace, err := s.RequestFor(t.Context(), "grace", "orders.delete", params)
 	require.NoError(t, err)
 	assert.NotEqual(t, ada, grace)
-	adaToken, err := s.Approve(ada)
+	adaToken, err := s.Approve(t.Context(), ada)
 	require.NoError(t, err)
-	graceToken, err := s.Approve(grace)
+	graceToken, err := s.Approve(t.Context(), grace)
 	require.NoError(t, err)
 	assert.NotEqual(t, adaToken, graceToken)
 	assert.False(t, consumedFor(t, s, "grace", ada, params))
@@ -185,15 +186,15 @@ func TestUnsignedApprovalExpiresAndIsSwept(t *testing.T) {
 	s.SetNonceDir(dir)
 	s.now = func() time.Time { return when }
 	params := map[string]string{"id": "1"}
-	pending, err := s.RequestFor("", "orders.delete", params)
+	pending, err := s.RequestFor(t.Context(), "", "orders.delete", params)
 	require.NoError(t, err)
 	raw, err := os.ReadFile(filepath.Join(dir, "confirmations", pending+".json"))
 	require.NoError(t, err)
 	assert.Contains(t, string(raw), `"expiry":`)
-	approved, err := s.Approve(pending)
+	approved, err := s.Approve(t.Context(), pending)
 	require.NoError(t, err)
 	s.now = func() time.Time { return when.Add(16 * time.Minute) }
-	ok, err := s.ConsumeFor("", approved, "orders.delete", params)
+	ok, err := s.ConsumeFor(t.Context(), "", approved, "orders.delete", params)
 	require.NoError(t, err)
 	assert.False(t, ok)
 	_, err = os.Stat(filepath.Join(dir, "confirmations", pending+".json"))
@@ -206,9 +207,9 @@ func TestUnsignedApprovalIsOneUseAcrossStates(t *testing.T) {
 		dir := t.TempDir()
 		issued := NewState()
 		issued.SetNonceDir(dir)
-		pending, err := issued.RequestFor("", "orders.delete", params)
+		pending, err := issued.RequestFor(t.Context(), "", "orders.delete", params)
 		require.NoError(t, err)
-		approved, err := issued.Approve(pending)
+		approved, err := issued.Approve(t.Context(), pending)
 		require.NoError(t, err)
 		var wins atomic.Int32
 		var wg sync.WaitGroup
@@ -216,7 +217,7 @@ func TestUnsignedApprovalIsOneUseAcrossStates(t *testing.T) {
 			wg.Go(func() {
 				other := NewState()
 				other.SetNonceDir(dir)
-				ok, err := other.ConsumeFor("", approved, "orders.delete", params)
+				ok, err := other.ConsumeFor(t.Context(), "", approved, "orders.delete", params)
 				if err == nil && ok {
 					wins.Add(1)
 				}
@@ -231,7 +232,7 @@ func TestUnsignedApprovalIsOneUseAcrossProcesses(t *testing.T) {
 	if os.Getenv("VETO_CLAIM_CHILD") == "1" {
 		s := NewState()
 		s.SetNonceDir(os.Getenv("VETO_CLAIM_DIR"))
-		ok, err := s.ConsumeFor("", os.Getenv("VETO_CLAIM_ID"), "orders.delete", map[string]string{"id": "1"})
+		ok, err := s.ConsumeFor(context.Background(), "", os.Getenv("VETO_CLAIM_ID"), "orders.delete", map[string]string{"id": "1"})
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)
@@ -244,9 +245,9 @@ func TestUnsignedApprovalIsOneUseAcrossProcesses(t *testing.T) {
 	dir := t.TempDir()
 	issued := NewState()
 	issued.SetNonceDir(dir)
-	pending, err := issued.RequestFor("", "orders.delete", map[string]string{"id": "1"})
+	pending, err := issued.RequestFor(t.Context(), "", "orders.delete", map[string]string{"id": "1"})
 	require.NoError(t, err)
-	approved, err := issued.Approve(pending)
+	approved, err := issued.Approve(t.Context(), pending)
 	require.NoError(t, err)
 
 	var wins atomic.Int32
@@ -294,7 +295,7 @@ func consumed(t *testing.T, s *State, id string, params map[string]string) bool 
 
 func consumedFor(t *testing.T, s *State, caller, id string, params map[string]string) bool {
 	t.Helper()
-	ok, err := s.ConsumeFor(caller, id, "orders.delete", params)
+	ok, err := s.ConsumeFor(t.Context(), caller, id, "orders.delete", params)
 	require.NoError(t, err)
 	return ok
 }

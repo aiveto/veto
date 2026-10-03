@@ -188,7 +188,7 @@ func TestHTTPTwoCallersDoNotShareApprovalsOrTokens(t *testing.T) {
 	assert.Equal(t, "confirmation_required", gracePending.Status)
 	assert.NotEqual(t, pending.ApprovalID, gracePending.ApprovalID)
 
-	approved, err := loop.State.Approve(pending.ApprovalID)
+	approved, err := loop.State.Approve(t.Context(), pending.ApprovalID)
 	require.NoError(t, err)
 	assert.NotEqual(t, pending.ApprovalID, approved)
 	assert.True(t, strings.HasPrefix(approved, "v1."))

@@ -128,6 +128,17 @@ func (l *Loop) SetFloor(hook policy.Hook) {
 	l.base = hook
 }
 
+// SetInvokeLimit sets calls per second per caller. Zero keeps 16.
+func (l *Loop) SetInvokeLimit(n int) {
+	if l == nil {
+		return
+	}
+	if l.gate == nil {
+		l.gate = &runtime.InvokeGate{}
+	}
+	l.gate.Per = n
+}
+
 func (l *Loop) WrapPolicy(around policy.Around) {
 	next := l.Policy
 	if next == nil {
@@ -174,7 +185,7 @@ func (l *Loop) Run(ctx context.Context, userText string) (Outcome, error) {
 	described := l.Catalog.ByID(call.OperationID)
 	var pending *policy.PendingConfirmation
 	if call.ApprovalID != "" {
-		pending = l.State.Pending(call.ApprovalID)
+		pending = l.State.Pending(ctx, call.ApprovalID)
 	}
 	summary := call.Status
 	if call.Status == "confirmation_required" {

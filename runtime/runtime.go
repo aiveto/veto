@@ -155,7 +155,7 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 		defer span.End()
 		span.SetAttributes(telemetry.Attr("operation.id", req.Operation))
 		if req.Approval == "" {
-			id, err := rt.State.RequestFor(caller, req.Operation, args)
+			id, err := rt.State.RequestFor(ctx, caller, req.Operation, args)
 			if err != nil {
 				return rt.record(ctx, Result{Status: "error", OperationID: req.Operation}), err
 			}
@@ -170,7 +170,7 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 			}
 			return rt.record(ctx, res), nil
 		}
-		ok, err := rt.State.ConsumeFor(caller, req.Approval, req.Operation, args)
+		ok, err := rt.State.ConsumeFor(ctx, caller, req.Approval, req.Operation, args)
 		if err != nil {
 			return rt.record(ctx, Result{Status: "error"}), err
 		}

@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -124,7 +125,7 @@ func defaultNonceDir(secret []byte) (string, error) {
 
 // RequestFor records a pending call for one caller. The id it returns does not authorize HTTP.
 // A store error means the file was not written, so there is no pending id to approve.
-func (s *State) RequestFor(caller, opID string, params map[string]string) (string, error) {
+func (s *State) RequestFor(ctx context.Context, caller, opID string, params map[string]string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	id := uuid.NewString()
@@ -136,21 +137,21 @@ func (s *State) RequestFor(caller, opID string, params map[string]string) (strin
 		Caller:      caller,
 		Expiry:      s.deadline().Unix(),
 	}
-	if err := s.records.Put(rec); err != nil {
-		s.records.Remove(rec)
+	if err := s.records.Put(ctx, rec); err != nil {
+		s.records.Remove(ctx, rec)
 		return "", err
 	}
 	return id, nil
 }
 
 // Approve records a separate decision. The returned id is what a later invoke accepts once.
-func (s *State) Approve(id string) (string, error) {
+func (s *State) Approve(ctx context.Context, id string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	rec, ok := s.records.Get(id)
+	rec, ok := s.records.Get(ctx, id)
 	if !ok || rec.Status == StatusConsumed || expired(rec, s.clock()) {
 		if ok && expired(rec, s.clock()) {
-			s.records.Remove(rec)
+			s.records.Remove(ctx, rec)
 		}
 		return "", ErrUnknownApproval
 	}
@@ -170,24 +171,24 @@ func (s *State) Approve(id string) (string, error) {
 	}
 	rec.Status = StatusApproved
 	rec.ApprovedID = approved
-	if err := s.records.Put(rec); err != nil {
+	if err := s.records.Put(ctx, rec); err != nil {
 		return "", err
 	}
 	return approved, nil
 }
 
 // ConsumeFor accepts an approved id once, and only for the caller that received it.
-func (s *State) ConsumeFor(caller, approvalID, opID string, params map[string]string) (bool, error) {
+func (s *State) ConsumeFor(ctx context.Context, caller, approvalID, opID string, params map[string]string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := s.clock()
-	rec, ok := s.records.FindApproved(approvalID)
+	rec, ok := s.records.FindApproved(ctx, approvalID)
 	if !ok || rec.Status != StatusApproved || rec.ApprovedID != approvalID {
 		return false, nil
 	}
 	if rec.Caller != caller || rec.OperationID != opID || !maps.Equal(rec.Params, params) || expired(rec, now) {
 		if expired(rec, now) {
-			s.records.Remove(rec)
+			s.records.Remove(ctx, rec)
 		}
 		return false, nil
 	}
@@ -197,21 +198,21 @@ func (s *State) ConsumeFor(caller, approvalID, opID string, params map[string]st
 			return ok, err
 		}
 	}
-	ok, err := s.records.Claim(rec.ID)
+	ok, err := s.records.Claim(ctx, rec.ID)
 	if err != nil || !ok {
 		return ok, err
 	}
 	rec.Status = StatusConsumed
-	if err := s.records.Put(rec); err != nil {
+	if err := s.records.Put(ctx, rec); err != nil {
 		return false, err
 	}
 	return true, nil
 }
 
-func (s *State) Pending(id string) *PendingConfirmation {
+func (s *State) Pending(ctx context.Context, id string) *PendingConfirmation {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	rec, ok := s.records.Get(id)
+	rec, ok := s.records.Get(ctx, id)
 	if !ok || rec.Status != StatusPending {
 		return nil
 	}

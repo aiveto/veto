@@ -38,7 +38,7 @@ func TestApprovalFilesStayOutOfTheUserDir(t *testing.T) {
 	before := dirNames(t, user)
 	state := policy.NewState()
 	require.NoError(t, applyApprovalEnv(state))
-	_, err = state.RequestFor("", "orders.delete", map[string]string{"id": "123"})
+	_, err = state.RequestFor(t.Context(), "", "orders.delete", map[string]string{"id": "123"})
 	require.NoError(t, err)
 	assert.Equal(t, before, dirNames(t, user))
 	temp := os.Getenv("VETO_APPROVAL_NONCE_DIR")
