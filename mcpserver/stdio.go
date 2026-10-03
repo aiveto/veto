@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
@@ -329,7 +330,7 @@ func operationReadOnly(op *catalog.Operation) bool {
 		return false
 	}
 	switch op.Method {
-	case "GET", "HEAD", "":
+	case http.MethodGet, http.MethodHead, "":
 		return true
 	default:
 		return false
@@ -340,7 +341,7 @@ func operationDestructive(op *catalog.Operation) bool {
 	if op == nil {
 		return false
 	}
-	return op.Kind == catalog.KindDelete || op.SideEffect == catalog.SideEffectDestructive || op.Method == "DELETE"
+	return op.Kind == catalog.KindDelete || op.SideEffect == catalog.SideEffectDestructive || op.Method == http.MethodDelete
 }
 
 func RegisterTools(cat *catalog.Catalog, opt Options) []string {
