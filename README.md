@@ -1,5 +1,7 @@
 # Veto
 
+<img src="docs/veto-social.png" width="1280" alt="veto makes it possible for an AI agent to call your API with context and semantics. 500 endpoints turn into 3 tools.">
+
 **Turn existing OpenAPI services into tools AI agents can discover and call under your rules.**
 
 The model may request a call. Veto checks policy, requires approval for a destructive call, and resolves credentials before your API runs. Declared relations name a linked operation. A trace records the decision.
