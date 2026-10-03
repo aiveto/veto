@@ -115,6 +115,7 @@ func authResolver(cfg config.File) *auth.Resolver {
 }
 
 func applyDeployment(cat *catalog.Catalog, cfg config.File) {
+	cat.Select(catalog.Selection{ReadOnly: cfg.ReadOnly, Tags: cfg.Expose.Tags, Paths: cfg.Expose.Paths})
 	if cfg.Confirms() {
 		return
 	}

@@ -24,7 +24,18 @@ type (
 		Operation string
 		Name      string
 	}
+
+	// BodyError is a request body that does not match the operation's schema. It does not carry the value.
+	BodyError struct {
+		Operation string
+		Path      string
+		Reason    string
+	}
 )
+
+func (e BodyError) Error() string {
+	return fmt.Sprintf("operation %s: body %s: %s", e.Operation, e.Path, e.Reason)
+}
 
 func (e ParamError) Error() string {
 	if e.Name == "" {

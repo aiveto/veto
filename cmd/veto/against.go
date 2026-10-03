@@ -14,6 +14,7 @@ import (
 
 	"github.com/aiveto/veto/agentmeta"
 	"github.com/aiveto/veto/catalog"
+	"github.com/aiveto/veto/config"
 	"github.com/aiveto/veto/eval"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -32,13 +33,6 @@ type (
 		Operations    map[string]catalog.OpFact `json:"operations"`
 		Cases         []eval.CaseExpect         `json:"cases"`
 		Confirmations map[string]*bool          `json:"confirmations,omitempty"`
-	}
-
-	configFile struct {
-		Contracts       []string
-		RelationsFile   string
-		AgentFile       string
-		ConfirmationOff bool
 	}
 
 	checkCmd struct {
@@ -228,9 +222,7 @@ func baselineFromConfig(root, ref, configPath string, casePaths []string) (base 
 	if err := applyAgent(cat, cfg.AgentFile); err != nil {
 		return baseline{}, err
 	}
-	if cfg.ConfirmationOff {
-		cat.ClearConfirmation()
-	}
+	applyDeployment(cat, cfg)
 	conf := map[string]*bool{}
 	if cfg.AgentFile != "" {
 		agentFile, err := agentmeta.Load(cfg.AgentFile)
@@ -327,12 +319,12 @@ func baselineFromPaths(root, ref string, contracts []string, relations, agentPat
 	return baseline{Operations: catalog.Facts(cat), Cases: cases, Confirmations: conf}, nil
 }
 
-func loadConfigAt(configPath string) (configFile, error) {
+func loadConfigAt(configPath string) (config.File, error) {
 	src, err := resolve(configPath, nil, "", "")
 	if err != nil {
-		return configFile{}, err
+		return config.File{}, err
 	}
-	return configFile{Contracts: src.cfg.Contracts, RelationsFile: src.cfg.RelationsFile, AgentFile: src.cfg.AgentFile, ConfirmationOff: !src.cfg.Confirms()}, nil
+	return src.cfg, nil
 }
 
 func casesAtRef(root, ref string, paths []string) (out []eval.CaseExpect, err error) {

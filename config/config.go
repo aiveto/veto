@@ -54,8 +54,16 @@ type File struct {
 	ApprovalTTL     time.Duration     `yaml:"approval_ttl"`
 	ApprovalWebhook Webhook           `yaml:"approval_webhook"`
 	ChatApproval    bool              `yaml:"chat_approval"`
+	ReadOnly        bool              `yaml:"read_only"`
+	Expose          Expose            `yaml:"expose"`
 	Permissions     []string          `yaml:"permissions"`
 	MemoryFile      string            `yaml:"memory_file"`
+}
+
+// Expose keeps operations with a listed tag or under a listed path; both empty keeps every operation.
+type Expose struct {
+	Tags  []string `yaml:"tags"`
+	Paths []string `yaml:"paths"`
 }
 
 func Defaults() File {
@@ -255,6 +263,11 @@ func (f *File) validate() error {
 	}
 	if f.ApprovalTTL < 0 {
 		return errors.New("approval_ttl is negative")
+	}
+	for _, p := range f.Expose.Paths {
+		if !strings.HasPrefix(p, "/") {
+			return fmt.Errorf("expose path %q does not start with /", p)
+		}
 	}
 	return nil
 }
