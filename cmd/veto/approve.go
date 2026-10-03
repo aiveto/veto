@@ -30,7 +30,7 @@ func newApproveCommand() *cobra.Command {
 
 func approveID(id string) (string, error) {
 	state := policy.NewState()
-	if err := applyApprovalEnv(state, 0); err != nil {
+	if err := applyApprovalEnv(state); err != nil {
 		return "", err
 	}
 	return state.Approve(id)
@@ -38,9 +38,8 @@ func approveID(id string) (string, error) {
 
 // applyApprovalEnv points state at the store serve and approve share.
 // VETO_APPROVAL_STORE is a Valkey or Redis URL. Otherwise the directory and signing secret come from the environment.
-// ttl is the signed approval lifetime. Zero ttl keeps the 15 minute default. An empty secret leaves the approval unsigned.
-func applyApprovalEnv(s *policy.State, ttl time.Duration) error {
-	return applyApproval(s, ttl, os.Getenv("VETO_APPROVAL_STORE"))
+func applyApprovalEnv(s *policy.State) error {
+	return applyApproval(s, 0, os.Getenv("VETO_APPROVAL_STORE"))
 }
 
 func applyApprovalConfig(s *policy.State, cfg config.File) error {

@@ -4,6 +4,7 @@ package valkeystore
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -28,7 +29,7 @@ type Store struct {
 func Dial(url string) (*Store, error) {
 	url = strings.TrimSpace(url)
 	if url == "" {
-		return nil, fmt.Errorf("approval store url is unset")
+		return nil, errors.New("approval store url is unset")
 	}
 	if !strings.Contains(url, "://") {
 		url = "redis://" + url
