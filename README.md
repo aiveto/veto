@@ -8,6 +8,10 @@ The model may request a call. Veto checks policy, requires approval for a destru
 
 Connect an MCP client, or embed the Go runtime. MCP, the CLI, eval, and a generated Go client share that runtime. The client calls the catalog through search, describe, and invoke. A hundred endpoints do not become a hundred tools. Your services stay where they already run.
 
+```bash
+go install github.com/aiveto/veto/cmd/veto@latest
+```
+
 ## See veto in action
 
 [veto-demo](https://github.com/aiveto/veto-demo) is the full walk. Harbor sells home goods. Orders, customers, and billing are the APIs. The walk follows a customer from an order, holds a delete until a person approves it, and keeps the secret out of the trace. `make demo` runs the story. `make mcp` leaves Harbor listening and prints the config for Claude, Cursor, or ChatGPT.
