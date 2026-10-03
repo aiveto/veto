@@ -12,9 +12,9 @@ brew install aiveto/veto/veto
 go install github.com/aiveto/veto/cmd/veto@latest
 ```
 
-`brew` does not need Go. `go install` installs the same `veto` command. From a checkout of this repo, `go install ./cmd/veto` and `go run ./cmd/veto` are the same binary.
+`brew` does not need Go. `go install` needs Go 1.27.1. From a checkout of this repo, `go install ./cmd/veto` or `go run ./cmd/veto`.
 
-The container image builds that binary. Running the image runs `veto --help`.
+The container image builds `veto`. Running the image runs `veto --help`.
 
 ```bash
 docker build -t veto .
