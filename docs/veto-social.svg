@@ -1,10 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" role="img" aria-label="veto makes it possible for an AI agent to call your API with context and semantics. 500 endpoints turn into 3 tools.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" role="img" aria-label="veto makes it possible for an AI agent to call your API with context and semantics. A hundred endpoints stay 3 tools.">
   <rect width="1280" height="640" fill="#F4F1EA"/>
   <g font-family="ui-sans-serif, system-ui, sans-serif" fill="#1A1916">
     <text x="96" y="280" font-size="180" font-weight="800" letter-spacing="-9">veto</text>
     <text x="96" y="418" font-size="36" font-weight="560">makes it possible for an AI agent</text>
     <text x="96" y="470" font-size="36" font-weight="560">to call your API with context and semantics.</text>
-    <text x="96" y="536" font-size="40" font-weight="700">500 endpoints turn into 3 tools.</text>
+    <text x="96" y="536" font-size="40" font-weight="700">A hundred endpoints stay 3 tools.</text>
   </g>
   <rect x="96" y="308" width="334" height="16" fill="#C2412D"/>
 </svg>
