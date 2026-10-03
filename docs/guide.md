@@ -50,6 +50,17 @@ auth:
 
 `confirmation: false` turns the confirmation gate off for every operation in this deployment. Unset, and `confirmation: true`, leave it on. The clear runs after `agent.yaml`, so one operation set to true does not turn the gate back on. When the key is unset, `agent.yaml` can still set `confirmation: false` on one operation. Invoke cannot set the key. A bundle manifest cannot carry it. Doctor and check print `confirmation is off`.
 
+`read_only: true` and `expose` serve part of a contract. Unset serves every operation.
+
+```yaml
+read_only: true
+expose:
+  tags: [orders]
+  paths: [/orders, /customers]
+```
+
+`read_only` keeps GET and HEAD. `expose.tags` keeps an operation with one of those tags. `expose.paths` keeps an operation whose path is that prefix or sits under it, so `/orders` keeps `/orders/{id}` and not `/orders-archive`. An operation must pass every key that is set. A removed operation is gone from search, describe, invoke, the pack, and the graph, and its relations drop with it. The cut runs after `agent.yaml`. A bundle manifest cannot carry these keys. `veto check --against` applies each side's own keys, so a narrower cut that drops a joined operation fails, and a wider one that adds a destructive operation fails.
+
 `approval_ttl: 30m` sets the lifetime of a signed approval. Unset keeps 15 minutes. It applies when `VETO_APPROVAL_SECRET` is set. A bundle manifest cannot carry it.
 
 `veto validate --config veto.yaml` loads the contracts and prints the operation count and joins.
@@ -198,7 +209,7 @@ Cursor and Claude Desktop both take this server entry. Use a config path the `ve
 }
 ```
 
-`operation_id` is the catalog id. `params` is an object. Path, query, and header values are strings, keyed by parameter name. `body` is the request body: a string is sent as written, and a JSON object is encoded as JSON and sent. There is no schema compiler in that step. `approval_id` is empty on the first call. A `confirmation_required` result carries a pending id. That id does not run the call. Over stdio, a host that supports elicitation asks the person to accept or decline. Accept records the approval and runs the call. Decline leaves the pending id. Over `--http` that form needs `chat_approval: true` in `veto.yaml`, because the remote client is the one answering it. Otherwise the result carries the pending id, and `veto approve <id>` records the approval and prints an approved id. A later invoke with that approved id runs once.
+`operation_id` is the catalog id. `params` is an object. Path, query, and header values are strings, keyed by parameter name. `body` is the request body: a string is sent as written, and a JSON object is encoded as JSON and sent. A JSON body is checked against the request body schema before policy and HTTP. A mismatch returns `invalid_body` with the field path and the reason. The value is not echoed. `approval_id` is empty on the first call. A `confirmation_required` result carries a pending id. That id does not run the call. Over stdio, a host that supports elicitation asks the person to accept or decline. Accept records the approval and runs the call. Decline leaves the pending id. Over `--http` that form needs `chat_approval: true` in `veto.yaml`, because the remote client is the one answering it. Otherwise the result carries the pending id, and `veto approve <id>` records the approval and prints an approved id. A later invoke with that approved id runs once.
 
 `response_fields` in `veto.yaml`, or `fields` on this invoke, names the JSON fields returned after a successful call. A list also returns `page` with `offset`, `limit`, and `returned`. `truncated` is true when the response cap cuts the body or the page stops before the end. `response_limit` is the page size when the invoke omits `limit`. With no fields named, the body is unchanged. The cap stays. `--keep-sensitive` is still what records a response body, and secrets are still removed from the trace.
 

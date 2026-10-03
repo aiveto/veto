@@ -90,22 +90,7 @@ func TestCheckAgainstGitRef(t *testing.T) {
 	for name, body := range files {
 		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600))
 	}
-	git := func(args ...string) {
-		t.Helper()
-		cmd := exec.CommandContext(t.Context(), "git", args...)
-		cmd.Dir = dir
-		cmd.Env = append(os.Environ(),
-			"GIT_AUTHOR_NAME=veto",
-			"GIT_AUTHOR_EMAIL=veto@example.com",
-			"GIT_COMMITTER_NAME=veto",
-			"GIT_COMMITTER_EMAIL=veto@example.com",
-		)
-		out, err := cmd.CombinedOutput()
-		require.NoError(t, err, string(out))
-	}
-	git("init")
-	git("add", ".")
-	git("commit", "-m", "baseline")
+	commitBaseline(t, dir)
 
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "orders.yaml"), []byte(nextSpec), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "cases", "get.yaml"), []byte("name: get-order\ninput: get order\nexpect:\n  operation: orders.purge\n"), 0o600))
@@ -127,6 +112,45 @@ func TestCheckAgainstGitRef(t *testing.T) {
 	require.ErrorContains(t, err, "customers.get")
 	assert.NotContains(t, err.Error(), "orders.purge")
 	assert.NotContains(t, err.Error(), "get-order")
+}
+
+func TestCheckAgainstGitRefAppliesEachSideSelection(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "veto.yaml")
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "orders.yaml"), []byte(headSpec), 0o600))
+	require.NoError(t, os.WriteFile(cfgPath, []byte("read_only: true\ncontracts:\n  - orders.yaml\n"), 0o600))
+	commitBaseline(t, dir)
+
+	cmd := checkCmd{against: "HEAD", config: cfgPath}
+	require.NoError(t, diffAgainst(cmd, loadDeployed(t, cfgPath)))
+
+	require.NoError(t, os.WriteFile(cfgPath, []byte("contracts:\n  - orders.yaml\n"), 0o600))
+	require.ErrorContains(t, diffAgainst(cmd, loadDeployed(t, cfgPath)), "orders.purge")
+}
+
+func commitBaseline(t *testing.T, dir string) {
+	t.Helper()
+	for _, args := range [][]string{{"init"}, {"add", "."}, {"commit", "-m", "baseline"}} {
+		cmd := exec.CommandContext(t.Context(), "git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=veto",
+			"GIT_AUTHOR_EMAIL=veto@example.com",
+			"GIT_COMMITTER_NAME=veto",
+			"GIT_COMMITTER_EMAIL=veto@example.com",
+		)
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, string(out))
+	}
+}
+
+func loadDeployed(t *testing.T, cfgPath string) *catalog.Catalog {
+	t.Helper()
+	cat := loadChecked(t, cfgPath)
+	src, err := resolve(cfgPath, nil, "", "")
+	require.NoError(t, err)
+	applyDeployment(cat, src.cfg)
+	return cat
 }
 
 func loadChecked(t *testing.T, cfgPath string) *catalog.Catalog {

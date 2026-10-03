@@ -180,6 +180,32 @@ func TestInvokeRejectsUnserializable(t *testing.T) {
 	assert.Equal(t, int32(0), hits.Load())
 }
 
+func TestInvokeRejectsABodyOutsideTheSchemaBeforeHTTP(t *testing.T) {
+	var hits atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+	}))
+	defer ts.Close()
+	cat := &catalog.Catalog{Operations: []catalog.Operation{{
+		ID:           "customers.create",
+		Method:       http.MethodPost,
+		PathTemplate: "/customers",
+		Params: []catalog.Param{{
+			Name: "body", In: "body", Required: true, MediaType: "application/json",
+			Schema: `{"type":"object","properties":{"name":{"type":"string"}}}`,
+		}},
+	}}}
+	cat.Finalize()
+	rt := runtime.Runtime{Catalog: cat, State: policy.NewState(), Exec: execute.Client{BaseURL: ts.URL}}
+	out, err := rt.Invoke(context.Background(), runtime.Request{
+		Operation: "customers.create",
+		Arguments: map[string]any{"body": map[string]any{"name": 7}},
+	})
+	require.Error(t, err)
+	assert.Equal(t, "invalid_body", out.Code)
+	assert.Equal(t, int32(0), hits.Load())
+}
+
 func TestConcurrentFirstInvokeSharesTheGate(t *testing.T) {
 	cat := &catalog.Catalog{Operations: []catalog.Operation{{
 		ID: "orders.get", Method: http.MethodGet, PathTemplate: "/orders/{id}",

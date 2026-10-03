@@ -5,6 +5,8 @@
 - Over stdio, a host that supports elicitation asks the person to accept a held call. Accept runs it. Decline leaves the pending id for `veto approve`. Over `--http`, `chat_approval: true` turns the form on.
 - A contract may be an http or https URL. `veto init` writes that URL into `veto.yaml`.
 - The MCP server version comes from the build. A release sets it. A local build reports `dev`.
+- `read_only: true` and `expose: {tags, paths}` in `veto.yaml` serve part of a contract. A removed operation leaves search, describe, invoke, and the graph. A bundle cannot set these keys.
+- A JSON request body is checked against its schema before HTTP. A mismatch returns `invalid_body` with the field path. The value is not echoed.
 
 ## v0.1.0 - 2026-10-02
 

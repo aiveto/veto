@@ -2,11 +2,13 @@ package catalog
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
 
 	"github.com/aiveto/veto/result"
+	"github.com/getkin/kin-openapi/openapi3"
 )
 
 // CheckParams reports a missing required value, a parameter the call cannot send, or a body that is not the declared JSON object.
@@ -25,6 +27,11 @@ func (op Operation) CheckParams(params map[string]string) error {
 		}
 		if p.In == "body" && v != "" && p.Type() == "object" && !jsonObject(v) {
 			return fmt.Errorf("operation %s: %s must be a JSON object", op.ID, p.Name)
+		}
+		if p.In == "body" && v != "" {
+			if err := p.checkBody(op.ID, v); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -128,6 +135,46 @@ func (p Param) kind() string {
 		return kind
 	}
 	return "structured"
+}
+
+func (p Param) checkBody(operationID, raw string) error {
+	if !jsonMedia(p.MediaType) || p.Schema == "" {
+		return nil
+	}
+	schema, value, ok := decodeBody(p.Schema, raw)
+	if !ok {
+		return nil
+	}
+	err := schema.VisitJSON(value, openapi3.VisitAsRequest())
+	if err == nil {
+		return nil
+	}
+	bad := result.BodyError{Operation: operationID, Path: "/", Reason: "does not match the schema"}
+	if se, ok := errors.AsType[*openapi3.SchemaError](err); ok {
+		bad.Path = "/" + strings.Join(se.JSONPointer(), "/")
+		bad.Reason = se.Reason
+	}
+	return bad
+}
+
+func decodeBody(schemaText, raw string) (*openapi3.Schema, any, bool) {
+	var schema openapi3.Schema
+	if err := json.Unmarshal([]byte(schemaText), &schema); err != nil {
+		return nil, nil, false
+	}
+	var value any
+	if err := json.Unmarshal([]byte(raw), &value); err != nil {
+		return nil, nil, false
+	}
+	return &schema, value, true
+}
+
+func jsonMedia(media string) bool {
+	if i := strings.IndexByte(media, ';'); i >= 0 {
+		media = media[:i]
+	}
+	media = strings.TrimSpace(media)
+	return media == "" || media == "application/json" || strings.HasSuffix(media, "+json")
 }
 
 func jsonObject(raw string) bool {

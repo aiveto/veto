@@ -140,11 +140,7 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 		return rt.record(ctx, Result{Status: "error", OperationID: op.ID}), err
 	}
 	if err := op.CheckParams(args); err != nil {
-		res := Result{Status: "error", OperationID: op.ID}
-		if _, ok := errors.AsType[result.ParamError](err); ok {
-			res.Code = "missing_param"
-		}
-		return rt.record(ctx, res), err
+		return rt.record(ctx, Result{Status: "error", OperationID: op.ID, Code: paramCode(err)}), err
 	}
 
 	ctx = policy.WithInput(ctx, policy.Input{
@@ -210,11 +206,7 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 	}
 	call, err := rt.Exec.InvokeHTTPResult(ctx, op, args)
 	if err != nil {
-		res := Result{Status: "error", OperationID: req.Operation}
-		if _, ok := errors.AsType[result.ParamError](err); ok {
-			res.Code = "missing_param"
-		}
-		return rt.record(ctx, res), err
+		return rt.record(ctx, Result{Status: "error", OperationID: req.Operation, Code: paramCode(err)}), err
 	}
 	status := call.Code
 	if status == "" {
@@ -281,6 +273,16 @@ func (rt *Runtime) clock() time.Time {
 		return rt.now()
 	}
 	return time.Now()
+}
+
+func paramCode(err error) string {
+	if _, ok := errors.AsType[result.ParamError](err); ok {
+		return "missing_param"
+	}
+	if _, ok := errors.AsType[result.BodyError](err); ok {
+		return "invalid_body"
+	}
+	return ""
 }
 
 func requestCaller(ctx context.Context, req Request) string {
