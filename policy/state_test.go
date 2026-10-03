@@ -16,6 +16,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestSetSignerRejectsAnEmptySecret(t *testing.T) {
+	s := NewState()
+	require.Error(t, s.SetSigner(nil, 0))
+	var missing *State
+	require.Error(t, missing.SetSigner([]byte("secret"), 0))
+}
+
+func TestApproveUnknownIsASentinel(t *testing.T) {
+	s := NewState()
+	_, err := s.Approve("missing")
+	require.ErrorIs(t, err, ErrUnknownApproval)
+}
+
 func TestConfirmationKeepsItsOwnParams(t *testing.T) {
 	s := NewState()
 	params := map[string]string{"id": "1"}

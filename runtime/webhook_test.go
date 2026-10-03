@@ -3,6 +3,7 @@ package runtime_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -61,6 +62,42 @@ func TestPendingWebhookDoesNotCallUpstream(t *testing.T) {
 		assert.NotContains(t, string(env), "UPSTREAM_TOKEN")
 		assert.NotContains(t, string(env), "VETO_APPROVAL_SECRET")
 	})
+}
+
+type errNotifier struct{ err error }
+
+func (n errNotifier) Pending(context.Context, policy.Notice) error { return n.err }
+
+func TestPendingWebhookFailureStillReturnsTheID(t *testing.T) {
+	var hits atomic.Int32
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+	}))
+	t.Cleanup(up.Close)
+	cat := &catalog.Catalog{Operations: []catalog.Operation{{
+		ID:                   "orders.delete",
+		Method:               http.MethodDelete,
+		PathTemplate:         "/orders/{id}",
+		RequiresConfirmation: true,
+		Params:               []catalog.Param{{Name: "id", In: "path", Required: true}},
+	}}}
+	cat.Finalize()
+	rt := runtime.Runtime{
+		Catalog: cat,
+		State:   policy.NewState(),
+		Exec:    execute.Client{BaseURL: up.URL},
+		Notify:  errNotifier{err: errors.New("down")},
+	}
+	out, err := rt.Invoke(context.Background(), runtime.Request{
+		Operation: "orders.delete",
+		Arguments: runtime.FromStrings(map[string]string{"id": "123"}),
+		Caller:    "ada",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "confirmation_required", out.Status)
+	assert.NotEmpty(t, out.ApprovalID)
+	assert.Contains(t, out.Error, "approval webhook")
+	assert.Equal(t, int32(0), hits.Load())
 }
 
 func invokePending(t *testing.T, notify policy.Notifier, secret string) string {

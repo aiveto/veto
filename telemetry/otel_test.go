@@ -13,6 +13,13 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
+func TestStdoutExporterUsesTheAllowlist(t *testing.T) {
+	exp, err := traceExporter("stdout")
+	require.NoError(t, err)
+	_, ok := exp.(allowExporter)
+	assert.True(t, ok)
+}
+
 func TestOTLPExportDropsUnlistedAttributes(t *testing.T) {
 	mem := tracetest.NewInMemoryExporter()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(allowExporter{next: mem}))

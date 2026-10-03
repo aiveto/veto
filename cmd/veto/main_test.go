@@ -67,7 +67,7 @@ func TestApproveRecordsAnIDTheCallerCannotMint(t *testing.T) {
 	t.Setenv("VETO_APPROVAL_NONCE_DIR", dir)
 	t.Setenv("VETO_APPROVAL_SECRET", "test-secret")
 	caller := policy.NewState()
-	require.NoError(t, policy.ApplyEnv(caller))
+	require.NoError(t, applyApprovalEnv(caller, 0))
 	pending, err := caller.RequestConfirmation("orders.delete", map[string]string{"id": "123"})
 	require.NoError(t, err)
 	approved, err := approveID(pending)

@@ -89,7 +89,7 @@ func TestDeleteWaitsForApproval(t *testing.T) {
 	assert.Equal(t, int32(0), hits.Load())
 	req.Approval = first.ApprovalID
 	_, err = rt.Invoke(context.Background(), req)
-	require.Error(t, err)
+	require.ErrorIs(t, err, runtime.ErrInvalidApproval)
 	assert.Equal(t, int32(0), hits.Load())
 	approved, err := rt.State.Approve(first.ApprovalID)
 	require.NoError(t, err)
@@ -98,6 +98,31 @@ func TestDeleteWaitsForApproval(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "ok", second.Status)
 	assert.Equal(t, int32(1), hits.Load())
+}
+
+func TestConfirmationWithoutStateDoesNotPanic(t *testing.T) {
+	cat := &catalog.Catalog{Operations: []catalog.Operation{{
+		ID:                   "orders.delete",
+		Method:               http.MethodDelete,
+		PathTemplate:         "/orders/{id}",
+		RequiresConfirmation: true,
+		Params:               []catalog.Param{{Name: "id", In: "path", Required: true}},
+	}}}
+	cat.Finalize()
+	var hits atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+	}))
+	defer ts.Close()
+	rt := runtime.Runtime{Catalog: cat, Exec: execute.Client{BaseURL: ts.URL}}
+	out, err := rt.Invoke(context.Background(), runtime.Request{
+		Operation: "orders.delete",
+		Arguments: runtime.FromStrings(map[string]string{"id": "123"}),
+	})
+	require.Error(t, err)
+	assert.Equal(t, "error", out.Status)
+	assert.Contains(t, err.Error(), "confirmation state")
+	assert.Equal(t, int32(0), hits.Load())
 }
 
 func TestPreviewRejectsABodyThatIsNotAJSONObject(t *testing.T) {

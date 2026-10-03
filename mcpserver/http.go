@@ -49,6 +49,19 @@ func Handler(srv *Server, opt Options, ids []Identity) (http.Handler, error) {
 		inner.ServeHTTP(w, r)
 	}))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" || r.URL.Path == "/readyz" {
+			if r.Method != http.MethodGet && r.Method != http.MethodHead {
+				w.Header().Set("Allow", "GET, HEAD")
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(http.StatusOK)
+			if r.Method == http.MethodGet {
+				_, _ = w.Write([]byte("ok\n"))
+			}
+			return
+		}
 		cred := r.Header.Get(CallerHeader)
 		if cred == "" {
 			http.Error(w, "caller credential required", http.StatusUnauthorized)

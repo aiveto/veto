@@ -58,6 +58,7 @@ func register(server *mcp.Server, srv *Server, opt Options) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "capabilities_search",
 		Description: "Search operations in the contract catalog",
+		Annotations: readOnlyAnnotations(),
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args searchArgs) (*mcp.CallToolResult, any, error) {
 		if err := ctx.Err(); err != nil {
 			return toolError(err)
@@ -73,6 +74,7 @@ func register(server *mcp.Server, srv *Server, opt Options) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "capabilities_describe",
 		Description: "Describe one operation by id",
+		Annotations: readOnlyAnnotations(),
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args describeArgs) (*mcp.CallToolResult, any, error) {
 		if err := ctx.Err(); err != nil {
 			return toolError(err)
@@ -87,6 +89,7 @@ func register(server *mcp.Server, srv *Server, opt Options) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "capabilities_invoke",
 		Description: "Invoke an operation through policy and HTTP. params values are strings. params.body may be a JSON object and is sent as the request body. confirmation_required includes a pending id. That id does not run the call. veto approve records the approval and prints the id a later invoke accepts once. preview stops before a token URL and before upstream HTTP. fields names the JSON fields a successful call returns. With no fields, the body is unchanged.",
+		Annotations: invokeAnnotations(true),
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args invokeArgs) (*mcp.CallToolResult, any, error) {
 		return invokeCall(ctx, req, srv, args)
 	})
@@ -97,6 +100,7 @@ func register(server *mcp.Server, srv *Server, opt Options) {
 			mcp.AddTool(server, &mcp.Tool{
 				Name:        group,
 				Description: "Invoke an operation in " + group,
+				Annotations: groupAnnotations(srv.Catalog, group),
 			}, func(ctx context.Context, req *mcp.CallToolRequest, args invokeArgs) (*mcp.CallToolResult, any, error) {
 				op := srv.Catalog.ByID(args.OperationID)
 				if op == nil || op.Group != group {
@@ -117,6 +121,7 @@ func register(server *mcp.Server, srv *Server, opt Options) {
 			mcp.AddTool(server, &mcp.Tool{
 				Name:        pinnedID,
 				Description: op.Description,
+				Annotations: operationAnnotations(op),
 			}, func(ctx context.Context, req *mcp.CallToolRequest, args invokeArgs) (*mcp.CallToolResult, any, error) {
 				args.OperationID = pinnedID
 				return invokeCall(ctx, req, srv, args)
@@ -264,6 +269,78 @@ func toolError(err error) (*mcp.CallToolResult, any, error) {
 		IsError: true,
 		Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}},
 	}, nil, err
+}
+
+func readOnlyAnnotations() *mcp.ToolAnnotations {
+	no := false
+	return &mcp.ToolAnnotations{
+		ReadOnlyHint:    true,
+		DestructiveHint: &no,
+		OpenWorldHint:   &no,
+	}
+}
+
+func invokeAnnotations(destructive bool) *mcp.ToolAnnotations {
+	open := true
+	return &mcp.ToolAnnotations{
+		DestructiveHint: &destructive,
+		OpenWorldHint:   &open,
+	}
+}
+
+func operationAnnotations(op *catalog.Operation) *mcp.ToolAnnotations {
+	if operationReadOnly(op) {
+		return readOnlyAnnotations()
+	}
+	return invokeAnnotations(operationDestructive(op))
+}
+
+func groupAnnotations(cat *catalog.Catalog, group string) *mcp.ToolAnnotations {
+	if cat == nil {
+		return invokeAnnotations(true)
+	}
+	readOnly := true
+	destructive := false
+	n := 0
+	for i := range cat.Operations {
+		op := &cat.Operations[i]
+		if op.Group != group {
+			continue
+		}
+		n++
+		if !operationReadOnly(op) {
+			readOnly = false
+		}
+		if operationDestructive(op) {
+			destructive = true
+		}
+	}
+	if n == 0 || readOnly {
+		return readOnlyAnnotations()
+	}
+	return invokeAnnotations(destructive)
+}
+
+func operationReadOnly(op *catalog.Operation) bool {
+	if op == nil {
+		return false
+	}
+	if op.SideEffect == catalog.SideEffectWrite || op.SideEffect == catalog.SideEffectDestructive {
+		return false
+	}
+	switch op.Method {
+	case "GET", "HEAD", "":
+		return true
+	default:
+		return false
+	}
+}
+
+func operationDestructive(op *catalog.Operation) bool {
+	if op == nil {
+		return false
+	}
+	return op.Kind == catalog.KindDelete || op.SideEffect == catalog.SideEffectDestructive || op.Method == "DELETE"
 }
 
 func RegisterTools(cat *catalog.Catalog, opt Options) []string {

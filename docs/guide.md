@@ -52,6 +52,8 @@ auth:
 
 `confirmation: false` turns the confirmation gate off for every operation in this deployment. Unset, and `confirmation: true`, leave it on. The clear runs after `agent.yaml`, so one operation set to true does not turn the gate back on. When the key is unset, `agent.yaml` can still set `confirmation: false` on one operation. Invoke cannot set the key. A bundle manifest cannot carry it. Doctor and check print `confirmation is off`.
 
+`approval_ttl: 30m` sets the lifetime of a signed approval. Unset keeps 15 minutes. It applies when `VETO_APPROVAL_SECRET` is set. A bundle manifest cannot carry it.
+
 `veto validate --config veto.yaml` loads the contracts and prints the operation count and joins.
 
 ## Capability bundle
@@ -225,7 +227,7 @@ Stdio stays the default. `--http` serves the same three tools over Streamable HT
 veto serve --config veto.yaml --http --addr 127.0.0.1:7433
 ```
 
-`127.0.0.1:7433` is the address when `--addr` is omitted. Every request sends the caller credential in the `Veto-Caller` header:
+`127.0.0.1:7433` is the address when `--addr` is omitted. `GET /healthz` and `GET /readyz` answer 200 without a caller credential. They report that this process is up. They do not check the upstream API. Every other request sends the caller credential in the `Veto-Caller` header:
 
 ```text
 Veto-Caller: <credential>
@@ -379,7 +381,7 @@ veto replay --config veto.yaml --message "delete order 123"
 veto replay --from trace.json
 ```
 
-The first command runs the message and prints the trace. With the default model that sentence is `orders.delete`, then `decision=confirmation_required`, then a pending id. `veto approve` records the yes. With `VETO_APPROVAL_SECRET` the approved id is a signed token, and a consumed nonce is kept on this machine. The user message is not on the trace. HTTP method and status show up when a call is sent. Set `trace_file: trace.json` in `veto.yaml` to save the trace, then `--from` prints that file. `--keep-sensitive` records response bodies. Leave it off to keep them out.
+The first command runs the message and prints the trace. With the default model that sentence is `orders.delete`, then `decision=confirmation_required`, then a pending id. `veto approve` records the yes. With `VETO_APPROVAL_SECRET` the approved id is a signed token, and a consumed nonce is kept on this machine. The user message is not on the trace. HTTP method and status show up when a call is sent. Set `trace_file: trace.json` in `veto.yaml` to save the trace, then `--from` prints that file. `--keep-sensitive` records response bodies. Leave it off to keep them out. `trace_export: stdout` and `trace_export: otlp` export the same allowlisted attributes. A response body is not in that set.
 
 ## Doctor
 

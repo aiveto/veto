@@ -92,6 +92,11 @@ func TestBundleRejectsDeploymentFields(t *testing.T) {
 			body: "confirmation: false\ncontracts:\n  - orders.yaml\n",
 			want: "confirmation",
 		},
+		{
+			name: "approval ttl",
+			body: "approval_ttl: 30m\ncontracts:\n  - orders.yaml\n",
+			want: "approval_ttl",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
