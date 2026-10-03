@@ -10,7 +10,7 @@ A key with one legal value is a promise of a provider that does not exist. Signe
 
 ## Architect
 
-This breaks a `veto.yaml` that sets one of the four keys. v0.1.0 is the first release, and the fix is to delete the line. The changelog says so. When a second provider exists, its key comes back with that provider. The test-only wrappers go, and the tests call `RequestFor` and `ConsumeFor` with an empty caller.
+When a second provider exists, its key comes back with that provider. The test-only wrappers go, and the tests call `RequestFor` and `ConsumeFor` with an empty caller.
 
 ## Decision
 
@@ -18,4 +18,4 @@ Remove `decision`, `execution`, `subagents`, and `telemetry` from `veto.yaml`. `
 
 ## What we refused
 
-Accepting and ignoring the old keys. A deprecation period for a key that never had a second value.
+Accepting and ignoring the old keys.
