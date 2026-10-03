@@ -1,5 +1,3 @@
-<img src="docs/veto.svg" width="128" height="128" alt="veto">
-
 # Veto
 
 **Turn existing OpenAPI services into tools AI agents can discover and call under your rules.**
