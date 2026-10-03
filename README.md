@@ -105,10 +105,6 @@ veto serve --config testdata/veto.yaml --stdio
 
 ## Scope
 
-**Pre-1.0.** Public APIs may change. A JSON body is checked against its schema. The loader accepts bearer, API key, and OAuth2. Other schemes need a command or a Go signer.
-
-Approvals default to this process. Serve and `veto approve` share files on one machine, or Valkey or Redis when `approval_store` is set. Two machines that share the signing secret and not the store can both accept the same yes until it expires.
-
-Your host owns the model. Your API still authenticates the caller and enforces its own authorization.
+**Pre-1.0.** Public APIs may change.
 
 [Setup guide](docs/guide.md) | [Current limits](docs/guide.md#limits)
