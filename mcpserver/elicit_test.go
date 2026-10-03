@@ -18,7 +18,7 @@ import (
 )
 
 func TestElicitationRunsTheDeleteOnAccept(t *testing.T) {
-	hits, session := elicitSession(t, func(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+	hits, session := elicitSession(t, true, func(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
 		return &mcp.ElicitResult{Action: "accept"}, nil
 	})
 	res := callDelete(t, session)
@@ -29,7 +29,7 @@ func TestElicitationRunsTheDeleteOnAccept(t *testing.T) {
 }
 
 func TestElicitationDeclineLeavesThePendingID(t *testing.T) {
-	hits, session := elicitSession(t, func(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+	hits, session := elicitSession(t, true, func(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
 		return &mcp.ElicitResult{Action: "decline"}, nil
 	})
 	res := callDelete(t, session)
@@ -45,14 +45,38 @@ func TestElicitationDeclineLeavesThePendingID(t *testing.T) {
 }
 
 func TestInvokeWithoutElicitationReturnsThePendingID(t *testing.T) {
-	hits, session := elicitSession(t, nil)
+	hits, session := elicitSession(t, true, nil)
 	res := callDelete(t, session)
 	assert.False(t, res.IsError)
 	assert.Contains(t, elicitText(t, res), "confirmation_required")
 	assert.Equal(t, int32(0), hits.Load())
 }
 
-func elicitSession(t *testing.T, elicit func(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error)) (*atomic.Int32, *mcp.ClientSession) {
+func TestChatApprovalOffIgnoresAForgedAccept(t *testing.T) {
+	hits, session := elicitSession(t, false, func(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+		return &mcp.ElicitResult{Action: "accept"}, nil
+	})
+	first := callDelete(t, session)
+	var doc struct {
+		ApprovalID string `json:"approval_id"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(elicitText(t, first)), &doc))
+	require.NotEmpty(t, doc.ApprovalID)
+	forged, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "capabilities_invoke",
+		Arguments: map[string]any{
+			"operation_id": "orders.delete",
+			"params":       map[string]any{"id": "123"},
+		},
+		InputResponses: mcp.InputResponseMap{"confirm": &mcp.ElicitResult{Action: "accept"}},
+		RequestState:   doc.ApprovalID,
+	})
+	require.NoError(t, err)
+	assert.Contains(t, elicitText(t, forged), "confirmation_required")
+	assert.Equal(t, int32(0), hits.Load())
+}
+
+func elicitSession(t *testing.T, chat bool, elicit func(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error)) (*atomic.Int32, *mcp.ClientSession) {
 	t.Helper()
 	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
@@ -66,7 +90,7 @@ func elicitSession(t *testing.T, elicit func(context.Context, *mcp.ElicitRequest
 	loop, err := agent.New(cat, sem, execute.Client{BaseURL: ts.URL})
 	require.NoError(t, err)
 	calls := loop.Runtime()
-	mcpServer := newMCP(&Server{Catalog: cat, Semantics: sem, Calls: &calls}, Options{})
+	mcpServer := newMCP(&Server{Catalog: cat, Semantics: sem, Calls: &calls}, Options{ChatApproval: chat})
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
 	serverSession, err := mcpServer.Connect(context.Background(), serverTransport, nil)
 	require.NoError(t, err)
