@@ -12,55 +12,21 @@ import (
 	"strings"
 
 	"github.com/aiveto/veto/result"
+	"github.com/aiveto/veto/runtime"
 )
 
-type (
-	// Projection names the response fields and the page to return.
-	// An empty Fields list leaves the body unchanged.
-	Projection struct {
-		Fields []string
-		Offset int
-		Limit  int
-
-		explicit bool
-	}
-
-	// View is set when a successful body was projected.
-	View struct {
-		Applied   bool
-		Truncated bool
-		Page      *result.Page
-	}
-)
-
-type projectionKey struct{}
-
-// WithProjection carries invoke-request fields. They override the client list when set.
-func WithProjection(ctx context.Context, p Projection) context.Context {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	p.explicit = true
-	return context.WithValue(ctx, projectionKey{}, p)
+// View is set when a successful body was projected.
+type View struct {
+	Applied   bool
+	Truncated bool
+	Page      *result.Page
 }
 
-// ProjectionFrom reports fields set on the invoke request.
-func ProjectionFrom(ctx context.Context) (Projection, bool) {
-	if ctx == nil {
-		return Projection{}, false
-	}
-	p, ok := ctx.Value(projectionKey{}).(Projection)
-	if !ok || !p.explicit {
-		return Projection{}, false
-	}
-	return p, true
-}
-
-func (c Client) projection(ctx context.Context) Projection {
+func (c Client) projection(ctx context.Context) runtime.Projection {
 	fields := c.Fields
 	limit := c.Limit
 	offset := 0
-	if p, ok := ProjectionFrom(ctx); ok {
+	if p, ok := runtime.ProjectionFrom(ctx); ok {
 		if len(p.Fields) > 0 {
 			fields = p.Fields
 		}
@@ -69,7 +35,7 @@ func (c Client) projection(ctx context.Context) Projection {
 		}
 		offset = p.Offset
 	}
-	return Projection{Fields: fields, Offset: offset, Limit: limit}
+	return runtime.Projection{Fields: fields, Offset: offset, Limit: limit}
 }
 
 // A named field list keeps the capped bytes. The call can return those fields
@@ -113,7 +79,7 @@ func shapeBody(status int, raw []byte, cut bool, cfg Config) ([]byte, View, erro
 
 var errNotJSON = errors.New("body is not json")
 
-func projectBody(raw []byte, p Projection, cut bool, limit int64) ([]byte, *result.Page, bool, error) {
+func projectBody(raw []byte, p runtime.Projection, cut bool, limit int64) ([]byte, *result.Page, bool, error) {
 	val, partial, err := decodeContainer(raw, cut)
 	if err != nil {
 		return nil, nil, false, fmt.Errorf("project response: %w", err)

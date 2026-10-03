@@ -4,33 +4,35 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/aiveto/veto/catalog"
-	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/policy"
+	"github.com/aiveto/veto/result"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-type countHook struct{ n int }
+type (
+	countHook struct{ n int }
+
+	countExec struct{ hits *atomic.Int32 }
+)
 
 func (h *countHook) Check(context.Context, *catalog.Operation) (policy.Decision, error) {
 	h.n++
 	return policy.DecisionAllow, nil
 }
 
+func (e countExec) InvokeHTTPResult(context.Context, *catalog.Operation, map[string]string) (result.HTTPResult, error) {
+	e.hits.Add(1)
+	return result.HTTPResult{Status: http.StatusOK}, nil
+}
+
 func TestInvokeLimitStopsBeforeHTTP(t *testing.T) {
 	var hits atomic.Int32
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hits.Add(1)
-		w.WriteHeader(http.StatusOK)
-	}))
-	t.Cleanup(ts.Close)
-
 	cat := &catalog.Catalog{Operations: []catalog.Operation{{
 		ID:           "orders.get",
 		Method:       http.MethodGet,
@@ -44,7 +46,7 @@ func TestInvokeLimitStopsBeforeHTTP(t *testing.T) {
 		Catalog: cat,
 		Policy:  hook,
 		State:   policy.NewState(),
-		Exec:    execute.Client{BaseURL: ts.URL},
+		Exec:    countExec{hits: &hits},
 		now:     func() time.Time { return when },
 	}
 	req := Request{
@@ -108,7 +110,7 @@ func TestInvokeLimitStopsBeforeHTTP(t *testing.T) {
 	otherRT := Runtime{
 		Catalog: cat,
 		Policy:  policy.Builtin{},
-		Exec:    execute.Client{BaseURL: ts.URL},
+		Exec:    countExec{hits: &hits},
 		now:     func() time.Time { return when },
 	}
 	again, err := otherRT.Invoke(context.Background(), req)

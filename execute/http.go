@@ -4,7 +4,6 @@ package execute
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -18,6 +17,7 @@ import (
 	"github.com/aiveto/veto/auth"
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/result"
+	"github.com/aiveto/veto/runtime"
 	"github.com/aiveto/veto/telemetry"
 	"github.com/google/uuid"
 )
@@ -32,7 +32,7 @@ type (
 		Auth            map[string]string // secret by scheme name; never read from yaml
 		Creds           *auth.Resolver
 		MaxBody         int64
-		Project         Projection
+		Project         runtime.Projection
 		FollowRedirects bool
 	}
 
@@ -50,15 +50,13 @@ type (
 	}
 )
 
-func (c Client) UpstreamBase() string { return c.BaseURL }
-
 func (c Client) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, params map[string]string) (result.HTTPResult, error) {
 	project := c.projection(ctx)
 	follow := op != nil && c.FollowPages > 1 && len(op.Page) > 0
 	callProject := project
 	// Page cursors live on the raw body. Project the merged body after the walk.
 	if follow && len(project.Fields) > 0 {
-		callProject = Projection{}
+		callProject = runtime.Projection{}
 	}
 	cfg := Config{
 		BaseURL: c.BaseURL, Client: c.HTTP, RecordBody: c.RecordBody, Auth: c.Auth, Creds: c.Creds, MaxBody: c.MaxBody,
@@ -407,35 +405,21 @@ func classify(status int) (string, bool) {
 	}
 }
 
-type idempotencyKey struct{}
-
-func WithIdempotency(ctx context.Context, key string) context.Context {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if key == "" {
-		return ctx
-	}
-	return context.WithValue(ctx, idempotencyKey{}, key)
-}
-
-func IdempotencyFrom(ctx context.Context) string {
-	if ctx == nil {
-		return ""
-	}
-	key, _ := ctx.Value(idempotencyKey{}).(string)
-	return key
-}
-
-func CheckParams(op *catalog.Operation, params map[string]string) error {
-	return requireParams(op, params)
-}
-
-// The upstream request without credentials. Strict checks stay on the real call.
-func DraftRequest(ctx context.Context, base string, op *catalog.Operation, params map[string]string) (*http.Request, error) {
+// Draft is the upstream request without credentials, with secret values removed.
+func (c Client) Draft(ctx context.Context, op *catalog.Operation, params map[string]string) (runtime.HTTPRequest, error) {
 	if op == nil {
-		return nil, errors.New("missing operation")
+		return runtime.HTTPRequest{}, errors.New("missing operation")
 	}
+	req, err := c.draftRequest(ctx, op, params)
+	if err != nil {
+		return runtime.HTTPRequest{}, err
+	}
+	method, rawURL, headers, body := sanitize(req)
+	return runtime.HTTPRequest{Method: method, URL: rawURL, Headers: headers, Body: body}, nil
+}
+
+func (c Client) draftRequest(ctx context.Context, op *catalog.Operation, params map[string]string) (*http.Request, error) {
+	base := strings.TrimSpace(c.BaseURL)
 	if base == "" {
 		base = op.BaseURL
 	}
@@ -446,8 +430,11 @@ func DraftRequest(ctx context.Context, base string, op *catalog.Operation, param
 }
 
 func prepareRequest(ctx context.Context, base string, op *catalog.Operation, params map[string]string, strict bool) (*http.Request, error) {
+	if op == nil {
+		return nil, errors.New("missing operation")
+	}
 	if strict {
-		if err := requireParams(op, params); err != nil {
+		if err := op.CheckParams(params); err != nil {
 			return nil, err
 		}
 	}
@@ -512,7 +499,7 @@ func prepareRequest(ctx context.Context, base string, op *catalog.Operation, par
 	if media != "" {
 		req.Header.Set("Content-Type", media)
 	}
-	if key := IdempotencyFrom(ctx); key != "" {
+	if key := runtime.IdempotencyFrom(ctx); key != "" {
 		req.Header.Set("Idempotency-Key", key)
 	} else if strict && op.Idempotency == "key" {
 		req.Header.Set("Idempotency-Key", uuid.NewString())
@@ -525,43 +512,6 @@ func headerValue(p catalog.Param, params map[string]string) string {
 		return v
 	}
 	return strings.TrimSpace(p.Default)
-}
-
-func requireParams(op *catalog.Operation, params map[string]string) error {
-	if op == nil {
-		return errors.New("missing operation")
-	}
-	for _, p := range op.Params {
-		if why := Unserializable(p); why != "" {
-			return fmt.Errorf("operation %s: parameter %s cannot be serialized: %s", op.ID, p.Name, why)
-		}
-		required := p.Required || p.In == "path"
-		v := strings.TrimSpace(params[p.Name])
-		if v == "" && p.In == "header" {
-			v = strings.TrimSpace(p.Default)
-		}
-		if required && v == "" {
-			return result.ParamError{Operation: op.ID, Name: p.Name}
-		}
-		if p.In == "body" && v != "" && schemaType(p.Schema) == "object" && !jsonObject(v) {
-			return fmt.Errorf("operation %s: %s must be a JSON object", op.ID, p.Name)
-		}
-	}
-	return nil
-}
-
-func jsonObject(raw string) bool {
-	dec := json.NewDecoder(strings.NewReader(raw))
-	var value any
-	if err := dec.Decode(&value); err != nil {
-		return false
-	}
-	if _, ok := value.(map[string]any); !ok {
-		return false
-	}
-	var extra any
-	err := dec.Decode(&extra)
-	return err == io.EOF
 }
 
 func paramNames(params map[string]string) string {
