@@ -49,7 +49,6 @@ replay/      Read those spans. User text is omitted unless asked
 testdata/
 docs/adr/
 docs/guide.md
-docs/roadmap.md
 examples/two-apis/
 ```
 
