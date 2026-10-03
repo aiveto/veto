@@ -1,0 +1,35 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.aiveto/veto",
+  "title": "veto",
+  "description": "Turn OpenAPI services into tools an agent can call under your rules.",
+  "version": "0.1.3",
+  "websiteUrl": "https://github.com/aiveto/veto",
+  "repository": {
+    "url": "https://github.com/aiveto/veto",
+    "source": "github",
+    "id": "1389507406"
+  },
+  "packages": [
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/aiveto/veto:0.1.3",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "serve"
+        },
+        {
+          "type": "named",
+          "name": "--config",
+          "description": "Path to veto.yaml",
+          "format": "filepath",
+          "isRequired": true
+        }
+      ]
+    }
+  ]
+}
