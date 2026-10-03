@@ -72,32 +72,52 @@ func TestBundleRejectsDeploymentFields(t *testing.T) {
 	}{
 		{
 			name: "auth",
-			body: "contracts:\n  - orders.yaml\nauth:\n  job:\n    client_secret_env: VETO_SECRET\n",
+			body: `contracts:
+  - orders.yaml
+auth:
+  job:
+    client_secret_env: VETO_SECRET
+`,
 			want: "auth",
 		},
 		{
 			name: "webhook command",
-			body: "contracts:\n  - orders.yaml\napproval_webhook: [/bin/sh, -c, \"true\"]\n",
+			body: `contracts:
+  - orders.yaml
+approval_webhook: [/bin/sh, -c, "true"]
+`,
 			want: "approval_webhook",
 		},
 		{
 			name: "token dir",
-			body: "token_dir: /tmp/tokens\ncontracts:\n  - orders.yaml\n",
+			body: `token_dir: /tmp/tokens
+contracts:
+  - orders.yaml
+`,
 			want: "token_dir",
 		},
 		{
 			name: "confirmation",
-			body: "confirmation: false\ncontracts:\n  - orders.yaml\n",
+			body: `confirmation: false
+contracts:
+  - orders.yaml
+`,
 			want: "confirmation",
 		},
 		{
 			name: "approval ttl",
-			body: "approval_ttl: 30m\ncontracts:\n  - orders.yaml\n",
+			body: `approval_ttl: 30m
+contracts:
+  - orders.yaml
+`,
 			want: "approval_ttl",
 		},
 		{
 			name: "approval store",
-			body: "approval_store: VALKEY_URL\ncontracts:\n  - orders.yaml\n",
+			body: `approval_store: VALKEY_URL
+contracts:
+  - orders.yaml
+`,
 			want: "approval_store",
 		},
 	}
