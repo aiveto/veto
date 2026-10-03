@@ -25,30 +25,22 @@ const (
 var ErrUnknownApproval = errors.New("unknown approval")
 
 type (
-	confirmation struct {
-		ID          string            `json:"id"`
-		OperationID string            `json:"operation_id"`
-		Params      map[string]string `json:"params,omitempty"`
-		Status      string            `json:"status"`
-		Expiry      int64             `json:"expiry,omitempty"`
-		ApprovedID  string            `json:"approved_id,omitempty"`
-		Caller      string            `json:"caller,omitempty"`
-	}
-
-	// State is the confirmation use case. Memory is the store. SetNonceDir and SetSigner attach adapters.
+	// State is the confirmation use case. Memory is the store. SetStore, SetNonceDir, and SetSigner attach adapters.
 	State struct {
 		mu      sync.Mutex
-		records store
+		records Store
 		tokens  signer
 		ttl     time.Duration
 		now     func() time.Time
 	}
 )
 
+// NewState uses Memory.
 func NewState() *State {
-	return &State{records: &memoryStore{}, now: time.Now}
+	return &State{records: &Memory{}, now: time.Now}
 }
 
+// DefaultApprovalDir is the user-config path serve and approve share.
 func DefaultApprovalDir() (string, error) {
 	root, err := os.UserConfigDir()
 	if err != nil {
@@ -57,15 +49,25 @@ func DefaultApprovalDir() (string, error) {
 	return filepath.Join(root, "veto", "approvals"), nil
 }
 
-func (s *State) SetNonceDir(dir string) {
+// SetStore replaces the confirmation store. Nil uses Memory.
+func (s *State) SetStore(store Store) {
 	if s == nil {
 		return
 	}
+	if store == nil {
+		store = &Memory{}
+	}
 	s.mu.Lock()
-	s.records = &fileStore{dir: dir}
+	s.records = store
 	s.mu.Unlock()
 }
 
+// SetNonceDir uses Files in dir.
+func (s *State) SetNonceDir(dir string) {
+	s.SetStore(&Files{Dir: dir})
+}
+
+// SetSigner attaches HMAC. Empty secret is an error. Unset ttl is 15 minutes.
 func (s *State) SetSigner(secret []byte, ttl time.Duration) error {
 	if s == nil {
 		return errors.New("missing approval state")
@@ -87,7 +89,7 @@ func (s *State) SetSigner(secret []byte, ttl time.Duration) error {
 		return fmt.Errorf("approval nonce dir: %w", err)
 	}
 	if persistDir(s.records) == "" {
-		s.records = &fileStore{dir: dir}
+		s.records = &Files{Dir: dir}
 	}
 	s.tokens = hmacSigner{secret: append([]byte(nil), secret...), dir: dir}
 	s.ttl = ttl
@@ -100,12 +102,12 @@ func (s *State) SetSigner(secret []byte, ttl time.Duration) error {
 	return nil
 }
 
-func persistDir(records store) string {
-	f, ok := records.(*fileStore)
+func persistDir(records Store) string {
+	f, ok := records.(*Files)
 	if !ok {
 		return ""
 	}
-	return f.dir
+	return f.Dir
 }
 
 func defaultNonceDir(secret []byte) (string, error) {
@@ -123,7 +125,7 @@ func (s *State) RequestFor(caller, opID string, params map[string]string) (strin
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	id := uuid.NewString()
-	rec := confirmation{
+	rec := Record{
 		ID:          id,
 		OperationID: opID,
 		Params:      cloneParams(params),
@@ -131,8 +133,8 @@ func (s *State) RequestFor(caller, opID string, params map[string]string) (strin
 		Caller:      caller,
 		Expiry:      s.deadline().Unix(),
 	}
-	if err := s.records.put(rec); err != nil {
-		s.records.remove(rec)
+	if err := s.records.Put(rec); err != nil {
+		s.records.Remove(rec)
 		return "", err
 	}
 	return id, nil
@@ -142,10 +144,10 @@ func (s *State) RequestFor(caller, opID string, params map[string]string) (strin
 func (s *State) Approve(id string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	rec, ok := s.records.get(id)
+	rec, ok := s.records.Get(id)
 	if !ok || rec.Status == statusConsumed || expired(rec, s.clock()) {
 		if ok && expired(rec, s.clock()) {
-			s.records.remove(rec)
+			s.records.Remove(rec)
 		}
 		return "", ErrUnknownApproval
 	}
@@ -165,7 +167,7 @@ func (s *State) Approve(id string) (string, error) {
 	}
 	rec.Status = statusApproved
 	rec.ApprovedID = approved
-	if err := s.records.put(rec); err != nil {
+	if err := s.records.Put(rec); err != nil {
 		return "", err
 	}
 	return approved, nil
@@ -176,13 +178,13 @@ func (s *State) ConsumeFor(caller, approvalID, opID string, params map[string]st
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := s.clock()
-	rec, ok := s.records.findApproved(approvalID, now)
+	rec, ok := s.records.FindApproved(approvalID)
 	if !ok || rec.Status != statusApproved || rec.ApprovedID != approvalID {
 		return false, nil
 	}
 	if rec.Caller != caller || rec.OperationID != opID || !maps.Equal(rec.Params, params) || expired(rec, now) {
 		if expired(rec, now) {
-			s.records.remove(rec)
+			s.records.Remove(rec)
 		}
 		return false, nil
 	}
@@ -193,14 +195,14 @@ func (s *State) ConsumeFor(caller, approvalID, opID string, params map[string]st
 			return ok, err
 		}
 	} else {
-		ok, err := s.records.claim(rec.ID)
+		ok, err := s.records.Claim(rec.ID)
 		if err != nil || !ok {
 			return ok, err
 		}
 		claimed = persistDir(s.records) != ""
 	}
 	rec.Status = statusConsumed
-	if err := s.records.put(rec); err != nil {
+	if err := s.records.Put(rec); err != nil {
 		if claimed {
 			_ = os.Remove(filepath.Join(persistDir(s.records), "confirmations", rec.ID+".claimed"))
 		}
@@ -212,14 +214,14 @@ func (s *State) ConsumeFor(caller, approvalID, opID string, params map[string]st
 func (s *State) Pending(id string) *PendingConfirmation {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	rec, ok := s.records.get(id)
+	rec, ok := s.records.Get(id)
 	if !ok || rec.Status != statusPending {
 		return nil
 	}
 	return &PendingConfirmation{ID: rec.ID, OperationID: rec.OperationID, Params: cloneParams(rec.Params)}
 }
 
-func expired(rec confirmation, now time.Time) bool {
+func expired(rec Record, now time.Time) bool {
 	return rec.Expiry != 0 && !now.Before(time.Unix(rec.Expiry, 0))
 }
 

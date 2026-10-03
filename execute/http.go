@@ -23,8 +23,10 @@ import (
 	"github.com/google/uuid"
 )
 
+// DefaultMaxResponseBytes is 1 MiB when MaxBody is unset.
 const DefaultMaxResponseBytes int64 = 1 << 20
 
+// Client sends one operation over HTTP.
 type Client struct {
 	BaseURL         string
 	HTTP            *http.Client
@@ -89,6 +91,7 @@ func (c Client) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, par
 	return out, nil
 }
 
+// InvokeResponse runs one call and returns the HTTP response.
 func InvokeResponse(ctx context.Context, cfg Client, op *catalog.Operation, params map[string]string) (*http.Response, error) {
 	resp, _, err := invokeResponse(ctx, cfg, op, params)
 	return resp, err

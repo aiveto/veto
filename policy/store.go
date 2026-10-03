@@ -8,27 +8,40 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/aiveto/veto/internal/atomicfile"
 )
 
-type store interface {
-	put(rec confirmation) error
-	get(id string) (confirmation, bool)
-	findApproved(id string, now time.Time) (confirmation, bool)
-	claim(id string) (bool, error)
-	remove(rec confirmation)
+// Store persists confirmation records. Memory is the default. Files is a directory.
+// Claim is consume-once. A Redis store is SETNX on the id, not a package in this module.
+type Store interface {
+	Put(Record) error
+	Get(id string) (Record, bool)
+	FindApproved(approvedID string) (Record, bool)
+	Claim(id string) (bool, error)
+	Remove(Record)
 }
 
-type memoryStore struct {
-	pending  map[string]confirmation
+// Record is one confirmation.
+type Record struct {
+	ID          string            `json:"id"`
+	OperationID string            `json:"operation_id"`
+	Params      map[string]string `json:"params,omitempty"`
+	Status      string            `json:"status"`
+	Expiry      int64             `json:"expiry,omitempty"`
+	ApprovedID  string            `json:"approved_id,omitempty"`
+	Caller      string            `json:"caller,omitempty"`
+}
+
+// Memory keeps records in this process.
+type Memory struct {
+	pending  map[string]Record
 	approved map[string]string
 }
 
-func (m *memoryStore) put(rec confirmation) error {
+func (m *Memory) Put(rec Record) error {
 	if m.pending == nil {
-		m.pending = map[string]confirmation{}
+		m.pending = map[string]Record{}
 	}
 	if m.approved == nil {
 		m.approved = map[string]string{}
@@ -43,100 +56,94 @@ func (m *memoryStore) put(rec confirmation) error {
 	return nil
 }
 
-func (m *memoryStore) get(id string) (confirmation, bool) {
+func (m *Memory) Get(id string) (Record, bool) {
 	rec, ok := m.pending[id]
 	return rec, ok
 }
 
-func (m *memoryStore) findApproved(id string, now time.Time) (confirmation, bool) {
+func (m *Memory) FindApproved(id string) (Record, bool) {
 	if id == "" {
-		return confirmation{}, false
+		return Record{}, false
 	}
 	pendingID, ok := m.approved[id]
 	if !ok {
-		return confirmation{}, false
+		return Record{}, false
 	}
 	rec, ok := m.pending[pendingID]
-	if !ok || rec.ApprovedID != id || rec.Status != statusApproved || expired(rec, now) {
-		m.remove(rec)
+	if !ok || rec.ApprovedID != id || rec.Status != statusApproved {
+		m.Remove(rec)
 		delete(m.approved, id)
-		return confirmation{}, false
+		return Record{}, false
 	}
 	return rec, true
 }
 
-func (m *memoryStore) claim(string) (bool, error) {
+func (m *Memory) Claim(string) (bool, error) {
 	return true, nil
 }
 
-func (m *memoryStore) remove(rec confirmation) {
+func (m *Memory) Remove(rec Record) {
 	delete(m.pending, rec.ID)
 	if rec.ApprovedID != "" {
 		delete(m.approved, rec.ApprovedID)
 	}
 }
 
-type fileStore struct {
-	memoryStore
-	dir string
+// Files keeps records as JSON under Dir/confirmations.
+type Files struct {
+	Memory
+	Dir string
 }
 
-func (f *fileStore) put(rec confirmation) error {
+func (f *Files) Put(rec Record) error {
 	if err := f.write(rec); err != nil {
 		return err
 	}
-	return f.memoryStore.put(rec)
+	return f.Memory.Put(rec)
 }
 
-func (f *fileStore) get(id string) (confirmation, bool) {
-	if plainID(id) {
-		if rec, ok := f.read(id); ok {
-			_ = f.memoryStore.put(rec)
-			return rec, true
-		}
+func (f *Files) Get(id string) (Record, bool) {
+	if rec, ok := f.read(id); ok {
+		_ = f.Memory.Put(rec)
+		return rec, true
 	}
-	return f.memoryStore.get(id)
+	return f.Memory.Get(id)
 }
 
-func (f *fileStore) findApproved(id string, now time.Time) (confirmation, bool) {
-	if rec, ok := f.memoryStore.findApproved(id, now); ok {
+func (f *Files) FindApproved(id string) (Record, bool) {
+	if rec, ok := f.Memory.FindApproved(id); ok {
 		disk, ok := f.read(rec.ID)
-		if !ok || disk.ApprovedID != id || disk.Status != statusApproved || expired(disk, now) {
-			f.remove(rec)
+		if !ok || disk.ApprovedID != id || disk.Status != statusApproved {
+			f.Remove(rec)
 		} else {
-			_ = f.memoryStore.put(disk)
+			_ = f.Memory.Put(disk)
 			return disk, true
 		}
 	}
-	entries, err := os.ReadDir(filepath.Join(f.dir, "confirmations"))
+	entries, err := os.ReadDir(filepath.Join(f.Dir, "confirmations"))
 	if err != nil {
-		return confirmation{}, false
+		return Record{}, false
 	}
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
 		}
 		rec, ok := f.read(strings.TrimSuffix(entry.Name(), ".json"))
-		if !ok {
+		if !ok || rec.ApprovedID != id || rec.Status != statusApproved {
 			continue
 		}
-		if expired(rec, now) {
-			f.remove(rec)
-			continue
-		}
-		if rec.ApprovedID == id && rec.Status == statusApproved {
-			_ = f.memoryStore.put(rec)
-			return rec, true
-		}
+		_ = f.Memory.Put(rec)
+		return rec, true
 	}
-	return confirmation{}, false
+	return Record{}, false
 }
 
-func (f *fileStore) claim(id string) (bool, error) {
+func (f *Files) Claim(id string) (bool, error) {
+	id = filepath.Base(id)
 	if !plainID(id) {
 		return false, errors.New("approval id")
 	}
-	dir := filepath.Join(f.dir, "confirmations")
+	dir := filepath.Join(f.Dir, "confirmations")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return false, fmt.Errorf("approval dir: %w", err)
 	}
@@ -153,21 +160,21 @@ func (f *fileStore) claim(id string) (bool, error) {
 	return true, nil
 }
 
-func (f *fileStore) remove(rec confirmation) {
+func (f *Files) Remove(rec Record) {
 	if id := filepath.Base(rec.ID); plainID(id) {
-		dir := filepath.Join(f.dir, "confirmations")
+		dir := filepath.Join(f.Dir, "confirmations")
 		_ = os.Remove(filepath.Join(dir, id+".json"))
 		_ = os.Remove(filepath.Join(dir, id+".claimed"))
 	}
-	f.memoryStore.remove(rec)
+	f.Memory.Remove(rec)
 }
 
-func (f *fileStore) write(rec confirmation) error {
+func (f *Files) write(rec Record) error {
 	id := filepath.Base(rec.ID)
 	if !plainID(id) {
 		return errors.New("approval id")
 	}
-	dir := filepath.Join(f.dir, "confirmations")
+	dir := filepath.Join(f.Dir, "confirmations")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("approval dir: %w", err)
 	}
@@ -181,18 +188,18 @@ func (f *fileStore) write(rec confirmation) error {
 	return nil
 }
 
-func (f *fileStore) read(id string) (confirmation, bool) {
+func (f *Files) read(id string) (Record, bool) {
 	id = filepath.Base(id)
 	if !plainID(id) {
-		return confirmation{}, false
+		return Record{}, false
 	}
-	body, err := os.ReadFile(filepath.Join(f.dir, "confirmations", id+".json"))
+	body, err := os.ReadFile(filepath.Join(f.Dir, "confirmations", id+".json"))
 	if err != nil {
-		return confirmation{}, false
+		return Record{}, false
 	}
-	var rec confirmation
+	var rec Record
 	if err := json.Unmarshal(body, &rec); err != nil || rec.ID != id {
-		return confirmation{}, false
+		return Record{}, false
 	}
 	return rec, true
 }
