@@ -19,7 +19,7 @@ import (
 func TestPackOmitsRawSpecAndIncludesDescribed(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
-	sem := semantics.NewDerived(cat)
+	sem := semantics.New(cat)
 	op := cat.ByID("orders.delete")
 	pack := runctx.NewBuilder(4096).Build(cat, []runctx.Turn{{Role: "user", Content: "delete 123"}}, op, sem, nil)
 	assert.False(t, runctx.ContainsRawSpec(pack.Serialize()))
@@ -54,7 +54,7 @@ func TestPackWalksDeclaredRelation(t *testing.T) {
 	rels, err := catalog.ParseRelations(relData)
 	require.NoError(t, err)
 	require.NoError(t, catalog.ApplyRelations(cat, rels))
-	sem := semantics.NewDerived(cat)
+	sem := semantics.New(cat)
 	pack := runctx.NewBuilder(8192).Build(cat, nil, cat.ByID("orders.get"), sem, nil)
 	ser := pack.Serialize()
 	assert.Contains(t, ser, "related: customers.get Order.customerId")
@@ -63,7 +63,7 @@ func TestPackWalksDeclaredRelation(t *testing.T) {
 
 func TestPackIncludesCallShapeAndRelationField(t *testing.T) {
 	cat := joinedCatalog(t)
-	sem := semantics.NewDerived(cat)
+	sem := semantics.New(cat)
 	pack := runctx.NewBuilder(8192).Build(cat, []runctx.Turn{{Role: "user", Content: "get order"}}, nil, sem, nil)
 	assert.Contains(t, pack.Index, "id path required")
 	assert.Contains(t, pack.Index, "customerId")
@@ -77,7 +77,7 @@ func TestTruncateDropsWholeOperations(t *testing.T) {
 		{ID: "beta.read", Description: "read the beta record fully", Name: "beta"},
 	}}
 	cat.Finalize()
-	sem := semantics.NewDerived(cat)
+	sem := semantics.New(cat)
 	full := runctx.NewBuilder(10000).Build(cat, []runctx.Turn{{Role: "user", Content: "read"}}, nil, sem, nil)
 	parts := strings.Split(full.Index, "; ")
 	require.GreaterOrEqual(t, len(parts), 2)
@@ -96,7 +96,7 @@ func TestPackBoundsTurnsDetailAndPending(t *testing.T) {
 		ID: "orders.get", Method: "GET", PathTemplate: "/orders/{id}", Description: desc, Name: "get",
 	}}}
 	cat.Finalize()
-	sem := semantics.NewDerived(cat)
+	sem := semantics.New(cat)
 	turns := []runctx.Turn{{Role: "user", Content: turn}}
 	pending := &policy.PendingConfirmation{
 		ID:          "pend-1",
@@ -125,7 +125,7 @@ func TestSerializedPackStaysInsideTheBudget(t *testing.T) {
 	cat.Graph.Edges = append(cat.Graph.Edges, catalog.Edge{
 		From: "orders.get", To: "customers.get", Kind: catalog.EdgeRelates, Note: note,
 	})
-	sem := semantics.NewDerived(cat)
+	sem := semantics.New(cat)
 	pack := runctx.NewBuilder(8192).Build(cat, nil, cat.ByID("orders.get"), sem, nil)
 	assert.LessOrEqual(t, len(pack.Serialize()), 8192)
 	assert.NotContains(t, pack.Serialize(), note)
@@ -138,7 +138,7 @@ func TestSerializedPackStaysInsideTheBudget(t *testing.T) {
 	longID := strings.Repeat("op", 3000)
 	wide := &catalog.Catalog{Operations: []catalog.Operation{{ID: longID, Name: "n", Description: "d"}}}
 	wide.Finalize()
-	many := runctx.NewBuilder(8192).Build(wide, turns, wide.ByID(longID), semantics.NewDerived(wide), &policy.PendingConfirmation{
+	many := runctx.NewBuilder(8192).Build(wide, turns, wide.ByID(longID), semantics.New(wide), &policy.PendingConfirmation{
 		ID: strings.Repeat("p", 5000), OperationID: longID, Params: map[string]string{"id": strings.Repeat("9", 4000)},
 	})
 	assert.LessOrEqual(t, len(many.Serialize()), 8192)
@@ -173,7 +173,7 @@ func TestPackKeepsSearchHitsAndDropsTheRest(t *testing.T) {
 	rels, err := catalog.ParseRelations(relData)
 	require.NoError(t, err)
 	require.NoError(t, catalog.ApplyRelations(cat, rels))
-	sem := semantics.NewDerived(cat)
+	sem := semantics.New(cat)
 	turns := []runctx.Turn{{Role: "user", Content: "delete order 123"}}
 	pack := runctx.NewBuilder(8192).Build(cat, turns, nil, sem, nil)
 	assert.NotContains(t, pack.Index, "billing.list")

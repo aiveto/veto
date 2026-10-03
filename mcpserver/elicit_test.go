@@ -86,7 +86,7 @@ func elicitSession(t *testing.T, chat bool, elicit func(context.Context, *mcp.El
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	t.Cleanup(ts.Close)
-	sem := semantics.NewDerived(cat)
+	sem := semantics.New(cat)
 	loop, err := agent.New(cat, sem, execute.Client{BaseURL: ts.URL})
 	require.NoError(t, err)
 	calls := loop.Runtime()

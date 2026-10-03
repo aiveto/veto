@@ -81,7 +81,7 @@ func TestHTTPTwoCallersDoNotShareApprovalsOrTokens(t *testing.T) {
 	defer upstream.Close()
 
 	cat := loadSpec(t, upstreamSpec)
-	sem := semantics.NewDerived(cat)
+	sem := semantics.New(cat)
 	loop, err := agent.New(cat, sem, execute.Client{
 		BaseURL: upstream.URL,
 		Creds: auth.New(auth.Options{Schemes: []auth.Scheme{{
@@ -253,6 +253,58 @@ func TestHTTPTwoCallersDoNotShareApprovalsOrTokens(t *testing.T) {
 		assert.NotContains(t, blob, graceSecret)
 		assert.NotContains(t, blob, userAda)
 		assert.NotContains(t, blob, userGrace)
+	}
+}
+
+func TestHTTPChatApproval(t *testing.T) {
+	cases := []struct {
+		name string
+		chat bool
+		hits int32
+		want string
+	}{
+		{name: "accept runs the delete", chat: true, hits: 1, want: `"status":"ok"`},
+		{name: "off ignores accept", chat: false, hits: 0, want: `"status":"confirmation_required"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var hits atomic.Int32
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				hits.Add(1)
+				w.WriteHeader(http.StatusNoContent)
+			}))
+			t.Cleanup(upstream.Close)
+			cat := loadSpec(t, upstreamSpec)
+			sem := semantics.New(cat)
+			loop, err := agent.New(cat, sem, execute.Client{BaseURL: upstream.URL})
+			require.NoError(t, err)
+			calls := loop.Runtime()
+			handler, err := mcpserver.Handler(&mcpserver.Server{Catalog: cat, Semantics: sem, Calls: &calls}, mcpserver.Options{ChatApproval: tc.chat}, []mcpserver.Identity{
+				{ID: "ada", Token: "secret"},
+			})
+			require.NoError(t, err)
+			bound, err := mcpserver.Listen(t.Context(), "127.0.0.1:0", handler)
+			require.NoError(t, err)
+			rt := &callerTransport{base: http.DefaultTransport, token: "secret"}
+			client := mcp.NewClient(&mcp.Implementation{Name: "veto-test", Version: "0.0.1"}, &mcp.ClientOptions{
+				ElicitationHandler: func(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+					return &mcp.ElicitResult{Action: "accept"}, nil
+				},
+			})
+			session, err := client.Connect(context.Background(), &mcp.StreamableClientTransport{
+				Endpoint:             "http://" + bound,
+				HTTPClient:           &http.Client{Transport: rt},
+				DisableStandaloneSSE: true,
+			}, nil)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = session.Close() })
+			text := callTool(t, session, map[string]any{
+				"operation_id": "orders.delete",
+				"params":       map[string]any{"id": "123"},
+			})
+			assert.Contains(t, text, tc.want)
+			assert.Equal(t, tc.hits, hits.Load())
+		})
 	}
 }
 

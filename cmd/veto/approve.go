@@ -9,7 +9,7 @@ import (
 
 	"github.com/aiveto/veto/config"
 	"github.com/aiveto/veto/policy"
-	"github.com/aiveto/veto/valkeystore"
+	"github.com/aiveto/veto/valkey"
 	"github.com/spf13/cobra"
 )
 
@@ -78,7 +78,7 @@ func applyApproval(ctx context.Context, s *policy.State, ttl time.Duration, stor
 		return errors.New("missing approval state")
 	}
 	if storeURL != "" {
-		st, err := valkeystore.Dial(ctx, storeURL)
+		st, err := valkey.Dial(ctx, storeURL)
 		if err != nil {
 			return err
 		}

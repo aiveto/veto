@@ -14,7 +14,7 @@ import (
 )
 
 // Store persists confirmation records. Memory is the default. Files is one machine.
-// Claim is consume-once. valkeystore is the replica adapter: SET NX on the pending id.
+// Claim is consume-once. valkey is the replica adapter: SET NX on the pending id.
 type Store interface {
 	Put(ctx context.Context, rec Record) error
 	Get(ctx context.Context, id string) (Record, bool)

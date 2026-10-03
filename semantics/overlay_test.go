@@ -21,7 +21,7 @@ func TestOverlayMissingKeyKeepsDerivedSentence(t *testing.T) {
 		Schema: "Order", Field: "customerId", To: "customers.get",
 	}}))
 	body := "- operation: orders.delete\n  synonyms:\n    - retire\n"
-	over, err := ParseOverlay([]byte(body), NewDerived(cat))
+	over, err := ParseOverlay([]byte(body), New(cat))
 	require.NoError(t, err)
 	patched := over.Note("orders.delete")
 	assert.Equal(t, "Remove an order", patched.Sentence)
@@ -31,7 +31,7 @@ func TestOverlayMissingKeyKeepsDerivedSentence(t *testing.T) {
 }
 
 func TestOverlayRejectsABadFile(t *testing.T) {
-	base := NewDerived(&catalog.Catalog{})
+	base := New(&catalog.Catalog{})
 	cases := []struct {
 		name string
 		body string

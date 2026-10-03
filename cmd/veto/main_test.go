@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -87,6 +88,45 @@ func TestApproveReadsStoreFromConfig(t *testing.T) {
 	ok, err = caller.ConsumeFor(t.Context(), "", approved, "orders.delete", map[string]string{"id": "123"})
 	require.NoError(t, err)
 	assert.False(t, ok)
+}
+
+func TestSignedApprovalIsOneUseOnValkey(t *testing.T) {
+	srv := miniredis.RunT(t)
+	t.Setenv("VETO_APPROVAL_STORE", "redis://"+srv.Addr())
+	t.Setenv("VETO_APPROVAL_SECRET", "test-secret")
+	issuer := policy.NewState()
+	require.NoError(t, applyApprovalEnv(t.Context(), issuer))
+	pending, err := issuer.RequestFor(t.Context(), "", "orders.delete", map[string]string{"id": "123"})
+	require.NoError(t, err)
+	approved, err := issuer.Approve(t.Context(), pending)
+	require.NoError(t, err)
+	require.True(t, strings.HasPrefix(approved, "v1."))
+	var wins atomic.Int32
+	var wg sync.WaitGroup
+	errCh := make(chan error, 24)
+	for range 24 {
+		wg.Go(func() {
+			other := policy.NewState()
+			if err := applyApprovalEnv(t.Context(), other); err != nil {
+				errCh <- err
+				return
+			}
+			ok, err := other.ConsumeFor(t.Context(), "", approved, "orders.delete", map[string]string{"id": "123"})
+			if err != nil {
+				errCh <- err
+				return
+			}
+			if ok {
+				wins.Add(1)
+			}
+		})
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		require.NoError(t, err)
+	}
+	assert.Equal(t, int32(1), wins.Load())
 }
 
 func TestPinRegistersADirectTool(t *testing.T) {

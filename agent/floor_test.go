@@ -17,7 +17,6 @@ func TestAssignedPolicyKeepsThePermissionFloor(t *testing.T) {
 	}
 	op := cat.ByID("orders.delete")
 	op.Permissions = []string{"order.delete"}
-	op.RequiresConfirmation = false
 	var hits int
 	loop, err := New(cat, nil, floorExec{hits: &hits})
 	if err != nil {

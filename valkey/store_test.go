@@ -1,4 +1,4 @@
-package valkeystore
+package valkey
 
 import (
 	"testing"

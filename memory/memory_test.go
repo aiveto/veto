@@ -11,7 +11,7 @@ import (
 
 func TestDeleteRemovesIDFromOrder(t *testing.T) {
 	ctx := context.Background()
-	m := memory.NewLocalMap()
+	m := memory.New()
 	for _, id := range []string{"a", "b"} {
 		require.NoError(t, m.Store(ctx, memory.Item{ID: id, Content: id}))
 	}
@@ -27,7 +27,7 @@ func TestDeleteRemovesIDFromOrder(t *testing.T) {
 func TestCanceledContextDoesNoWork(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	m := memory.NewLocalMap()
+	m := memory.New()
 	cases := []struct {
 		name string
 		call func() error

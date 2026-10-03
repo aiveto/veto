@@ -38,7 +38,7 @@ func (flowPick) Complete(ctx context.Context, req agent.Request) (agent.Response
 func TestDeleteLoopStopsBeforeHTTPAndPacksOverlay(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
-	base := semantics.NewDerived(cat)
+	base := semantics.New(cat)
 	overlay, err := os.ReadFile("../testdata/semantics.yaml")
 	require.NoError(t, err)
 	sem, err := semantics.ParseOverlay(overlay, base)
@@ -56,7 +56,7 @@ func TestDeleteLoopStopsBeforeHTTPAndPacksOverlay(t *testing.T) {
 		Policy:    policy.Builtin{},
 		State:     policy.NewState(),
 		Exec:      execute.Client{BaseURL: ts.URL},
-		Memory:    memory.NewLocalMap(),
+		Memory:    memory.New(),
 		Packs:     runctx.NewBuilder(0),
 	}
 	out, err := loop.Run(context.Background(), "Delete order 123")
@@ -169,7 +169,7 @@ func TestPausedFlowKeepsTheApprovalID(t *testing.T) {
 	defer ts.Close()
 	loop := &agent.Loop{
 		Catalog:   cat,
-		Semantics: semantics.NewDerived(cat),
+		Semantics: semantics.New(cat),
 		Model:     deleteFlow{},
 		Policy:    policy.Builtin{},
 		State:     policy.NewState(),
@@ -204,7 +204,7 @@ func TestLoopRunsNamedFlow(t *testing.T) {
 	defer ts.Close()
 	loop := &agent.Loop{
 		Catalog:   cat,
-		Semantics: semantics.NewDerived(cat),
+		Semantics: semantics.New(cat),
 		Model:     flowPick{},
 		Exec:      execute.Client{BaseURL: ts.URL, HTTP: ts.Client()},
 		Flows:     map[string]*flow.Definition{def.Name: def},

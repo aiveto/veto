@@ -94,7 +94,7 @@ func New(cat *catalog.Catalog, sem Notes, exec Executor) (*Loop, error) {
 		return nil, errors.New("catalog required")
 	}
 	if sem == nil {
-		sem = semantics.NewDerived(cat)
+		sem = semantics.New(cat)
 	}
 	return &Loop{
 		Catalog:   cat,
@@ -104,7 +104,7 @@ func New(cat *catalog.Catalog, sem Notes, exec Executor) (*Loop, error) {
 		base:      policy.Builtin{},
 		State:     policy.NewState(),
 		Exec:      exec,
-		Memory:    memory.NewLocalMap(),
+		Memory:    memory.New(),
 		Flows:     map[string]*flow.Definition{},
 		Packs:     runctx.NewBuilder(0),
 		gate:      &runtime.InvokeGate{},
