@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/aiveto/veto/auth"
@@ -72,8 +71,7 @@ type (
 	}
 
 	// Runtime resolves, validates, checks policy, verifies approval, executes, shapes, and records.
-	// A nil Gate is created on first use. Copies made before that call do not share the gate.
-	// Runtime is stored and returned by value, so the publish lock stays off the struct.
+	// The owner constructs Gate so copies share one limiter. A nil Gate is created on first use.
 	Runtime struct {
 		Catalog *catalog.Catalog
 		Policy  policy.Hook
@@ -86,15 +84,7 @@ type (
 	}
 )
 
-// lazyGate publishes a nil Gate.
-// Runtime is stored and returned by value, so this lock cannot be a field on it.
-var lazyGate sync.Mutex
-
-// invokeGate publishes one gate. A gate set before the first call is kept.
-// Concurrent first calls on the same Runtime share that gate.
 func (rt *Runtime) invokeGate() *InvokeGate {
-	lazyGate.Lock()
-	defer lazyGate.Unlock()
 	if rt.Gate == nil {
 		rt.Gate = &InvokeGate{}
 	}

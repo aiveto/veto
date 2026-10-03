@@ -71,6 +71,7 @@ func New(baseURL string, httpClient *http.Client) (*Client, error) {
 		Policy:  policy.Builtin{},
 		State:   policy.NewState(),
 		Exec:    execute.Client{BaseURL: baseURL, HTTP: httpClient},
+		Gate:    &runtime.InvokeGate{},
 	}}, nil
 }
 

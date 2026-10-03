@@ -14,7 +14,6 @@ import (
 )
 
 func TestBundleRejectsClientSecret(t *testing.T) {
-	t.Cleanup(func() { require.NoError(t, bundle.Release()) })
 	dir := t.TempDir()
 	body := "contracts:\n  - orders.yaml\nauth:\n  job:\n    client_secret: super-secret-value\n"
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "bundle.yaml"), []byte(body), 0o600))
@@ -30,7 +29,6 @@ func TestBundleRejectsClientSecret(t *testing.T) {
 }
 
 func TestBundleRejectsAliasCycles(t *testing.T) {
-	t.Cleanup(func() { require.NoError(t, bundle.Release()) })
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "bundle.yaml"), []byte("x: &cycle [*cycle]\n"), 0o600))
 	_, err := bundle.Load(dir)

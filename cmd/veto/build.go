@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/aiveto/veto/agent"
@@ -30,6 +31,11 @@ type sources struct {
 	relations string
 	agent     string
 }
+
+var (
+	bundleMu    sync.Mutex
+	openBundles []*bundle.Loaded
+)
 
 func callerName(name string) string {
 	if name == "" {
@@ -196,6 +202,7 @@ func resolveBundle(configPath, bundlePath string, contracts []string, relations,
 		if err != nil {
 			return sources{}, err
 		}
+		holdBundle(shared)
 		if loadedConfig {
 			cfg = overlayBundle(cfg, shared.Config)
 		} else {
@@ -238,8 +245,25 @@ func overlayBundle(deploy, shared config.File) config.File {
 	return out
 }
 
+func holdBundle(l *bundle.Loaded) {
+	if l == nil {
+		return
+	}
+	bundleMu.Lock()
+	openBundles = append(openBundles, l)
+	bundleMu.Unlock()
+}
+
 func releaseBundles() {
-	if err := bundle.Release(); err != nil {
+	bundleMu.Lock()
+	all := openBundles
+	openBundles = nil
+	bundleMu.Unlock()
+	var err error
+	for _, l := range all {
+		err = errors.Join(err, l.Close())
+	}
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "bundle: %v\n", err)
 	}
 }

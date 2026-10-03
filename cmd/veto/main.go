@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/aiveto/veto/bundle"
 	"github.com/spf13/cobra"
 )
 
@@ -30,9 +29,7 @@ func main() {
 }
 
 func exitMain(code int) {
-	if err := bundle.Release(); err != nil {
-		fmt.Fprintf(os.Stderr, "bundle: %v\n", err)
-	}
+	releaseBundles()
 	os.Exit(code)
 }
 
