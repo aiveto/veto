@@ -1,0 +1,143 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/aiveto/veto/mcpserver"
+	"github.com/aiveto/veto/telemetry"
+	"github.com/spf13/cobra"
+)
+
+type serveCmd struct {
+	contract   []string
+	config     string
+	agent      string
+	relations  string
+	stdio      bool
+	http       bool
+	addr       string
+	pin        []string
+	directPins bool
+	grouped    bool
+	baseURL    string
+}
+
+func newServeCommand() *cobra.Command {
+	cmd := &serveCmd{stdio: true}
+	c := &cobra.Command{
+		Use:   "serve",
+		Short: "Serve MCP from the contract catalog.",
+		Run: func(c *cobra.Command, _ []string) {
+			runServe(*cmd, c)
+		},
+	}
+	c.Flags().StringArrayVar(&cmd.contract, "contract", nil, "OpenAPI file. Repeat to register another API. Overrides config.")
+	c.Flags().StringVar(&cmd.config, "config", "", "Path to veto.yaml provider keys.")
+	c.Flags().StringVar(&cmd.agent, "agent", "", "Path to agent.yaml. Overrides agent_file.")
+	c.Flags().StringVar(&cmd.relations, "relations", "", "Relations file. Overrides relations_file.")
+	c.Flags().BoolVar(&cmd.stdio, "stdio", true, "Listen on stdio for MCP.")
+	c.Flags().BoolVar(&cmd.http, "http", false, "Listen for MCP on Streamable HTTP. Requires the Veto-Caller header.")
+	c.Flags().StringVar(&cmd.addr, "addr", mcpserver.DefaultAddr, "Listen address for --http.")
+	c.Flags().StringArrayVar(&cmd.pin, "pin", nil, "Pin operation ids.")
+	c.Flags().BoolVar(&cmd.directPins, "direct-pins", false, "Register direct MCP tools for pinned ids only.")
+	c.Flags().BoolVar(&cmd.grouped, "grouped", false, "Register one MCP tool per resource.")
+	c.Flags().StringVar(&cmd.baseURL, "base-url", "", "Override the server URL on every operation. Empty uses each contract server.")
+	return c
+}
+
+func runServe(cmd serveCmd, c *cobra.Command) {
+	stdio := cmd.stdio
+	if cmd.http && c != nil && !c.Flags().Changed("stdio") {
+		stdio = false
+	}
+	if !cmd.http && !stdio {
+		fmt.Fprintf(os.Stderr, "serve: stdio or http required\n")
+		exitMain(1)
+	}
+	loop, cfg, err := buildLoop(cmd.contract, cmd.config, cmd.agent, cmd.relations, cmd.baseURL)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "serve: %v\n", err)
+		exitMain(1)
+	}
+	if err := stdioTraceConflict(stdio, cfg.TraceExport); err != nil {
+		fmt.Fprintf(os.Stderr, "serve: %v\n", err)
+		exitMain(1)
+	}
+	stop, err := telemetry.Install(cfg.TraceExport)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "serve: %v\n", err)
+		exitMain(1)
+	}
+	finish := func() {
+		if err := stop(context.Background()); err != nil {
+			fmt.Fprintf(os.Stderr, "serve: %v\n", err)
+		}
+	}
+	fail := func() {
+		finish()
+		exitMain(1)
+	}
+	if err := mcpserver.ValidatePins(loop.Catalog, cmd.pin); err != nil {
+		fmt.Fprintf(os.Stderr, "serve: %v\n", err)
+		fail()
+	}
+	ctx, stopSig := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSig()
+	calls := loop.Runtime()
+	srv := &mcpserver.Server{
+		Catalog:   loop.Catalog,
+		Semantics: loop.Semantics,
+		Calls:     &calls,
+	}
+	opt := mcpserver.Options{Pins: cmd.pin, DirectPins: cmd.directPins, Grouped: cmd.grouped}
+	if cmd.http {
+		ids, err := mcpserver.Identities(cfg.Callers, os.Getenv)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "serve: %v\n", err)
+			fail()
+		}
+		httpOpt := opt
+		httpOpt.ChatApproval = cfg.ChatApproval
+		handler, err := mcpserver.Handler(srv, httpOpt, ids)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "serve: %v\n", err)
+			fail()
+		}
+		addr := cmd.addr
+		if addr == "" {
+			addr = mcpserver.DefaultAddr
+		}
+		fmt.Fprintf(os.Stderr, "mcp http://%s\n", addr)
+		if !stdio {
+			if err := mcpserver.Serve(ctx, addr, handler); err != nil && !errors.Is(err, context.Canceled) {
+				fmt.Fprintf(os.Stderr, "serve: %v\n", err)
+				fail()
+			}
+			finish()
+			return
+		}
+		go func() {
+			if err := mcpserver.Serve(ctx, addr, handler); err != nil && !errors.Is(err, context.Canceled) {
+				fmt.Fprintf(os.Stderr, "serve: %v\n", err)
+				fail()
+			}
+		}()
+	}
+	if err := mcpserver.RunStdio(ctx, srv, opt); err != nil && !errors.Is(err, context.Canceled) {
+		fmt.Fprintf(os.Stderr, "serve: %v\n", err)
+		fail()
+	}
+	finish()
+}
+
+func stdioTraceConflict(stdio bool, export string) error {
+	if stdio && export == "stdout" {
+		return errors.New("trace_export stdout cannot share stdio")
+	}
+	return nil
+}
