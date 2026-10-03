@@ -1,3 +1,4 @@
+// Package opa evaluates a Rego overlay. The builtin permission floor still runs.
 package opa
 
 import (

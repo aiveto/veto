@@ -3,8 +3,12 @@ package openapi_test
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/aiveto/veto/openapi"
@@ -32,6 +36,33 @@ func TestLoadRejectsIncompleteDocuments(t *testing.T) {
 			assert.ErrorContains(t, err, tc.want)
 		})
 	}
+}
+
+func TestLoadReadsAnHTTPContract(t *testing.T) {
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		_, _ = w.Write([]byte(openAPI31))
+	}))
+	defer srv.Close()
+	cat, err := openapi.Load(context.Background(), srv.URL)
+	require.NoError(t, err)
+	require.NotNil(t, cat.ByID("ping"))
+	assert.Equal(t, 1, hits)
+
+	missing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer missing.Close()
+	_, err = openapi.Load(context.Background(), missing.URL)
+	assert.ErrorContains(t, err, "404")
+
+	huge := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(w, strings.NewReader(strings.Repeat("a", 8<<20+1)))
+	}))
+	defer huge.Close()
+	_, err = openapi.Load(context.Background(), huge.URL)
+	assert.ErrorContains(t, err, "larger than")
 }
 
 func TestOpenAPI31DocumentLoads(t *testing.T) {

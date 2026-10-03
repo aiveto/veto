@@ -1,3 +1,4 @@
+// Package catalog is the operation index shared by the runtime, the MCP server, and a generated client.
 package catalog
 
 import (

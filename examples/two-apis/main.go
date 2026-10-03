@@ -1,3 +1,4 @@
+// Package main runs two contracts through one catalog.
 package main
 
 import (

@@ -1,3 +1,4 @@
+// Package config loads veto.yaml. An unset key keeps the default.
 package config
 
 import (
@@ -133,7 +134,7 @@ func Load(path string) (File, error) {
 		cfg.TokenDir = filepath.Join(dir, cfg.TokenDir)
 	}
 	for i, name := range cfg.Contracts {
-		if name != "" && !filepath.IsAbs(name) {
+		if name != "" && !filepath.IsAbs(name) && !remoteContract(name) {
 			cfg.Contracts[i] = filepath.Join(dir, name)
 		}
 	}
@@ -565,6 +566,10 @@ func (s Source) validate(name string) error {
 	default:
 		return fmt.Errorf("auth source %q is not in this slice", s.Kind())
 	}
+}
+
+func remoteContract(name string) bool {
+	return strings.HasPrefix(name, "https://") || strings.HasPrefix(name, "http://")
 }
 
 // An unset key redacts.

@@ -1,3 +1,4 @@
+// Package eval runs agent cases with the scripted model and the real policy path.
 package eval
 
 import (

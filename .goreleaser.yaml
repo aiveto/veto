@@ -7,6 +7,8 @@ builds:
     binary: veto
     env:
       - CGO_ENABLED=0
+    ldflags:
+      - -X github.com/aiveto/veto/mcpserver.Version={{.Version}}
     goos:
       - linux
       - windows

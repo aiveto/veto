@@ -1,3 +1,4 @@
+// Package agent runs one turn. The model proposes, policy decides, and the follow-up pack goes back to the caller.
 package agent
 
 import (

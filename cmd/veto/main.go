@@ -1,3 +1,4 @@
+// Package main is the veto command.
 package main
 
 import (

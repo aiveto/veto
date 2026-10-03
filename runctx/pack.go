@@ -1,3 +1,4 @@
+// Package runctx builds the context pack for one turn.
 package runctx
 
 import (

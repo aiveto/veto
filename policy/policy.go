@@ -1,3 +1,4 @@
+// Package policy allows, checks, and confirms. A destructive call waits for a stored approval.
 package policy
 
 import (

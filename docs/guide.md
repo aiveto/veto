@@ -41,7 +41,7 @@ contracts:
 relations_file: relations.yaml
 ```
 
-That is the file `init` writes. Paths are relative to `veto.yaml`. Add `auth` when a scheme needs a credential. A string names the environment variable that holds the token. A login, client credentials, or a command is the other form. Secrets stay out of this file. Unset keys keep the defaults (`model: scripted`, `policy: builtin`, in-process execution).
+That is the file `init` writes. Paths are relative to `veto.yaml`. An `http` or `https` URL is fetched as written. Add `auth` when a scheme needs a credential. A string names the environment variable that holds the token. A login, client credentials, or a command is the other form. Secrets stay out of this file. Unset keys keep the defaults (`model: scripted`, `policy: builtin`, in-process execution).
 
 ```yaml
 auth:
@@ -198,7 +198,7 @@ Cursor and Claude Desktop both take this server entry. Use a config path the `ve
 }
 ```
 
-`operation_id` is the catalog id. `params` is an object. Path, query, and header values are strings, keyed by parameter name. `body` is the request body: a string is sent as written, and a JSON object is encoded as JSON and sent. There is no schema compiler in that step. `approval_id` is empty on the first call. A `confirmation_required` result carries a pending id. That id does not run the call. `veto approve <id>` records the approval and prints an approved id. A later invoke with that approved id runs once.
+`operation_id` is the catalog id. `params` is an object. Path, query, and header values are strings, keyed by parameter name. `body` is the request body: a string is sent as written, and a JSON object is encoded as JSON and sent. There is no schema compiler in that step. `approval_id` is empty on the first call. A `confirmation_required` result carries a pending id. That id does not run the call. A host that supports elicitation asks the person to accept or decline. Accept records the approval and runs the call. Decline leaves the pending id. A host without elicitation returns that id, and `veto approve <id>` records the approval and prints an approved id. A later invoke with that approved id runs once.
 
 `response_fields` in `veto.yaml`, or `fields` on this invoke, names the JSON fields returned after a successful call. A list also returns `page` with `offset`, `limit`, and `returned`. `truncated` is true when the response cap cuts the body or the page stops before the end. `response_limit` is the page size when the invoke omits `limit`. With no fields named, the body is unchanged. The cap stays. `--keep-sensitive` is still what records a response body, and secrets are still removed from the trace.
 

@@ -1,3 +1,4 @@
+// Package result is an HTTP result and the parameter errors returned to a caller.
 package result
 
 import "fmt"
