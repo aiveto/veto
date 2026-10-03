@@ -23,6 +23,25 @@ func TestSetSignerRejectsAnEmptySecret(t *testing.T) {
 	require.Error(t, missing.SetSigner([]byte("secret"), 0))
 }
 
+func TestSetStoreUsesTheGivenStore(t *testing.T) {
+	s := NewState()
+	got := &captureStore{}
+	s.SetStore(got)
+	_, err := s.RequestFor("", "orders.delete", map[string]string{"id": "1"})
+	require.NoError(t, err)
+	assert.Equal(t, 1, got.puts)
+}
+
+type captureStore struct {
+	Memory
+	puts int
+}
+
+func (c *captureStore) Put(rec Record) error {
+	c.puts++
+	return c.Memory.Put(rec)
+}
+
 func TestApproveUnknownIsASentinel(t *testing.T) {
 	s := NewState()
 	_, err := s.Approve("missing")

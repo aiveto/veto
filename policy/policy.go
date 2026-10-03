@@ -16,14 +16,19 @@ import (
 type inputKey struct{}
 
 const (
-	DecisionAllow              Decision = "allow"
-	DecisionDeny               Decision = "deny"
+	// DecisionAllow permits the call.
+	DecisionAllow Decision = "allow"
+	// DecisionDeny rejects the call.
+	DecisionDeny Decision = "deny"
+	// DecisionConfirmationNeeded holds the call until an approval is stored.
 	DecisionConfirmationNeeded Decision = "confirmation_required"
 )
 
 type (
+	// Decision is allow, deny, or confirmation required.
 	Decision string
 
+	// PendingConfirmation is a held call. The id does not authorize HTTP.
 	PendingConfirmation struct {
 		ID          string            `json:"ID"`
 		OperationID string            `json:"OperationID"`
@@ -37,10 +42,12 @@ type (
 		Caller    string
 	}
 
+	// Hook decides one operation.
 	Hook interface {
 		Check(ctx context.Context, op *catalog.Operation) (Decision, error)
 	}
 
+	// Around may stop before the next hook. Stop plus deny wins.
 	Around func(ctx context.Context, op *catalog.Operation) (Decision, bool, error)
 
 	// Allow nil permits every declared permission.
@@ -49,12 +56,14 @@ type (
 		Allow  map[string]bool
 	}
 
+	// Wrapped is next with Around in front.
 	Wrapped struct {
 		next   Hook
 		around Around
 	}
 )
 
+// Wrap puts around in front of next. Nil next is Builtin.
 func Wrap(next Hook, around Around) Wrapped {
 	if next == nil {
 		next = Builtin{}
@@ -95,10 +104,12 @@ func (w Wrapped) Check(ctx context.Context, op *catalog.Operation) (Decision, er
 	return base, nil
 }
 
+// WithInput stores the call under policy.
 func WithInput(ctx context.Context, in Input) context.Context {
 	return context.WithValue(ctx, inputKey{}, in)
 }
 
+// InputFrom reads the call stored by WithInput.
 func InputFrom(ctx context.Context) Input {
 	in, _ := ctx.Value(inputKey{}).(Input)
 	if in.Params == nil {
@@ -129,6 +140,7 @@ func (b Builtin) Check(ctx context.Context, op *catalog.Operation) (Decision, er
 	return DecisionAllow, nil
 }
 
+// ConfirmSentence is the text shown for a held call.
 func ConfirmSentence(operationID string, params map[string]string) string {
 	var b strings.Builder
 	b.WriteString("confirm ")
@@ -139,6 +151,7 @@ func ConfirmSentence(operationID string, params map[string]string) string {
 	return b.String()
 }
 
+// Check runs hook. Nil hook is Builtin.
 func Check(ctx context.Context, hook Hook, op *catalog.Operation) (Decision, error) {
 	if hook == nil {
 		hook = Builtin{}
