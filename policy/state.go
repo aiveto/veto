@@ -77,21 +77,21 @@ func (s *State) SetSigner(secret []byte, ttl time.Duration) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	dir := persistDir(s.records)
-	if dir == "" {
-		var err error
-		dir, err = defaultNonceDir(secret)
-		if err != nil {
-			return err
+	if _, ok := s.records.(*Memory); ok {
+		dir := persistDir(s.records)
+		if dir == "" {
+			var err error
+			dir, err = defaultNonceDir(secret)
+			if err != nil {
+				return err
+			}
 		}
-	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("approval nonce dir: %w", err)
-	}
-	if persistDir(s.records) == "" {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return fmt.Errorf("approval nonce dir: %w", err)
+		}
 		s.records = &Files{Dir: dir}
 	}
-	s.tokens = hmacSigner{secret: append([]byte(nil), secret...), dir: dir}
+	s.tokens = hmacSigner{secret: append([]byte(nil), secret...)}
 	s.ttl = ttl
 	if s.ttl <= 0 {
 		s.ttl = defaultApprovalTTL
@@ -188,24 +188,18 @@ func (s *State) ConsumeFor(caller, approvalID, opID string, params map[string]st
 		}
 		return false, nil
 	}
-	claimed := false
 	if s.tokens != nil {
 		ok, err := s.tokens.consume(caller, approvalID, opID, params, now)
 		if err != nil || !ok {
 			return ok, err
 		}
-	} else {
-		ok, err := s.records.Claim(rec.ID)
-		if err != nil || !ok {
-			return ok, err
-		}
-		claimed = persistDir(s.records) != ""
+	}
+	ok, err := s.records.Claim(rec.ID)
+	if err != nil || !ok {
+		return ok, err
 	}
 	rec.Status = statusConsumed
 	if err := s.records.Put(rec); err != nil {
-		if claimed {
-			_ = os.Remove(filepath.Join(persistDir(s.records), "confirmations", rec.ID+".claimed"))
-		}
 		return false, err
 	}
 	return true, nil

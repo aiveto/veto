@@ -21,6 +21,7 @@ import (
 	"github.com/aiveto/veto/policy"
 	"github.com/aiveto/veto/runtime"
 	"github.com/aiveto/veto/telemetry"
+	"github.com/alicebob/miniredis/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -60,6 +61,27 @@ func TestHelpJSONStaysOffTheHumanHelpPath(t *testing.T) {
 	for _, name := range []string{"serve", "eval", "replay", "validate", "generate", "pack", "doctor", "check", "init", "approve", "preview"} {
 		assert.Contains(t, doc.Commands, name)
 	}
+}
+
+func TestApprovalStoreIsSharedAcrossStates(t *testing.T) {
+	srv := miniredis.RunT(t)
+	t.Setenv("VETO_APPROVAL_STORE", "redis://"+srv.Addr())
+	t.Setenv("VETO_APPROVAL_SECRET", "test-secret")
+	t.Setenv("VETO_APPROVAL_NONCE_DIR", t.TempDir())
+	caller := policy.NewState()
+	require.NoError(t, applyApprovalEnv(caller, 0))
+	pending, err := caller.RequestFor("", "orders.delete", map[string]string{"id": "123"})
+	require.NoError(t, err)
+	approved, err := approveID(pending)
+	require.NoError(t, err)
+	other := policy.NewState()
+	require.NoError(t, applyApprovalEnv(other, 0))
+	ok, err := other.ConsumeFor("", approved, "orders.delete", map[string]string{"id": "123"})
+	require.NoError(t, err)
+	assert.True(t, ok)
+	ok, err = caller.ConsumeFor("", approved, "orders.delete", map[string]string{"id": "123"})
+	require.NoError(t, err)
+	assert.False(t, ok)
 }
 
 func TestApproveRecordsAnIDTheCallerCannotMint(t *testing.T) {

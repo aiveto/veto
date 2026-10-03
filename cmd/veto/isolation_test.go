@@ -24,6 +24,9 @@ func TestMain(m *testing.M) {
 	if err := os.Unsetenv("VETO_APPROVAL_SECRET"); err != nil {
 		panic(err)
 	}
+	if err := os.Unsetenv("VETO_APPROVAL_STORE"); err != nil {
+		panic(err)
+	}
 	code := m.Run()
 	_ = os.RemoveAll(dir)
 	os.Exit(code)

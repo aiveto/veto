@@ -6,7 +6,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/aiveto/veto/config"
 	"github.com/aiveto/veto/policy"
+	"github.com/aiveto/veto/valkeystore"
 	"github.com/spf13/cobra"
 )
 
@@ -34,26 +36,48 @@ func approveID(id string) (string, error) {
 	return state.Approve(id)
 }
 
-// applyApprovalEnv points state at the approval directory serve and approve share.
-// The directory and the signing secret come from the environment. ttl is the signed approval lifetime.
-// Zero ttl keeps the 15 minute default. An empty secret leaves the approval unsigned.
+// applyApprovalEnv points state at the store serve and approve share.
+// VETO_APPROVAL_STORE is a Valkey or Redis URL. Otherwise the directory and signing secret come from the environment.
+// ttl is the signed approval lifetime. Zero ttl keeps the 15 minute default. An empty secret leaves the approval unsigned.
 func applyApprovalEnv(s *policy.State, ttl time.Duration) error {
+	return applyApproval(s, ttl, os.Getenv("VETO_APPROVAL_STORE"))
+}
+
+func applyApprovalConfig(s *policy.State, cfg config.File) error {
+	url := os.Getenv("VETO_APPROVAL_STORE")
+	if url == "" && cfg.ApprovalStore != "" {
+		url = os.Getenv(cfg.ApprovalStore)
+		if url == "" {
+			return fmt.Errorf("approval store %s is unset", cfg.ApprovalStore)
+		}
+	}
+	return applyApproval(s, cfg.ApprovalTTL, url)
+}
+
+func applyApproval(s *policy.State, ttl time.Duration, storeURL string) error {
 	if s == nil {
 		return errors.New("missing approval state")
 	}
-	dir := os.Getenv("VETO_APPROVAL_NONCE_DIR")
-	secret := os.Getenv("VETO_APPROVAL_SECRET")
-	if dir == "" && secret == "" {
-		var err error
-		dir, err = policy.DefaultApprovalDir()
+	if storeURL != "" {
+		st, err := valkeystore.Dial(storeURL)
 		if err != nil {
 			return err
 		}
+		s.SetStore(st)
+	} else {
+		dir := os.Getenv("VETO_APPROVAL_NONCE_DIR")
+		if dir == "" && os.Getenv("VETO_APPROVAL_SECRET") == "" {
+			var err error
+			dir, err = policy.DefaultApprovalDir()
+			if err != nil {
+				return err
+			}
+		}
+		if dir != "" {
+			s.SetNonceDir(dir)
+		}
 	}
-	if dir != "" {
-		s.SetNonceDir(dir)
-	}
-	if secret != "" {
+	if secret := os.Getenv("VETO_APPROVAL_SECRET"); secret != "" {
 		return s.SetSigner([]byte(secret), ttl)
 	}
 	return nil

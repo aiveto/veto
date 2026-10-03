@@ -32,6 +32,16 @@ func TestSetStoreUsesTheGivenStore(t *testing.T) {
 	assert.Equal(t, 1, got.puts)
 }
 
+func TestSetSignerKeepsANonMemoryStore(t *testing.T) {
+	s := NewState()
+	got := &captureStore{}
+	s.SetStore(got)
+	require.NoError(t, s.SetSigner([]byte("secret"), time.Minute))
+	_, err := s.RequestFor("", "orders.delete", map[string]string{"id": "1"})
+	require.NoError(t, err)
+	assert.Equal(t, 1, got.puts)
+}
+
 type captureStore struct {
 	Memory
 	puts int
