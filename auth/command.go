@@ -71,3 +71,20 @@ func runCommand(ctx context.Context, scheme Scheme, in commandIn, timeout time.D
 	}
 	return commandResult{Headers: out.Headers, ExpiresAt: exp}, nil
 }
+
+func (r *Resolver) fetchCommand(ctx context.Context, s Scheme, operationID, method, endpoint string) (Material, error) {
+	in := commandIn{
+		OperationID: operationID,
+		Method:      method,
+		URL:         endpoint,
+		Scheme:      s.Name,
+	}
+	if user := UserToken(ctx); user != "" {
+		in.UserToken = user
+	}
+	out, err := runCommand(ctx, s, in, r.commandTimeout)
+	if err != nil {
+		return Material{}, err
+	}
+	return Material{Headers: cloneMap(out.Headers), Expires: out.ExpiresAt, Secrets: mapValues(out.Headers)}, nil
+}

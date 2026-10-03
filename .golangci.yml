@@ -67,7 +67,7 @@ linters:
   exclusions:
     rules:
       # The OAuth token-type URN contains the word "token". It is not a secret.
-      - path: auth/resolver\.go
+      - path: auth/grant_exchange\.go
         linters: [gosec]
         text: "G101:"
       # The token file has to persist the refresh token.
