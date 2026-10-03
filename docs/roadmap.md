@@ -15,11 +15,3 @@ Pre-1.0. These are the next things that change how someone installs veto, finds 
 **SQLite store.** Consume-once on one machine without Valkey. Files stays for one process. `SetStore` stays the wiring.
 
 **Protobuf.** A `.proto` becomes a catalog the same way an OpenAPI file does. No empty package until that loader exists.
-
-## Not this
-
-**Ossie.** Warehouse datasets and SQL metrics. Veto notes are operation search, a describe sentence, and a declared relation. `semantics.yaml` stays.
-
-**Subagents.** The host owns the model.
-
-**A JWT as the yes.** HMAC verifies. `Store.Claim` is consume-once.

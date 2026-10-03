@@ -11,7 +11,6 @@
 - Confirmation uses a store and a signer. `SetNonceDir` and `SetSigner` attach the file and HMAC adapters. The CLI holds extracted bundles. A generated client constructs the invoke gate.
 - `policy.Store` is public. Memory and Files ship. `valkeystore` is the replica store (Valkey or Redis). `approval_store` names the URL env. `veto approve --config` reads that key and `approval_ttl`. `--pin` registers the pinned tool.
 - `policy.Store` and `policy.State` I/O take `context.Context`. `invoke_limit` in `veto.yaml` is calls per second per caller. Unset or 0 is 16.
-- The [roadmap](docs/roadmap.md) is Homebrew, `veto pending`, then mTLS, SQLite, and a protobuf loader when a deployment needs them.
 - A JSON request body is checked against its schema before HTTP. A mismatch returns `invalid_body` with the field path. The value is not echoed.
 
 ## v0.1.0 - 2026-10-02
