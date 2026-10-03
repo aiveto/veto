@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" role="img" aria-label="veto">
+  <rect width="640" height="640" fill="#F4F1EA"/>
+  <g font-family="ui-sans-serif, system-ui, sans-serif" fill="#1A1916">
+    <text x="164" y="348" font-size="168" font-weight="800" letter-spacing="-8.4">veto</text>
+  </g>
+  <rect x="165" y="378" width="311" height="18" fill="#C2412D"/>
+</svg>
