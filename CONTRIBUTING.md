@@ -1,6 +1,6 @@
 # Contributing
 
-Run `gofmt` and `go test ./...` before a pull request. CI runs both, plus `golangci-lint`, `go vet`, and `govulncheck`.
+Run `make ci` before a pull request. That is gofmt, golangci-lint, `go vet`, `go test ./...`, and `veto check`. CI runs the same checks, plus `govulncheck`.
 
 Return an error to the caller. The command handles it once. Do not log an error and also return it.
 
