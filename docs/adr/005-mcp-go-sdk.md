@@ -1,21 +1,3 @@
 # ADR 005: Official MCP Go SDK
 
-## Context
-
-`veto serve` must host stdio MCP tools in Go.
-
-## Staff engineer
-
-Prefer the official `github.com/modelcontextprotocol/go-sdk` for protocol compatibility and long-term maintenance.
-
-## Architect
-
-`mark3labs/mcp-go` is widely used and may have more examples today.
-
-## Decision
-
-Use `github.com/modelcontextprotocol/go-sdk` for the MCP server. It supports stdio tools via `mcp.StdioTransport` and `mcp.AddTool`. `veto serve --http` uses the same SDK's Streamable HTTP handler. Stdio remains the default.
-
-## What we refused
-
-Taking a hard dependency on `mcp-go` in this slice. Revisit only if the official SDK cannot host stdio tools (not the case here).
+The MCP server is `github.com/modelcontextprotocol/go-sdk`. Stdio is the default. `veto serve --http` uses that SDK's Streamable HTTP handler.

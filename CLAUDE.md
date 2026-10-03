@@ -116,9 +116,9 @@ Work in the checkout of `github.com/aiveto/veto`. `gofmt` the files you touch.
 
 ## Round table
 
-Before an implementation is locked, review the change as a round table. The staff engineer and the solutions architect each write what is wrong, what they would do, and the decision. Then code.
+Before an implementation is locked, review the change as a round table. Then code.
 
-A signed decision is locked only with a short file in `docs/adr/` that holds those notes. Do not reopen a decision inside a drive-by edit.
+A signed decision is locked only with a short file in `docs/adr/` that states the decision. The debate does not go in that file. Do not reopen a decision inside a drive-by edit.
 
 ## Not yet
 
