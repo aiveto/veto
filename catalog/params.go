@@ -1,10 +1,9 @@
 package catalog
 
 import (
-	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/aiveto/veto/result"
@@ -25,12 +24,12 @@ func (op Operation) CheckParams(params map[string]string) error {
 		if required && v == "" {
 			return result.ParamError{Operation: op.ID, Name: p.Name}
 		}
-		if p.In == "body" && v != "" && p.Type() == "object" && !jsonObject(v) {
-			return fmt.Errorf("operation %s: %s must be a JSON object", op.ID, p.Name)
-		}
 		if p.In == "body" && v != "" {
 			if err := p.checkBody(op.ID, v); err != nil {
 				return err
+			}
+			if p.Type() == "object" && !jsonObject(v) {
+				return result.BodyError{Operation: op.ID, Path: "/", Reason: "must be a JSON object"}
 			}
 		}
 	}
@@ -52,7 +51,7 @@ func prepareParams(params []Param) {
 			continue
 		}
 		var schema openapi3.Schema
-		if err := json.Unmarshal([]byte(params[i].Schema), &schema); err != nil {
+		if err := jsonv2.Unmarshal([]byte(params[i].Schema), &schema); err != nil {
 			continue
 		}
 		params[i].body = &schema
@@ -66,7 +65,7 @@ func schemaType(raw string) string {
 	var doc struct {
 		Type any `json:"type"`
 	}
-	if err := json.Unmarshal([]byte(raw), &doc); err != nil {
+	if err := jsonv2.Unmarshal([]byte(raw), &doc); err != nil {
 		return ""
 	}
 	switch t := doc.Type.(type) {
@@ -159,14 +158,30 @@ func (p Param) kind() string {
 }
 
 func (p Param) checkBody(operationID, raw string) error {
-	if !jsonMedia(p.MediaType) || p.Schema == "" {
+	if !jsonMedia(p.MediaType) {
 		return nil
 	}
-	schema, value, ok := bodyValue(p, raw)
-	if !ok {
+	value, err := decodeJSON(raw)
+	if err != nil {
+		return result.BodyError{Operation: operationID, Path: "/", Reason: "is not JSON"}
+	}
+	if p.Type() == "object" {
+		if _, ok := value.(map[string]any); !ok {
+			return result.BodyError{Operation: operationID, Path: "/", Reason: "must be a JSON object"}
+		}
+	}
+	if p.Schema == "" {
 		return nil
 	}
-	err := schema.VisitJSON(value, openapi3.VisitAsRequest())
+	schema := p.body
+	if schema == nil {
+		parsed, ok := parseSchema(p.Schema)
+		if !ok {
+			return nil
+		}
+		schema = parsed
+	}
+	err = schema.VisitJSON(value, openapi3.VisitAsRequest())
 	if err == nil {
 		return nil
 	}
@@ -178,27 +193,20 @@ func (p Param) checkBody(operationID, raw string) error {
 	return bad
 }
 
-func bodyValue(p Param, raw string) (*openapi3.Schema, any, bool) {
-	if p.body == nil {
-		return decodeBody(p.Schema, raw)
-	}
+func decodeJSON(raw string) (any, error) {
 	var value any
-	if json.Unmarshal([]byte(raw), &value) != nil {
-		return nil, nil, false
+	if err := jsonv2.Unmarshal([]byte(raw), &value); err != nil {
+		return nil, err
 	}
-	return p.body, value, true
+	return value, nil
 }
 
-func decodeBody(schemaText, raw string) (*openapi3.Schema, any, bool) {
+func parseSchema(schemaText string) (*openapi3.Schema, bool) {
 	var schema openapi3.Schema
-	if err := json.Unmarshal([]byte(schemaText), &schema); err != nil {
-		return nil, nil, false
+	if jsonv2.Unmarshal([]byte(schemaText), &schema) != nil {
+		return nil, false
 	}
-	var value any
-	if err := json.Unmarshal([]byte(raw), &value); err != nil {
-		return nil, nil, false
-	}
-	return &schema, value, true
+	return &schema, true
 }
 
 func jsonMedia(media string) bool {
@@ -210,14 +218,10 @@ func jsonMedia(media string) bool {
 }
 
 func jsonObject(raw string) bool {
-	dec := json.NewDecoder(strings.NewReader(raw))
 	var value any
-	if err := dec.Decode(&value); err != nil {
+	if err := jsonv2.Unmarshal([]byte(raw), &value); err != nil {
 		return false
 	}
-	if _, ok := value.(map[string]any); !ok {
-		return false
-	}
-	var extra any
-	return dec.Decode(&extra) == io.EOF
+	_, ok := value.(map[string]any)
+	return ok
 }

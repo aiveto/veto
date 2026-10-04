@@ -3,11 +3,12 @@ package auth
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os/exec"
 	"time"
+
+	"github.com/aiveto/veto/jsonopts"
 )
 
 type commandIn struct {
@@ -28,7 +29,7 @@ type commandResult struct {
 	ExpiresAt time.Time
 }
 
-func runCommand(ctx context.Context, scheme Scheme, in commandIn, timeout time.Duration) (commandResult, error) {
+func runCommand(ctx context.Context, scheme Scheme, in commandIn, timeout time.Duration, opts jsonopts.Set) (commandResult, error) {
 	if len(scheme.Command) == 0 {
 		return commandResult{}, errors.New("auth command is unset")
 	}
@@ -40,7 +41,7 @@ func runCommand(ctx context.Context, scheme Scheme, in commandIn, timeout time.D
 	}
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	raw, err := json.Marshal(in)
+	raw, err := opts.Marshal(in)
 	if err != nil {
 		return commandResult{}, errors.New("auth command failed")
 	}
@@ -59,7 +60,7 @@ func runCommand(ctx context.Context, scheme Scheme, in commandIn, timeout time.D
 		return commandResult{}, errors.New("auth command failed")
 	}
 	var out commandOut
-	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+	if err := opts.Unmarshal(stdout.Bytes(), &out); err != nil {
 		return commandResult{}, errors.New("auth command returned invalid JSON")
 	}
 	var exp time.Time
@@ -82,7 +83,7 @@ func (r *Resolver) fetchCommand(ctx context.Context, s Scheme, operationID, meth
 	if user := UserToken(ctx); user != "" {
 		in.UserToken = user
 	}
-	out, err := runCommand(ctx, s, in, r.commandTimeout)
+	out, err := runCommand(ctx, s, in, r.commandTimeout, r.json)
 	if err != nil {
 		return Material{}, err
 	}

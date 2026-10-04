@@ -18,11 +18,16 @@ func TestCheckParamsRequiresAJSONObject(t *testing.T) {
 		}},
 	}
 	err := op.CheckParams(map[string]string{"body": "not-json"})
-	require.ErrorContains(t, err, "JSON object")
+	bad, ok := errors.AsType[result.BodyError](err)
+	require.True(t, ok, err)
+	assert.Equal(t, "is not JSON", bad.Reason)
 	err = op.CheckParams(map[string]string{"body": "[1]"})
-	require.ErrorContains(t, err, "JSON object")
+	bad, ok = errors.AsType[result.BodyError](err)
+	require.True(t, ok, err)
+	assert.Equal(t, "must be a JSON object", bad.Reason)
 	err = op.CheckParams(map[string]string{"body": `{"a":1}{"b":2}`})
-	require.ErrorContains(t, err, "JSON object")
+	_, ok = errors.AsType[result.BodyError](err)
+	require.True(t, ok, err)
 	assert.NoError(t, op.CheckParams(map[string]string{"body": `{"a":1}`}))
 }
 
@@ -60,6 +65,32 @@ func TestCheckParamsUsesPreparedSchema(t *testing.T) {
 	_, ok := errors.AsType[result.BodyError](op.CheckParams(map[string]string{"body": `{}`}))
 	assert.True(t, ok)
 	assert.NoError(t, op.CheckParams(map[string]string{"body": `{"name":"ada"}`}))
+}
+
+func TestCheckParamsRejectsMalformedJSON(t *testing.T) {
+	cases := []struct {
+		name   string
+		schema string
+	}{
+		{name: "object", schema: `{"type":"object"}`},
+		{name: "array", schema: `{"type":"array","items":{"type":"string"}}`},
+		{name: "integer", schema: `{"type":"integer"}`},
+		{name: "allOf object", schema: `{"allOf":[{"type":"object","properties":{"id":{"type":"string"}}}]}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			op := &catalog.Operation{
+				ID: "widgets.create",
+				Params: []catalog.Param{{
+					Name: "body", In: "body", Required: true, MediaType: "application/json", Schema: tc.schema,
+				}},
+			}
+			err := op.CheckParams(map[string]string{"body": "not-json"})
+			bad, ok := errors.AsType[result.BodyError](err)
+			require.True(t, ok, err)
+			assert.Equal(t, "is not JSON", bad.Reason)
+		})
+	}
 }
 
 func TestCheckParamsRejectsUnserializable(t *testing.T) {

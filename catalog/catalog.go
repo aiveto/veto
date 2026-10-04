@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/getkin/kin-openapi/openapi3"
 )
@@ -116,6 +117,7 @@ type (
 		byID       map[string]*Operation
 		search     []searchText
 		mu         sync.Mutex
+		ready      atomic.Bool
 	}
 )
 
@@ -169,7 +171,7 @@ func (c *Catalog) IndexLine() string {
 func (c *Catalog) ensureIndex() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.byID != nil && c.search != nil {
+	if c.ready.Load() {
 		return
 	}
 	c.buildIndex()
@@ -178,6 +180,7 @@ func (c *Catalog) ensureIndex() {
 func (c *Catalog) index() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.ready.Store(false)
 	c.buildIndex()
 }
 
@@ -188,6 +191,7 @@ func (c *Catalog) buildIndex() {
 		prepareParams(c.Operations[i].Params)
 	}
 	c.prepareSearch()
+	c.ready.Store(true)
 }
 
 func (c *Catalog) SelectServer(name string) error {

@@ -4,12 +4,13 @@ package jsonfield
 import (
 	"bytes"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 )
 
 // String returns the named field. A JSON string is unquoted. Any other value is the raw JSON.
 func String(body, field string) (string, bool) {
 	var obj map[string]json.RawMessage
-	if json.Unmarshal([]byte(body), &obj) != nil {
+	if jsonv2.Unmarshal([]byte(body), &obj) != nil {
 		return "", false
 	}
 	raw, ok := obj[field]
@@ -22,7 +23,7 @@ func String(body, field string) (string, bool) {
 	}
 	if raw[0] == '"' {
 		var s string
-		if json.Unmarshal(raw, &s) != nil {
+		if jsonv2.Unmarshal(raw, &s) != nil {
 			return "", false
 		}
 		return s, true

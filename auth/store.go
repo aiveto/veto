@@ -1,13 +1,14 @@
 package auth
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	jsonv2 "encoding/json/v2"
 
 	"github.com/aiveto/veto/internal/atomicfile"
 )
@@ -43,7 +44,7 @@ func writeToken(dir, scheme string, tok storedToken) error {
 	if err := ensureDir(dir); err != nil {
 		return err
 	}
-	raw, err := json.Marshal(tok)
+	raw, err := jsonv2.Marshal(tok)
 	if err != nil {
 		return fmt.Errorf("store token: %w", err)
 	}
@@ -75,7 +76,7 @@ func readToken(dir, scheme string) (storedToken, error) {
 		return storedToken{}, err
 	}
 	var tok storedToken
-	if err := json.Unmarshal(raw, &tok); err != nil {
+	if err := jsonv2.Unmarshal(raw, &tok); err != nil {
 		return storedToken{}, fmt.Errorf("read token: %w", err)
 	}
 	return tok, nil

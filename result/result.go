@@ -18,6 +18,8 @@ type (
 		Retryable bool
 		Truncated bool
 		Page      *Page
+		HTTP      bool // a response was received
+		Sent      bool // the request was given to the transport
 	}
 
 	ParamError struct {

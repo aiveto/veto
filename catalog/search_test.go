@@ -199,6 +199,20 @@ func TestSearchFollowsDeclaredRelation(t *testing.T) {
 	assert.True(t, found)
 }
 
+func TestSearchRelatedIsCallerOwned(t *testing.T) {
+	cat := &catalog.Catalog{
+		Operations: []catalog.Operation{{ID: "orders.get"}, {ID: "customers.get"}},
+		Links:      []catalog.OpLink{{From: "orders.get", To: "customers.get", Note: "Order.customerId"}},
+	}
+	cat.Finalize()
+	first := catalog.Search(cat, "customerId", nil)
+	require.NotEmpty(t, first)
+	first[0].Related = append(first[0].Related, "injected")
+	second := catalog.Search(cat, "customerId", nil)
+	require.NotEmpty(t, second)
+	assert.NotContains(t, second[0].Related, "injected")
+}
+
 func TestConcurrentSearchAndByID(t *testing.T) {
 	cat := &catalog.Catalog{Operations: []catalog.Operation{
 		{ID: "item.get", Name: "Get item", Description: "fetch one"},
@@ -241,15 +255,34 @@ func BenchmarkSearch(b *testing.B) {
 		ops[i] = catalog.Operation{ID: id, Name: "Get item", Description: "fetch one", Group: "items"}
 		uses[i] = catalog.SchemaUse{OperationID: id, Name: "Order"}
 	}
-	cat := &catalog.Catalog{Operations: ops, Uses: uses}
+	ops[0].ID = "orders.get"
+	uses[0].OperationID = "orders.get"
+	cat := &catalog.Catalog{Operations: ops, Uses: uses, Links: []catalog.OpLink{{From: "orders.get", To: "item.0001", Note: "Order.customerId"}}}
 	cat.Finalize()
 	sem := semantics.New(cat)
 	syns := sem.AllSynonyms()
-	b.ReportAllocs()
-	b.ResetTimer()
-	for b.Loop() {
-		if catalog.Search(cat, "order", syns) == nil {
-			b.Fatal("empty")
-		}
+	cases := []struct {
+		name, q string
+	}{
+		{name: "exact", q: "orders.get"},
+		{name: "broad", q: "order"},
+		{name: "miss", q: "zzzz"},
+		{name: "relation", q: "customerId"},
 	}
+	for _, tc := range cases {
+		b.Run(tc.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				catalog.Search(cat, tc.q, syns)
+			}
+		})
+	}
+	b.Run("parallel", func(b *testing.B) {
+		b.ReportAllocs()
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				catalog.Search(cat, "order", syns)
+			}
+		})
+	})
 }

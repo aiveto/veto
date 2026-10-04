@@ -1,10 +1,10 @@
 package runtime
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"strings"
+
+	"github.com/aiveto/veto/jsonopts"
 )
 
 // FromStrings adapts a string map at a boundary that does not carry JSON types.
@@ -21,13 +21,13 @@ func FromStrings(in map[string]string) map[string]any {
 
 // wire is the HTTP serialization of typed arguments.
 // Strings stay as given. Objects and arrays become JSON text. Approval binds this same form.
-func wire(args map[string]any) (map[string]string, error) {
+func wire(args map[string]any, opts jsonopts.Set) (map[string]string, error) {
 	if len(args) == 0 {
 		return map[string]string{}, nil
 	}
 	out := make(map[string]string, len(args))
 	for k, v := range args {
-		text, err := wireValue(v)
+		text, err := wireValue(v, opts)
 		if err != nil {
 			return nil, fmt.Errorf("param %s: %w", k, err)
 		}
@@ -36,7 +36,7 @@ func wire(args map[string]any) (map[string]string, error) {
 	return out, nil
 }
 
-func wireValue(v any) (string, error) {
+func wireValue(v any, opts jsonopts.Set) (string, error) {
 	switch val := v.(type) {
 	case nil:
 		return "", nil
@@ -45,16 +45,14 @@ func wireValue(v any) (string, error) {
 	case json.RawMessage:
 		return string(val), nil
 	default:
-		return jsonText(val)
+		return jsonText(val, opts)
 	}
 }
 
-func jsonText(v any) (string, error) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(v); err != nil {
+func jsonText(v any, opts jsonopts.Set) (string, error) {
+	b, err := opts.Marshal(v)
+	if err != nil {
 		return "", err
 	}
-	return strings.TrimSuffix(buf.String(), "\n"), nil
+	return string(b), nil
 }

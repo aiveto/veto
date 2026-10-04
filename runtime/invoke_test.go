@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -362,6 +364,103 @@ func TestMissingParamSkipsHTTP(t *testing.T) {
 	assert.Equal(t, "missing_param", out.Code)
 	assert.Equal(t, int32(0), hits.Load())
 }
+
+func TestInvokeRejectsAConstrainedBodyBeforeHTTP(t *testing.T) {
+	cat := loadConstrained(t)
+	var hits atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		hits.Add(1)
+	}))
+	defer ts.Close()
+	rt := runtime.Runtime{Catalog: cat, State: policy.NewState(), Exec: execute.Client{BaseURL: ts.URL}}
+	out, err := rt.Invoke(context.Background(), runtime.Request{
+		Operation: "widgets.create",
+		Arguments: map[string]any{"body": map[string]any{"count": -50, "name": "!", "extra": true}},
+	})
+	require.Error(t, err)
+	assert.Equal(t, "invalid_body", out.Code)
+	assert.False(t, out.HTTP)
+	assert.Equal(t, int32(0), hits.Load())
+}
+
+func TestInvokeKeepsHTTPWhenTheResponseFails(t *testing.T) {
+	var hits atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		_, _ = w.Write([]byte("12345"))
+	}))
+	defer ts.Close()
+	cat := &catalog.Catalog{Operations: []catalog.Operation{{
+		ID: "orders.get", Method: http.MethodGet, PathTemplate: "/orders/{id}",
+		Params: []catalog.Param{{Name: "id", In: "path", Required: true}},
+	}}}
+	cat.Finalize()
+	rt := runtime.Runtime{Catalog: cat, State: policy.NewState(), Exec: execute.Client{BaseURL: ts.URL, MaxBody: 4}}
+	out, err := rt.Invoke(context.Background(), runtime.Request{
+		Operation: "orders.get",
+		Arguments: runtime.FromStrings(map[string]string{"id": "1"}),
+	})
+	require.ErrorContains(t, err, "exceeds 4 bytes")
+	assert.True(t, out.HTTP)
+	assert.True(t, out.Sent)
+	assert.Equal(t, http.StatusOK, out.HTTPStatus)
+	assert.Equal(t, int32(1), hits.Load())
+}
+
+func TestInvokeMarksSentWhenTheTransportFails(t *testing.T) {
+	cat := &catalog.Catalog{Operations: []catalog.Operation{{
+		ID: "orders.get", Method: http.MethodGet, PathTemplate: "/orders/{id}",
+		Params: []catalog.Param{{Name: "id", In: "path", Required: true}},
+	}}}
+	cat.Finalize()
+	rt := runtime.Runtime{Catalog: cat, State: policy.NewState(), Exec: execute.Client{
+		BaseURL: "http://127.0.0.1:1",
+		HTTP:    &http.Client{Transport: failTrip{}},
+	}}
+	out, err := rt.Invoke(context.Background(), runtime.Request{
+		Operation: "orders.get",
+		Arguments: runtime.FromStrings(map[string]string{"id": "1"}),
+	})
+	require.Error(t, err)
+	assert.False(t, out.HTTP)
+	assert.True(t, out.Sent)
+}
+
+type failTrip struct{}
+
+func (failTrip) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("refused")
+}
+
+func loadConstrained(t *testing.T) *catalog.Catalog {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "spec.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(constrainedInvokeSpec), 0o600))
+	cat, err := openapi.Load(context.Background(), path)
+	require.NoError(t, err)
+	return cat
+}
+
+const constrainedInvokeSpec = `openapi: 3.0.3
+info: {title: t, version: "1"}
+paths:
+  /widgets:
+    post:
+      operationId: widgets.create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [count, name]
+              properties:
+                count: {type: integer, minimum: 1, maximum: 10}
+                name: {type: string, minLength: 3, pattern: "^[a-z]+$"}
+      responses:
+        "200": {description: ok}
+`
 
 type errExec struct{ err error }
 

@@ -2,7 +2,7 @@ package execute
 
 import (
 	"bytes"
-	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"io"
 	"net/http"
 	"net/url"
@@ -61,20 +61,16 @@ func redactBody(body string) string {
 	if body == "" {
 		return ""
 	}
-	dec := json.NewDecoder(strings.NewReader(body))
-	dec.UseNumber()
 	var value any
-	if err := dec.Decode(&value); err != nil {
+	if err := jsonv2.Unmarshal([]byte(body), &value); err != nil {
 		return body
 	}
 	redactJSON(&value)
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(value); err != nil {
+	raw, err := jsonv2.Marshal(value)
+	if err != nil {
 		return body
 	}
-	return strings.TrimSuffix(buf.String(), "\n")
+	return string(raw)
 }
 
 func redactJSON(value *any) {

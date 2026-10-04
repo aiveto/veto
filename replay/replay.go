@@ -2,7 +2,8 @@
 package replay
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 	"maps"
 	"os"
@@ -59,7 +60,7 @@ func (v View) String() string {
 }
 
 func Save(path string, view View) error {
-	data, err := json.MarshalIndent(view, "", "  ")
+	data, err := jsonv2.Marshal(view, jsontext.Multiline(true), jsontext.WithIndent("  "))
 	if err != nil {
 		return fmt.Errorf("write trace: %w", err)
 	}
@@ -76,7 +77,7 @@ func Load(path string) (View, error) {
 		return View{}, fmt.Errorf("read trace: %w", err)
 	}
 	var view View
-	if err := json.Unmarshal(data, &view); err != nil {
+	if err := jsonv2.Unmarshal(data, &view); err != nil {
 		return View{}, fmt.Errorf("parse trace: %w", err)
 	}
 	return view, nil

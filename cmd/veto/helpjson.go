@@ -1,7 +1,8 @@
 package main
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
 	"io"
 	"slices"
 	"strings"
@@ -30,12 +31,18 @@ func jsonHelp(w io.Writer, root *cobra.Command, args []string) (bool, error) {
 		return false, nil
 	}
 	doc := describeCommand(targetCommand(root, args))
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(doc); err != nil {
+	if err := writeIndentedJSON(w, doc); err != nil {
 		return true, err
 	}
 	return true, nil
+}
+
+func writeIndentedJSON(w io.Writer, v any) error {
+	if err := jsonv2.MarshalWrite(w, v, jsontext.Multiline(true), jsontext.WithIndent("  ")); err != nil {
+		return err
+	}
+	_, err := io.WriteString(w, "\n")
+	return err
 }
 
 func wantsHelpJSON(args []string) bool {

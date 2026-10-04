@@ -64,6 +64,27 @@ func FuzzProjectPage(f *testing.F) {
 	})
 }
 
+func TestProjectKeepsNumbersHTMLAndEmptyArrays(t *testing.T) {
+	raw := []byte(`{"n":1,"big":9007199254740993,"note":"a<b>&c","tags":[]}`)
+	body, _, _, err := projectBody(raw, runtime.Projection{Fields: []string{"n", "big", "note", "tags"}}, false, 1<<20)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), `"n":1`)
+	assert.Contains(t, string(body), `"big":9007199254740993`)
+	assert.Contains(t, string(body), `"note":"a<b>&c"`)
+	assert.Contains(t, string(body), `"tags":[]`)
+	assert.NotContains(t, string(body), `\u003c`)
+	assert.NotContains(t, string(body), `"tags":null`)
+}
+
+func TestProjectSkipsUnusedFields(t *testing.T) {
+	raw := []byte(`{"id":"1","blob":"` + strings.Repeat("x", 2000) + `","nested":{"keep":true,"drop":false}}`)
+	body, _, _, err := projectBody(raw, runtime.Projection{Fields: []string{"id", "nested.keep"}}, false, 1<<20)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"id":"1","nested":{"keep":true}}`, string(body))
+	assert.NotContains(t, string(body), "blob")
+	assert.NotContains(t, string(body), "drop")
+}
+
 func TestProjectRejectsCorruptJSONWhenTheBodyIsComplete(t *testing.T) {
 	raw := []byte(`{"id":1,"broken":NOT_JSON}`)
 	body, page, truncated, err := projectBody(raw, runtime.Projection{Fields: []string{"id"}}, false, 1<<20)
@@ -87,7 +108,7 @@ func FuzzProjectDecode(f *testing.F) {
 	f.Add([]byte{})
 	f.Fuzz(func(t *testing.T, raw []byte) {
 		for _, cut := range []bool{false, true} {
-			_, partial, err := decodeContainer(raw, cut)
+			_, partial, err := decodeContainer(raw, cut, nil)
 			if err != nil {
 				continue
 			}

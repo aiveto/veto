@@ -2,10 +2,13 @@ package execute_test
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -94,61 +97,90 @@ func TestRetryHonorsRetryAfter(t *testing.T) {
 	cases := []struct {
 		name   string
 		header func() string
+		wait   time.Duration
 	}{
-		{name: "delay seconds", header: func() string { return "1" }},
-		{name: "http date", header: func() string { return time.Now().Add(2 * time.Second).UTC().Format(http.TimeFormat) }},
+		{name: "delay seconds", header: func() string { return "1" }, wait: time.Second},
+		{name: "http date", header: func() string { return time.Now().Add(2 * time.Second).UTC().Format(http.TimeFormat) }, wait: 2 * time.Second},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			var hits atomic.Int32
-			var key string
-			var keyChanged bool
-			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				got := r.Header.Get("Idempotency-Key")
-				if key == "" {
-					key = got
-				} else if got != key {
-					keyChanged = true
-				}
-				if hits.Add(1) == 1 {
-					w.Header().Set("Retry-After", tc.header())
-					w.WriteHeader(http.StatusTooManyRequests)
-					return
-				}
-				w.WriteHeader(http.StatusCreated)
-			}))
-			defer ts.Close()
-			start := time.Now()
-			resp, err := execute.InvokeResponse(context.Background(), execute.Client{BaseURL: ts.URL}, op, map[string]string{"body": `{"name":"a"}`})
-			elapsed := time.Since(start)
-			require.NoError(t, err)
-			require.NoError(t, resp.Body.Close())
-			assert.Equal(t, int32(2), hits.Load())
-			assert.GreaterOrEqual(t, elapsed, 900*time.Millisecond)
-			assert.False(t, keyChanged)
-			assert.NotEmpty(t, key)
+			synctest.Test(t, func(t *testing.T) {
+				trip := &scriptedTrip{header: func(n int32) http.Header {
+					if n != 1 {
+						return http.Header{}
+					}
+					return http.Header{"Retry-After": []string{tc.header()}}
+				}, codes: []int{http.StatusTooManyRequests, http.StatusCreated}}
+				start := time.Now()
+				resp, err := execute.InvokeResponse(t.Context(), execute.Client{
+					BaseURL: "http://veto.test",
+					HTTP:    &http.Client{Transport: trip},
+				}, op, map[string]string{"body": `{"name":"a"}`})
+				elapsed := time.Since(start)
+				require.NoError(t, err)
+				require.NoError(t, resp.Body.Close())
+				assert.Equal(t, int32(2), trip.n.Load())
+				assert.GreaterOrEqual(t, elapsed, tc.wait-100*time.Millisecond)
+				assert.False(t, trip.keyChanged)
+				assert.NotEmpty(t, trip.key)
+			})
 		})
 	}
 }
 
 func TestRetryAfterStopsWhenTheContextIsCanceled(t *testing.T) {
-	op := &catalog.Operation{ID: "orders.get", Method: http.MethodGet, PathTemplate: "/orders", Retry: "2"}
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Retry-After", "2")
-		w.WriteHeader(http.StatusTooManyRequests)
-	}))
-	defer ts.Close()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() {
-		time.Sleep(40 * time.Millisecond)
-		cancel()
-	}()
-	start := time.Now()
-	resp, err := execute.InvokeResponse(ctx, execute.Client{BaseURL: ts.URL}, op, nil)
-	if resp != nil && resp.Body != nil {
-		_ = resp.Body.Close()
+	synctest.Test(t, func(t *testing.T) {
+		op := &catalog.Operation{ID: "orders.get", Method: http.MethodGet, PathTemplate: "/orders", Retry: "2"}
+		trip := &scriptedTrip{header: func(int32) http.Header {
+			return http.Header{"Retry-After": []string{"2"}}
+		}, codes: []int{http.StatusTooManyRequests}}
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		go func() {
+			time.Sleep(40 * time.Millisecond)
+			cancel()
+		}()
+		start := time.Now()
+		resp, err := execute.InvokeResponse(ctx, execute.Client{
+			BaseURL: "http://veto.test",
+			HTTP:    &http.Client{Transport: trip},
+		}, op, nil)
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+		require.ErrorIs(t, err, context.Canceled)
+		assert.Less(t, time.Since(start), 1500*time.Millisecond)
+	})
+}
+
+type scriptedTrip struct {
+	header     func(int32) http.Header
+	codes      []int
+	n          atomic.Int32
+	key        string
+	keyChanged bool
+}
+
+func (s *scriptedTrip) RoundTrip(req *http.Request) (*http.Response, error) {
+	n := s.n.Add(1)
+	got := req.Header.Get("Idempotency-Key")
+	if s.key == "" {
+		s.key = got
+	} else if got != s.key {
+		s.keyChanged = true
 	}
-	require.ErrorIs(t, err, context.Canceled)
-	assert.Less(t, time.Since(start), 1500*time.Millisecond)
+	code := s.codes[len(s.codes)-1]
+	if int(n) <= len(s.codes) {
+		code = s.codes[n-1]
+	}
+	h := http.Header{}
+	if s.header != nil {
+		h = s.header(n)
+	}
+	return &http.Response{
+		StatusCode: code,
+		Header:     h,
+		Body:       io.NopCloser(strings.NewReader("")),
+		Request:    req,
+	}, nil
 }

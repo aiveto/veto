@@ -4,9 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -80,7 +81,7 @@ func shapeBody(status int, raw []byte, cut bool, cfg Client) ([]byte, View, erro
 var errNotJSON = errors.New("body is not json")
 
 func projectBody(raw []byte, p runtime.Projection, cut bool, limit int64) ([]byte, *result.Page, bool, error) {
-	val, partial, err := decodeContainer(raw, cut)
+	val, partial, err := decodeContainer(raw, cut, p.Fields)
 	if err != nil {
 		return nil, nil, false, fmt.Errorf("project response: %w", err)
 	}
@@ -106,7 +107,7 @@ func projectBody(raw []byte, p runtime.Projection, cut bool, limit int64) ([]byt
 		if shrank {
 			truncated = true
 			var again []any
-			if err := json.Unmarshal(encoded, &again); err != nil {
+			if err := jsonv2.Unmarshal(encoded, &again); err != nil {
 				return nil, nil, false, fmt.Errorf("project response: %w", err)
 			}
 			pageItems = again
@@ -167,108 +168,151 @@ func fitEncoded(items []any, limit int64) ([]byte, bool, error) {
 	return encoded, true, nil
 }
 
-func decodeContainer(raw []byte, cut bool) (any, bool, error) {
+func decodeContainer(raw []byte, cut bool, fields []string) (any, bool, error) {
 	trimmed := bytes.TrimSpace(raw)
 	if len(trimmed) == 0 {
 		return nil, false, errNotJSON
 	}
-	dec := json.NewDecoder(bytes.NewReader(trimmed))
-	dec.UseNumber()
-	var (
-		val     any
-		partial bool
-		err     error
-	)
-	switch trimmed[0] {
-	case '{':
-		var obj map[string]any
-		obj, partial, err = decodeObject(dec, cut)
-		val = obj
-	case '[':
-		var items []any
-		items, partial, err = decodeArray(dec, cut)
-		val = items
-	default:
+	if trimmed[0] != '{' && trimmed[0] != '[' {
 		return nil, false, errNotJSON
 	}
+	dec := jsontext.NewDecoder(bytes.NewReader(trimmed))
+	val, partial, err := decodeValue(dec, cut, fields)
 	if err != nil {
 		return nil, false, err
 	}
 	if cut {
 		return val, partial, nil
 	}
-	if partial {
+	if partial || dec.PeekKind() != 0 {
 		return nil, false, errNotJSON
-	}
-	if err := requireEOF(dec); err != nil {
-		return nil, false, err
 	}
 	return val, false, nil
 }
 
-func requireEOF(dec *json.Decoder) error {
-	var extra any
-	err := dec.Decode(&extra)
-	if errors.Is(err, io.EOF) {
-		return nil
-	}
-	return errNotJSON
-}
-
-func decodeObject(dec *json.Decoder, cut bool) (map[string]any, bool, error) {
-	tok, err := dec.Token()
-	if err != nil || tok != json.Delim('{') {
-		return nil, false, errNotJSON
-	}
-	obj := map[string]any{}
-	for dec.More() {
-		keyTok, err := dec.Token()
+func decodeValue(dec *jsontext.Decoder, cut bool, fields []string) (any, bool, error) {
+	switch dec.PeekKind() {
+	case jsontext.KindBeginObject:
+		return decodeObject(dec, cut, fields)
+	case jsontext.KindBeginArray:
+		return decodeArray(dec, cut, fields)
+	case jsontext.KindNull:
+		if _, err := dec.ReadValue(); err != nil {
+			return nil, false, err
+		}
+		return nil, false, nil
+	case jsontext.KindFalse, jsontext.KindTrue, jsontext.KindString, jsontext.KindNumber:
+		raw, err := dec.ReadValue()
 		if err != nil {
-			return partialOrError(cut, obj)
-		}
-		key, ok := keyTok.(string)
-		if !ok {
-			return partialOrError(cut, obj)
-		}
-		var raw json.RawMessage
-		if err := dec.Decode(&raw); err != nil {
-			return partialOrError(cut, obj)
+			return nil, false, err
 		}
 		val, err := decodeRaw(raw)
+		if err != nil {
+			return nil, false, err
+		}
+		return val, false, nil
+	case jsontext.KindInvalid, jsontext.KindEndObject, jsontext.KindEndArray:
+		return nil, false, errNotJSON
+	}
+	return nil, false, errNotJSON
+}
+
+func decodeObject(dec *jsontext.Decoder, cut bool, fields []string) (map[string]any, bool, error) {
+	tok, err := dec.ReadToken()
+	if err != nil || tok.Kind() != jsontext.KindBeginObject {
+		return nil, false, errNotJSON
+	}
+	keep := fieldRoots(fields)
+	obj := map[string]any{}
+	for dec.PeekKind() != jsontext.KindEndObject && dec.PeekKind() != 0 {
+		keyTok, err := dec.ReadToken()
+		if err != nil || keyTok.Kind() != jsontext.KindString {
+			return partialOrError(cut, obj)
+		}
+		key := keyTok.String()
+		skip, child := fieldChild(fields, keep, key)
+		if skip {
+			if err := dec.SkipValue(); err != nil {
+				return partialOrError(cut, obj)
+			}
+			continue
+		}
+		val, partial, err := decodeValue(dec, cut, child)
 		if err != nil {
 			return partialOrError(cut, obj)
 		}
 		obj[key] = val
+		if partial {
+			return obj, true, nil
+		}
 	}
-	tok, err = dec.Token()
-	if err != nil || tok != json.Delim('}') {
+	tok, err = dec.ReadToken()
+	if err != nil || tok.Kind() != jsontext.KindEndObject {
 		return partialOrError(cut, obj)
 	}
 	return obj, false, nil
 }
 
-func decodeArray(dec *json.Decoder, cut bool) ([]any, bool, error) {
-	tok, err := dec.Token()
-	if err != nil || tok != json.Delim('[') {
+func decodeArray(dec *jsontext.Decoder, cut bool, fields []string) ([]any, bool, error) {
+	tok, err := dec.ReadToken()
+	if err != nil || tok.Kind() != jsontext.KindBeginArray {
 		return nil, false, errNotJSON
 	}
-	var items []any
-	for dec.More() {
-		var raw json.RawMessage
-		if err := dec.Decode(&raw); err != nil {
-			return partialOrError(cut, items)
-		}
-		val, err := decodeRaw(raw)
+	items := []any{}
+	for dec.PeekKind() != jsontext.KindEndArray && dec.PeekKind() != 0 {
+		val, partial, err := decodeValue(dec, cut, fields)
 		if err != nil {
 			return partialOrError(cut, items)
 		}
 		items = append(items, val)
+		if partial {
+			return items, true, nil
+		}
 	}
-	tok, err = dec.Token()
-	if err != nil || tok != json.Delim(']') {
+	tok, err = dec.ReadToken()
+	if err != nil || tok.Kind() != jsontext.KindEndArray {
 		return partialOrError(cut, items)
 	}
 	return items, false, nil
+}
+
+func fieldRoots(fields []string) map[string]bool {
+	if fields == nil {
+		return nil
+	}
+	out := map[string]bool{}
+	for _, field := range fields {
+		field = strings.TrimSpace(field)
+		if field == "" {
+			continue
+		}
+		if i := strings.IndexByte(field, '.'); i >= 0 {
+			field = field[:i]
+		}
+		out[field] = true
+	}
+	return out
+}
+
+func fieldChild(fields []string, keep map[string]bool, key string) (bool, []string) {
+	if keep == nil {
+		return false, nil
+	}
+	if !keep[key] {
+		return true, nil
+	}
+	prefix := key + "."
+	var child []string
+	for _, field := range fields {
+		field = strings.TrimSpace(field)
+		if field == key {
+			return false, nil
+		}
+		if strings.HasPrefix(field, prefix) {
+			child = append(child, field[len(prefix):])
+		}
+	}
+	return false, child
 }
 
 func partialOrError[T any](cut bool, v T) (T, bool, error) {
@@ -279,14 +323,26 @@ func partialOrError[T any](cut bool, v T) (T, bool, error) {
 	return zero, false, errNotJSON
 }
 
-func decodeRaw(raw []byte) (any, error) {
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.UseNumber()
-	var v any
-	if err := dec.Decode(&v); err != nil {
-		return nil, err
+func decodeRaw(raw jsontext.Value) (any, error) {
+	raw = jsontext.Value(bytes.TrimSpace(raw))
+	switch raw.Kind() {
+	case jsontext.KindFalse:
+		return false, nil
+	case jsontext.KindTrue:
+		return true, nil
+	case jsontext.KindString:
+		var s string
+		if err := jsonv2.Unmarshal(raw, &s); err != nil {
+			return nil, err
+		}
+		return s, nil
+	case jsontext.KindNumber:
+		return json.Number(string(raw)), nil
+	case jsontext.KindNull, jsontext.KindInvalid, jsontext.KindBeginObject, jsontext.KindEndObject, jsontext.KindBeginArray, jsontext.KindEndArray:
+		return nil, errNotJSON
+	default:
+		return nil, errNotJSON
 	}
-	return v, nil
 }
 
 func pick(v any, fields []string) any {
@@ -359,11 +415,5 @@ func putPath(dst map[string]any, parts []string, val any) {
 }
 
 func encodeJSON(v any) ([]byte, error) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(v); err != nil {
-		return nil, err
-	}
-	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
+	return jsonv2.Marshal(v)
 }

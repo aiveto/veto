@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -8,6 +9,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
+	"runtime/pprof"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -121,6 +124,42 @@ func TestFlightDoReturnsWhenTheWaiterIsCanceled(t *testing.T) {
 		t.Fatal("follower blocked")
 	}
 	close(release)
+}
+
+func TestFlightCancelDoesNotLeaveALeakedWaiter(t *testing.T) {
+	f := &flight{}
+	started := make(chan struct{})
+	release := make(chan struct{})
+	leaderDone := make(chan struct{})
+	go func() {
+		defer close(leaderDone)
+		_, _ = f.Do(context.Background(), "k", func() (Material, error) {
+			close(started)
+			<-release
+			return Material{}, nil
+		})
+	}()
+	<-started
+	ctx, cancel := context.WithCancel(t.Context())
+	waiterDone := make(chan struct{})
+	go func() {
+		defer close(waiterDone)
+		_, _ = f.Do(ctx, "k", func() (Material, error) {
+			return Material{}, nil
+		})
+	}()
+	cancel()
+	<-waiterDone
+	close(release)
+	<-leaderDone
+	for range 8 {
+		runtime.Gosched()
+	}
+	prof := pprof.Lookup("goroutine")
+	require.NotNil(t, prof)
+	var buf bytes.Buffer
+	require.NoError(t, prof.WriteTo(&buf, 1))
+	assert.NotContains(t, buf.String(), "auth.(*flight).Do")
 }
 
 func TestPostFormDoesNotFollowRedirects(t *testing.T) {

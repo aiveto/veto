@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"strings"
@@ -133,7 +134,7 @@ func pointerStep(cur []byte, tok string) ([]byte, error) {
 	switch cur[0] {
 	case '{':
 		var obj map[string]json.RawMessage
-		if err := json.Unmarshal(cur, &obj); err != nil {
+		if err := jsonv2.Unmarshal(cur, &obj); err != nil {
 			return nil, err
 		}
 		raw, ok := obj[tok]
@@ -146,7 +147,7 @@ func pointerStep(cur []byte, tok string) ([]byte, error) {
 			return nil, errors.New("missing")
 		}
 		var arr []json.RawMessage
-		if err := json.Unmarshal(cur, &arr); err != nil {
+		if err := jsonv2.Unmarshal(cur, &arr); err != nil {
 			return nil, err
 		}
 		i := 0
@@ -206,7 +207,7 @@ func rawScalar(raw []byte) (string, bool) {
 	}
 	if raw[0] == '"' {
 		var s string
-		if err := json.Unmarshal(raw, &s); err != nil {
+		if err := jsonv2.Unmarshal(raw, &s); err != nil {
 			return "", false
 		}
 		return s, true

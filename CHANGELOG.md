@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- A loaded schema keeps its validation constraints. Malformed JSON is a body error.
+- A response that arrives and then fails still reports that HTTP left.
+- Search and synonym maps return caller-owned copies. A store Get names a missing record and a store error separately.
+- Distinct approvals do not share one lock across store I/O. A closure can satisfy `credentials.Provider`.
+- JSON encode and decode use `encoding/json/v2`. Tokens and approvals stay v2. `json: v1` is `DefaultOptionsV1` for JSON sent to a client API. Response projection skips unused fields with `jsontext`. Retry waits and cancel run in a `synctest` bubble.
+- A transport that ran without a response is `sent` and not `http`. A canceled refresh waiter is checked for a goroutine leak.
 - Search scores prepared catalog text. Semantics bakes synonyms when it is constructed.
 - An HTTP client that already honors the proxy environment is reused. The executor keeps the shaped body instead of reading it again.
 - Parameter types and JSON body schemas are prepared with the catalog.

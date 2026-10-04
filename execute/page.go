@@ -3,6 +3,7 @@ package execute
 import (
 	"context"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"maps"
@@ -32,7 +33,7 @@ func followPages(ctx context.Context, cfg Client, op *catalog.Operation, params 
 		}
 		seen[sig] = true
 		maps.Copy(current, next)
-		resp, _, raw, err := invokeResponse(ctx, cfg, op, current)
+		resp, _, raw, _, err := invokeResponse(ctx, cfg, op, current)
 		if err != nil {
 			return "", false, err
 		}
@@ -60,7 +61,7 @@ func followPages(ctx context.Context, cfg Client, op *catalog.Operation, params 
 			}
 		}
 	}
-	raw, err := json.Marshal(items)
+	raw, err := jsonv2.Marshal(items)
 	if err != nil {
 		return "", false, fmt.Errorf("collect pages: %w", err)
 	}
@@ -106,13 +107,13 @@ func pageItems(body string) ([]json.RawMessage, bool) {
 	}
 	if body[0] == '[' {
 		var items []json.RawMessage
-		if json.Unmarshal([]byte(body), &items) != nil {
+		if jsonv2.Unmarshal([]byte(body), &items) != nil {
 			return nil, false
 		}
 		return items, true
 	}
 	var obj map[string]json.RawMessage
-	if json.Unmarshal([]byte(body), &obj) != nil {
+	if jsonv2.Unmarshal([]byte(body), &obj) != nil {
 		return nil, false
 	}
 	raw, ok := obj["items"]
@@ -120,7 +121,7 @@ func pageItems(body string) ([]json.RawMessage, bool) {
 		return nil, false
 	}
 	var items []json.RawMessage
-	if json.Unmarshal(raw, &items) != nil {
+	if jsonv2.Unmarshal(raw, &items) != nil {
 		return nil, false
 	}
 	return items, true

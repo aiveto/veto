@@ -81,6 +81,93 @@ func TestApproveUnknownIsASentinel(t *testing.T) {
 	require.ErrorIs(t, err, ErrUnknownApproval)
 }
 
+func TestApproveReturnsAStoreError(t *testing.T) {
+	want := errors.New("store down")
+	s := NewState()
+	s.SetStore(&errGetStore{err: want})
+	_, err := s.Approve(t.Context(), "pending-1")
+	require.ErrorIs(t, err, want)
+	require.NotErrorIs(t, err, ErrUnknownApproval)
+}
+
+func TestDistinctApprovalsDoNotShareOneStoreLock(t *testing.T) {
+	started := make(chan struct{}, 2)
+	release := make(chan struct{})
+	s := NewState()
+	s.SetStore(&gateStore{started: started, release: release})
+	var wg sync.WaitGroup
+	errCh := make(chan error, 2)
+	for _, caller := range []string{"ada", "grace"} {
+		wg.Go(func() {
+			_, err := s.RequestFor(t.Context(), caller, "orders.delete", map[string]string{"id": caller})
+			errCh <- err
+		})
+	}
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first put did not start")
+	}
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("unrelated put waited on the other store call")
+	}
+	close(release)
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		require.NoError(t, err)
+	}
+}
+
+type errGetStore struct {
+	Memory
+	err error
+}
+
+func (s *errGetStore) Get(context.Context, string) (Record, bool, error) {
+	return Record{}, false, s.err
+}
+
+type gateStore struct {
+	Memory
+	mu      sync.Mutex
+	started chan struct{}
+	release chan struct{}
+}
+
+func (s *gateStore) Put(ctx context.Context, rec Record) error {
+	s.started <- struct{}{}
+	<-s.release
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.Memory.Put(ctx, rec)
+}
+
+func TestConcurrentMemoryRequestsDoNotRace(t *testing.T) {
+	s := NewState()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 32)
+	for i := range 32 {
+		wg.Go(func() {
+			id, err := s.RequestFor(t.Context(), "ada", "orders.delete", map[string]string{"id": string(rune('a' + i%26))})
+			if err != nil {
+				errCh <- err
+				return
+			}
+			if s.Pending(t.Context(), id) == nil {
+				errCh <- errors.New("missing pending")
+			}
+		})
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		require.NoError(t, err)
+	}
+}
+
 func TestConfirmationKeepsItsOwnParams(t *testing.T) {
 	s := NewState()
 	params := map[string]string{"id": "1"}

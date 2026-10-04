@@ -75,7 +75,10 @@ func pageHits(cat *Catalog, hits []scored, offset, limit int) []Match {
 		op := cat.Operations[h.i]
 		related := []string{}
 		if h.i < len(cat.search) {
-			related = cat.search[h.i].related
+			related = slices.Clone(cat.search[h.i].related)
+			if related == nil {
+				related = []string{}
+			}
 		}
 		out = append(out, Match{Operation: op, Related: related})
 	}

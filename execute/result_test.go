@@ -33,6 +33,8 @@ func TestHTTPResultCarriesCodeAndReplayOmitsBody(t *testing.T) {
 	assert.Equal(t, "rate_limited", got.Code)
 	assert.True(t, got.Retryable)
 	assert.Equal(t, http.StatusTooManyRequests, got.Status)
+	assert.True(t, got.HTTP)
+	assert.True(t, got.Sent)
 	assert.Equal(t, secret, got.Body)
 	text := spanText(t, rec)
 	assert.Contains(t, text, "http.status=429")
@@ -76,13 +78,26 @@ func TestResponseCapOmitsParamValuesAndSetsToolAttributes(t *testing.T) {
 			assert.Contains(t, text, "params=id")
 			assert.NotContains(t, text, secret)
 			if tc.wantErr != "" {
-				assert.ErrorContains(t, err, tc.wantErr)
+				require.ErrorContains(t, err, tc.wantErr)
+				assert.True(t, got.HTTP)
+				assert.Equal(t, http.StatusOK, got.Status)
 				return
 			}
 			require.NoError(t, err)
 			assert.Equal(t, "12345", got.Body)
 		})
 	}
+}
+
+func TestTransportErrorIsSentWithoutAResponse(t *testing.T) {
+	cat := loadSpec(t, bodySpec)
+	got, err := execute.Client{
+		BaseURL: "http://127.0.0.1:1",
+		HTTP:    &http.Client{Transport: errTrip{}},
+	}.InvokeHTTPResult(context.Background(), cat.ByID("orders.get"), map[string]string{"id": "1"})
+	require.Error(t, err)
+	assert.False(t, got.HTTP)
+	assert.True(t, got.Sent)
 }
 
 func TestClientTimeoutEndsAHungCall(t *testing.T) {

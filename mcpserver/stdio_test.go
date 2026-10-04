@@ -64,7 +64,7 @@ func TestMissingParamStaysStructuredOnTheToolResult(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			tool, _, err := invokeToolResult(tc.res, tc.err)
+			tool, _, err := invokeToolResult(nil, tc.res, tc.err)
 			require.NoError(t, err)
 			assert.Equal(t, tc.isError, tool.IsError)
 			if tc.text == "" {
@@ -81,7 +81,7 @@ func TestMissingParamStaysStructuredOnTheToolResult(t *testing.T) {
 func TestInvokeErrorReturnsTheSanitizedCause(t *testing.T) {
 	const secret = "super-secret"
 	cause := `Get "https://user:` + secret + `@api.example/orders?api_key=` + secret + `": dial tcp: connection refused Authorization: Bearer ` + secret
-	tool, _, err := invokeToolResult(InvokeResult{Status: "error", OperationID: "orders.get"}, errors.New(cause))
+	tool, _, err := invokeToolResult(nil, InvokeResult{Status: "error", OperationID: "orders.get"}, errors.New(cause))
 	require.NoError(t, err)
 	require.NotNil(t, tool)
 	assert.True(t, tool.IsError)
@@ -92,7 +92,7 @@ func TestInvokeErrorReturnsTheSanitizedCause(t *testing.T) {
 	assert.Contains(t, text.Text, `"error"`)
 	assert.NotContains(t, text.Text, secret)
 
-	stored, _, err := invokeToolResult(InvokeResult{Status: "error", Error: "api_key=" + secret}, nil)
+	stored, _, err := invokeToolResult(nil, InvokeResult{Status: "error", Error: "api_key=" + secret}, nil)
 	require.NoError(t, err)
 	require.NotEmpty(t, stored.Content)
 	storedText, ok := stored.Content[0].(*mcp.TextContent)

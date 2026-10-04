@@ -3,7 +3,7 @@ package policy
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -88,7 +88,7 @@ func (c *CommandNotifier) Pending(ctx context.Context, notice Notice) error {
 }
 
 func noticeJSON(notice Notice) ([]byte, error) {
-	body, err := json.Marshal(struct {
+	body, err := jsonv2.Marshal(struct {
 		ID        string `json:"id"`
 		Operation string `json:"operation"`
 		Caller    string `json:"caller"`

@@ -10,6 +10,7 @@ import (
 
 	"github.com/aiveto/veto/auth"
 	"github.com/aiveto/veto/catalog"
+	"github.com/aiveto/veto/jsonopts"
 	"github.com/aiveto/veto/policy"
 	"github.com/aiveto/veto/result"
 	"github.com/aiveto/veto/telemetry"
@@ -68,6 +69,7 @@ type (
 		Why         string       `json:"Why,omitempty"`
 		Caller      string       `json:"Caller,omitempty"`
 		HTTP        bool         `json:"HTTP"`
+		Sent        bool         `json:"Sent"`
 	}
 
 	// HTTPRequest is the call that would be sent, with secret values removed.
@@ -99,6 +101,7 @@ type (
 		Exec     Executor
 		Notify   policy.Notifier
 		Gate     *InvokeGate
+		JSON     jsonopts.Set
 		gateOnce sync.Once
 		now      func() time.Time
 	}
@@ -143,7 +146,7 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 		return rt.record(ctx, errorResult(req.Operation, CodeNotCallable, err)), err
 	}
 
-	args, err := wire(req.Arguments)
+	args, err := wire(req.Arguments, rt.JSON)
 	if err != nil {
 		return rt.record(ctx, errorResult(op.ID, "", err)), err
 	}
@@ -212,7 +215,11 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 	}
 	call, err := rt.Exec.InvokeHTTPResult(ctx, op, args)
 	if err != nil {
-		return rt.record(ctx, errorResult(req.Operation, "", err)), err
+		res := errorResult(req.Operation, "", err)
+		res.HTTP = call.HTTP
+		res.HTTPStatus = call.Status
+		res.Sent = call.Sent || call.HTTP
+		return rt.record(ctx, res), err
 	}
 	status := call.Code
 	if status == "" {
@@ -228,6 +235,7 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 		Truncated:   call.Truncated,
 		Page:        call.Page,
 		HTTP:        true,
+		Sent:        true,
 	}), nil
 }
 
@@ -243,7 +251,7 @@ func (rt *Runtime) Preview(ctx context.Context, req Request) (Preview, error) {
 	if op.Exposure == catalog.ExposureDiscovery {
 		out.Errors = append(out.Errors, fmt.Sprintf("operation %q is discovery-only", req.Operation))
 	}
-	args, err := wire(req.Arguments)
+	args, err := wire(req.Arguments, rt.JSON)
 	if err != nil {
 		out.Errors = append(out.Errors, err.Error())
 	} else if err := op.CheckParams(args); err != nil {

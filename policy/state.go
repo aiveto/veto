@@ -32,6 +32,7 @@ type (
 	// State is the confirmation use case. Memory is the store. SetStore, SetNonceDir, and SetSigner attach adapters.
 	State struct {
 		mu      sync.Mutex
+		held    sync.Map
 		records Store
 		tokens  signer
 		ttl     time.Duration
@@ -77,7 +78,7 @@ func (s *State) Open(ctx context.Context, opt StoreOptions) error {
 		}
 		s.SetStore(st)
 	} else if opt.Dir != "" {
-		s.SetNonceDir(opt.Dir)
+		s.SetStore(&Files{Dir: opt.Dir})
 	}
 	if len(opt.Secret) == 0 {
 		return nil
@@ -158,8 +159,7 @@ func defaultNonceDir(secret []byte) (string, error) {
 // RequestFor records a pending call for one caller. The id it returns does not authorize HTTP.
 // A store error means the file was not written, so there is no pending id to approve.
 func (s *State) RequestFor(ctx context.Context, caller, opID string, params map[string]string) (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	store, _, deadline := s.view()
 	id := uuid.NewString()
 	rec := Record{
 		ID:          id,
@@ -167,10 +167,10 @@ func (s *State) RequestFor(ctx context.Context, caller, opID string, params map[
 		Params:      cloneParams(params),
 		Status:      StatusPending,
 		Caller:      caller,
-		Expiry:      s.deadline().Unix(),
+		Expiry:      deadline().Unix(),
 	}
-	if err := s.records.Put(ctx, rec); err != nil {
-		s.records.Remove(ctx, rec)
+	if err := store.Put(ctx, rec); err != nil {
+		store.Remove(ctx, rec)
 		return "", err
 	}
 	return id, nil
@@ -178,12 +178,16 @@ func (s *State) RequestFor(ctx context.Context, caller, opID string, params map[
 
 // Approve records a separate decision. The returned id is what a later invoke accepts once.
 func (s *State) Approve(ctx context.Context, id string) (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	rec, ok := s.records.Get(ctx, id)
+	unlock := s.lockID(id)
+	defer unlock()
+	store, tokens, deadline := s.view()
+	rec, ok, err := store.Get(ctx, id)
+	if err != nil {
+		return "", err
+	}
 	if !ok || rec.Status == StatusConsumed || expired(rec, s.clock()) {
 		if ok && expired(rec, s.clock()) {
-			s.records.Remove(ctx, rec)
+			store.Remove(ctx, rec)
 		}
 		return "", ErrUnknownApproval
 	}
@@ -194,16 +198,16 @@ func (s *State) Approve(ctx context.Context, id string) (string, error) {
 		return "", ErrUnknownApproval
 	}
 	approved := uuid.NewString()
-	if s.tokens != nil {
-		exp := s.deadline()
+	if tokens != nil {
+		exp := deadline()
 		if rec.Expiry != 0 {
 			exp = time.Unix(rec.Expiry, 0)
 		}
-		approved = s.tokens.sign(rec.Caller, rec.OperationID, rec.Params, exp)
+		approved = tokens.sign(rec.Caller, rec.OperationID, rec.Params, exp)
 	}
 	rec.Status = StatusApproved
 	rec.ApprovedID = approved
-	if err := s.records.Put(ctx, rec); err != nil {
+	if err := store.Put(ctx, rec); err != nil {
 		return "", err
 	}
 	return approved, nil
@@ -211,44 +215,69 @@ func (s *State) Approve(ctx context.Context, id string) (string, error) {
 
 // ConsumeFor accepts an approved id once, and only for the caller that received it.
 func (s *State) ConsumeFor(ctx context.Context, caller, approvalID, opID string, params map[string]string) (bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock := s.lockID(approvalID)
+	defer unlock()
+	store, tokens, _ := s.view()
 	now := s.clock()
-	rec, ok := s.records.FindApproved(ctx, approvalID)
+	rec, ok, err := store.FindApproved(ctx, approvalID)
+	if err != nil {
+		return false, err
+	}
 	if !ok || rec.Status != StatusApproved || rec.ApprovedID != approvalID {
 		return false, nil
 	}
 	if rec.Caller != caller || rec.OperationID != opID || !maps.Equal(rec.Params, params) || expired(rec, now) {
 		if expired(rec, now) {
-			s.records.Remove(ctx, rec)
+			store.Remove(ctx, rec)
 		}
 		return false, nil
 	}
-	if s.tokens != nil {
-		ok, err := s.tokens.consume(caller, approvalID, opID, params, now)
+	if tokens != nil {
+		ok, err := tokens.consume(caller, approvalID, opID, params, now)
 		if err != nil || !ok {
 			return ok, err
 		}
 	}
-	ok, err := s.records.Claim(ctx, rec.ID)
+	ok, err = store.Claim(ctx, rec.ID)
 	if err != nil || !ok {
 		return ok, err
 	}
 	rec.Status = StatusConsumed
-	if err := s.records.Put(ctx, rec); err != nil {
+	if err := store.Put(ctx, rec); err != nil {
 		return false, err
 	}
 	return true, nil
 }
 
 func (s *State) Pending(ctx context.Context, id string) *PendingConfirmation {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	rec, ok := s.records.Get(ctx, id)
-	if !ok || rec.Status != StatusPending {
+	store, _, _ := s.view()
+	rec, ok, err := store.Get(ctx, id)
+	if err != nil || !ok || rec.Status != StatusPending {
 		return nil
 	}
 	return &PendingConfirmation{ID: rec.ID, OperationID: rec.OperationID, Params: cloneParams(rec.Params), Caller: rec.Caller}
+}
+
+func (s *State) view() (Store, signer, func() time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	store := s.records
+	if store == nil {
+		store = &Memory{}
+		s.records = store
+	}
+	return store, s.tokens, s.deadline
+}
+
+func (s *State) lockID(id string) func() {
+	v, _ := s.held.LoadOrStore(id, &sync.Mutex{})
+	m, ok := v.(*sync.Mutex)
+	if !ok {
+		m = &sync.Mutex{}
+		s.held.Store(id, m)
+	}
+	m.Lock()
+	return m.Unlock
 }
 
 func expired(rec Record, now time.Time) bool {
