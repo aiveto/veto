@@ -16,6 +16,9 @@ import (
 	"github.com/aiveto/veto/result"
 )
 
+// cacheSep cannot appear in a field, so "ab"+"c" and "a"+"bc" stay distinct.
+const cacheSep = "\x00"
+
 type (
 	Options struct {
 		Schemes        []Scheme
@@ -134,63 +137,22 @@ func (r *Resolver) Ready(ctx context.Context, a catalog.Auth) bool {
 	if _, ok := r.lookupExtra(a.Name); ok {
 		return true
 	}
-	s, ok := r.schemes[a.Name]
+	s, src, ok := r.lookupSource(a.Name)
 	if !ok {
 		return false
 	}
-	switch s.Source {
-	case "env":
-		if s.Env != "" && r.env(s.Env) != "" {
-			return true
-		}
-		tok, err := readToken(r.dir, s.Name)
-		return err == nil && tok.AccessToken != ""
-	case "login":
-		tok, err := readToken(r.dir, s.Name)
-		if err != nil {
-			return false
-		}
-		if tok.RefreshToken != "" {
-			return true
-		}
-		return tok.AccessToken != "" && usable(tok.ExpiresAt, r.now())
-	case "client_credentials":
-		return s.TokenURL != "" && s.ClientID != "" && s.ClientSecretEnv != "" && r.env(s.ClientSecretEnv) != ""
-	case "invoke":
-		return UserToken(ctx) != ""
-	case "command":
-		return len(s.Command) > 0
-	case "token_exchange":
-		if s.TokenURL == "" || s.ClientID == "" || s.ClientSecretEnv == "" || r.env(s.ClientSecretEnv) == "" {
-			return false
-		}
-		return r.subjectToken(ctx, s) != ""
-	default:
-		return false
-	}
+	return src.ready(ctx, r, s)
 }
 
 func (r *Resolver) UnsetError(a catalog.Auth) error {
 	if r == nil {
 		return result.AuthError{Name: a.Name}
 	}
-	s, ok := r.schemes[a.Name]
+	s, src, ok := r.lookupSource(a.Name)
 	if !ok {
 		return result.AuthError{Name: a.Name}
 	}
-	switch s.Source {
-	case "client_credentials":
-		return result.AuthError{Name: a.Name, Detail: "client secret is unset"}
-	case "login":
-		return result.AuthError{Name: a.Name, Detail: "has no stored token"}
-	case "token_exchange":
-		if s.ClientSecretEnv == "" || r.env(s.ClientSecretEnv) == "" {
-			return result.AuthError{Name: a.Name, Detail: "client secret is unset"}
-		}
-		return result.AuthError{Name: a.Name, Detail: "subject token is unset"}
-	default:
-		return result.AuthError{Name: a.Name}
-	}
+	return src.unset(r, s)
 }
 
 func (r *Resolver) Refreshable(name string) bool {
@@ -200,16 +162,58 @@ func (r *Resolver) Refreshable(name string) bool {
 	if _, ok := r.lookupExtra(name); ok {
 		return true
 	}
-	s, ok := r.schemes[name]
+	_, src, ok := r.lookupSource(name)
 	if !ok {
 		return false
 	}
-	switch s.Source {
-	case "login", "client_credentials", "command", "token_exchange":
-		return true
-	default:
+	return src.refreshable()
+}
+
+// SuppliesUserHeader reports whether a login scheme can place the user token on header.
+func (r *Resolver) SuppliesUserHeader(name, header string) bool {
+	s, src, ok := r.lookupSource(name)
+	if !ok {
 		return false
 	}
+	pair, ok := src.(userHeaderSource)
+	if !ok {
+		return false
+	}
+	return pair.suppliesUserHeader(s, header)
+}
+
+// Blockers lists process-level reasons this scheme cannot run.
+// An invoke token that arrives on the call is not a blocker.
+func (r *Resolver) Blockers(a catalog.Auth) []string {
+	if r == nil {
+		return []string{fmt.Sprintf("auth scheme %s has no env var", a.Name)}
+	}
+	if _, ok := r.lookupExtra(a.Name); ok {
+		return nil
+	}
+	s, src, ok := r.lookupSource(a.Name)
+	if !ok {
+		if _, configured := r.schemes[a.Name]; configured {
+			return nil
+		}
+		return []string{fmt.Sprintf("auth scheme %s has no env var", a.Name)}
+	}
+	return src.blockers(r, s)
+}
+
+func (r *Resolver) lookupSource(name string) (Scheme, source, bool) {
+	if r == nil || name == "" {
+		return Scheme{}, nil, false
+	}
+	s, ok := r.schemes[name]
+	if !ok {
+		return Scheme{}, nil, false
+	}
+	src := sourceOf(s.Source)
+	if src == nil {
+		return s, nil, false
+	}
+	return s, src, true
 }
 
 // Provider returns the provider that obtains material for one scheme.
@@ -280,15 +284,8 @@ func (r *Resolver) materialScheme(ctx context.Context, a catalog.Auth, in creden
 	endpoint := in.URL
 	method := in.Method
 	key := cacheKey(s, need)
-	if s.Source == "command" {
-		key += "\x00" + method + "\x00" + endpoint + "\x00" + UserToken(ctx)
-	}
-	if s.Source == "token_exchange" {
-		subject := r.subjectToken(ctx, s)
-		if subject == "" {
-			return Material{}, fmt.Errorf("%s subject token is unset", a.Name)
-		}
-		key += "\x00" + subject
+	if extra, ok := sourceOf(s.Source).(cacheKeyed); ok {
+		key = strings.Join([]string{key, extra.cacheSuffix(ctx, r, s, method, endpoint)}, cacheSep)
 	}
 	key = scopedKey(ctx, key)
 	if !force {
@@ -300,7 +297,7 @@ func (r *Resolver) materialScheme(ctx context.Context, a catalog.Auth, in creden
 	}
 	flightKey := key
 	if force {
-		flightKey += "\x00force"
+		flightKey = strings.Join([]string{key, "force"}, cacheSep)
 	}
 	return r.flight.Do(ctx, flightKey, func() (Material, error) {
 		if !force {
@@ -325,32 +322,17 @@ func (r *Resolver) materialScheme(ctx context.Context, a catalog.Auth, in creden
 }
 
 func (r *Resolver) fetch(ctx context.Context, s Scheme, a catalog.Auth, operationID, method, endpoint string, need []string, force bool) (Material, error) {
-	switch s.Source {
-	case "env":
-		return r.fetchEnv(s, a)
-	case "invoke":
-		tok := UserToken(ctx)
-		if tok == "" {
-			return Material{}, fmt.Errorf("%s is unset", a.Name)
-		}
-		return placeToken(a, s.Header, tok, time.Time{}), nil
-	case "login":
-		return r.fetchLogin(ctx, s, a, need, force)
-	case "client_credentials":
-		if userHeaderName(s, a) != "" {
-			return Material{}, fmt.Errorf("%s user token is unset", a.Name)
-		}
-		return r.fetchClient(ctx, s, a, need)
-	case "token_exchange":
-		if userHeaderName(s, a) != "" {
-			return Material{}, fmt.Errorf("%s user token is unset", a.Name)
-		}
-		return r.fetchExchange(ctx, s, a, need)
-	case "command":
-		return r.fetchCommand(ctx, s, operationID, method, endpoint)
-	default:
+	src := sourceOf(s.Source)
+	if src == nil {
 		return Material{}, fmt.Errorf("security scheme %s is not supported", a.Name)
 	}
+	return src.fetch(ctx, r, s, a, fetchIn{
+		operationID: operationID,
+		method:      method,
+		endpoint:    endpoint,
+		need:        need,
+		force:       force,
+	})
 }
 
 func (r *Resolver) fetchEnv(s Scheme, a catalog.Auth) (Material, error) {
@@ -421,7 +403,7 @@ func placeToken(a catalog.Auth, headerOverride, token string, exp time.Time) Mat
 
 func scopedKey(ctx context.Context, key string) string {
 	if id := Caller(ctx); id != "" {
-		return key + "\x00" + id
+		return strings.Join([]string{key, id}, cacheSep)
 	}
 	return key
 }
@@ -429,7 +411,7 @@ func scopedKey(ctx context.Context, key string) string {
 func cacheKey(s Scheme, scopes []string) string {
 	cp := append([]string(nil), scopes...)
 	sort.Strings(cp)
-	id := strings.Join([]string{
+	return strings.Join([]string{
 		s.Source,
 		s.Name,
 		s.ClientID,
@@ -439,8 +421,9 @@ func cacheKey(s Scheme, scopes []string) string {
 		s.AuthToken,
 		s.UserToken,
 		s.Subject,
-	}, "\x00")
-	return strings.Join([]string{id, s.Audience, strings.Join(cp, " ")}, "\x00")
+		s.Audience,
+		strings.Join(cp, " "),
+	}, cacheSep)
 }
 
 func cloneMap(in map[string]string) map[string]string {

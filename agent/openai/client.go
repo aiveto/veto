@@ -59,7 +59,7 @@ func (c *Client) Complete(ctx context.Context, req agent.Request) (agent.Respons
 	ctx, span := telemetry.StartSpan(ctx, "model.request")
 	defer span.End()
 	if strings.TrimSpace(req.Context) == "" {
-		return agent.Response{}, errors.New("openai model requires a context pack")
+		return agent.Response{}, agent.ErrEmptyPack
 	}
 	if c.HTTP == nil {
 		c.HTTP = http.DefaultClient

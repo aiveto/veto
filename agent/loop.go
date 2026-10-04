@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/flow"
 	"github.com/aiveto/veto/memory"
 	"github.com/aiveto/veto/policy"
-	"github.com/aiveto/veto/result"
 	"github.com/aiveto/veto/runctx"
 	"github.com/aiveto/veto/runtime"
 	"github.com/aiveto/veto/semantics"
@@ -20,26 +20,14 @@ import (
 	"github.com/google/uuid"
 )
 
+var ErrEmptyPack = errors.New("empty context pack")
+
 type (
 	// Executor performs the HTTP call. The loop does not build the request.
 	Executor = runtime.Executor
 
-	Call struct {
-		Status      string
-		ApprovalID  string
-		OperationID string
-		HTTPStatus  int
-		Body        string
-		Code        string
-		Retryable   bool
-		Error       string
-		Truncated   bool
-		Page        *result.Page
-		RetryAfter  string
-		Why         string
-		Caller      string
-		HTTP        bool
-	}
+	// Call is the invoke outcome. The loop does not reshape it.
+	Call = runtime.Result
 
 	Outcome struct {
 		OperationID string
@@ -164,7 +152,11 @@ func (l *Loop) Run(ctx context.Context, userText string) (Outcome, error) {
 	turns = append(turns, runctx.Turn{Role: "user", Content: userText})
 	pack := l.Packs.Build(l.Catalog, turns, nil, l.Semantics, nil)
 	span.SetAttributes(telemetry.Attr("tools", pack.Index))
-	resp, err := l.Model.Complete(ctx, Request{UserMessage: userText, Context: pack.Serialize()})
+	req := Request{UserMessage: userText, Context: pack.Serialize()}
+	if err := emptyPack(req); err != nil {
+		return Outcome{}, fmt.Errorf("model: %w", err)
+	}
+	resp, err := l.Model.Complete(ctx, req)
 	if err != nil {
 		return Outcome{}, fmt.Errorf("model: %w", err)
 	}
@@ -191,12 +183,13 @@ func (l *Loop) Run(ctx context.Context, userText string) (Outcome, error) {
 		pending = l.State.Pending(ctx, call.ApprovalID)
 	}
 	summary := call.Status
-	if call.Status == "confirmation_required" {
+	if call.Status == runtime.StatusConfirmationRequired {
 		if pending == nil && call.ApprovalID != "" {
 			pending = &policy.PendingConfirmation{
 				ID:          call.ApprovalID,
 				OperationID: call.OperationID,
 				Params:      copyParams(resp.Params),
+				Caller:      call.Caller,
 			}
 		}
 		var sentence map[string]string
@@ -255,27 +248,11 @@ func (l *Loop) Runtime() runtime.Runtime {
 
 func (l *Loop) Invoke(ctx context.Context, operationID string, params map[string]string, approvalID string) (Call, error) {
 	rt := l.Runtime()
-	out, err := rt.Invoke(ctx, runtime.Request{
+	return rt.Invoke(ctx, runtime.Request{
 		Operation: operationID,
 		Arguments: runtime.FromStrings(params),
 		Approval:  approvalID,
 	})
-	return Call{
-		Status:      out.Status,
-		ApprovalID:  out.ApprovalID,
-		OperationID: out.OperationID,
-		HTTPStatus:  out.HTTPStatus,
-		Body:        out.Body,
-		Code:        out.Code,
-		Retryable:   out.Retryable,
-		Error:       out.Error,
-		Truncated:   out.Truncated,
-		Page:        out.Page,
-		RetryAfter:  out.RetryAfter,
-		Why:         out.Why,
-		Caller:      out.Caller,
-		HTTP:        out.HTTP,
-	}, err
 }
 
 func (l *Loop) runFlow(ctx context.Context, resp Response) (Call, error) {
@@ -292,7 +269,7 @@ func (l *Loop) runFlow(ctx context.Context, resp Response) (Call, error) {
 		if err != nil {
 			return "", "", err
 		}
-		if call.Status == "confirmation_required" {
+		if call.Status == runtime.StatusConfirmationRequired {
 			paused = call
 		}
 		return call.Status, call.Body, nil
@@ -306,13 +283,13 @@ func (l *Loop) runFlow(ctx context.Context, resp Response) (Call, error) {
 		return Call{Status: stopped.Status, OperationID: stopped.Operation}, nil
 	}
 	if err != nil {
-		return Call{Status: "error", OperationID: resp.OperationID}, err
+		return Call{Status: runtime.StatusError, OperationID: resp.OperationID}, err
 	}
 	last := ""
 	if n := len(def.Steps); n > 0 {
 		last = def.Steps[n-1].Operation
 	}
-	status := "ok"
+	status := runtime.StatusOK
 	if len(results) > 0 {
 		status = results[len(results)-1]
 	}
@@ -354,4 +331,11 @@ func copyParams(in map[string]string) map[string]string {
 		return nil
 	}
 	return maps.Clone(in)
+}
+
+func emptyPack(req Request) error {
+	if strings.TrimSpace(req.Context) == "" {
+		return ErrEmptyPack
+	}
+	return nil
 }

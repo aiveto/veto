@@ -272,15 +272,28 @@ func buildLoop(contracts []string, configPath, agentPath, relationsPath, baseURL
 	return buildLoopBundle(contracts, configPath, "", agentPath, relationsPath, baseURL)
 }
 
+func buildEvalLoop(contracts []string, configPath, agentPath, relationsPath, baseURL string) (*agent.Loop, config.File, error) {
+	src, err := resolveBundle(configPath, "", contracts, relationsPath, agentPath)
+	if err != nil {
+		return nil, config.File{}, err
+	}
+	src.cfg.Model = "scripted"
+	return assembleLoop(src, baseURL)
+}
+
 func buildLoopBundle(contracts []string, configPath, bundlePath, agentPath, relationsPath, baseURL string) (*agent.Loop, config.File, error) {
 	src, err := resolveBundle(configPath, bundlePath, contracts, relationsPath, agentPath)
 	if err != nil {
 		return nil, config.File{}, err
 	}
+	return assembleLoop(src, baseURL)
+}
+
+func assembleLoop(src sources, baseURL string) (*agent.Loop, config.File, error) {
 	cfg := src.cfg
-	contracts = src.contracts
-	relationsPath = src.relations
-	agentPath = src.agent
+	contracts := src.contracts
+	relationsPath := src.relations
+	agentPath := src.agent
 	cat, err := loadCatalog(contracts, relationsPath)
 	if err != nil {
 		return nil, config.File{}, err
@@ -349,8 +362,6 @@ func buildLoopBundle(contracts []string, configPath, bundlePath, agentPath, rela
 // applyProviders constructs the providers named in the config. The accepted values are the defaults.
 func applyProviders(loop *agent.Loop, cfg config.File) error {
 	switch cfg.Memory {
-	case "local":
-		loop.Memory = memory.New()
 	case "file":
 		log, err := memory.NewLog(cfg.MemoryFile)
 		if err != nil {
@@ -358,13 +369,10 @@ func applyProviders(loop *agent.Loop, cfg config.File) error {
 		}
 		loop.Memory = log
 	default:
-		return fmt.Errorf("memory provider %q is not in this slice", cfg.Memory)
+		loop.Memory = memory.New()
 	}
 	base := policy.Builtin{Caller: callerName(cfg.Caller), Allow: allowSet(cfg.Permissions)}
 	switch cfg.Policy {
-	case "builtin":
-		loop.SetPolicy(base)
-		loop.SetFloor(base)
 	case "opa":
 		eng, err := opa.New(context.Background(), cfg.PolicyFile, cfg.PolicyBundle, base)
 		if err != nil {
@@ -377,7 +385,8 @@ func applyProviders(loop *agent.Loop, cfg config.File) error {
 		loop.SetPolicy(eng)
 		loop.SetFloor(base)
 	default:
-		return fmt.Errorf("unsupported policy provider %q", cfg.Policy)
+		loop.SetPolicy(base)
+		loop.SetFloor(base)
 	}
 	if cfg.ApprovalWebhook.URL != "" || len(cfg.ApprovalWebhook.Command) > 0 {
 		hook, err := policy.NewWebhook(cfg.ApprovalWebhook.URL, append([]string(nil), cfg.ApprovalWebhook.Command...))
@@ -387,8 +396,6 @@ func applyProviders(loop *agent.Loop, cfg config.File) error {
 		loop.Notify = hook
 	}
 	switch cfg.Model {
-	case "scripted":
-		loop.Model = agent.NewScripted()
 	case "openai":
 		live, err := openai.New(cfg.ModelBaseURL, os.Getenv("OPENAI_API_KEY"), cfg.ModelName)
 		if err != nil {
@@ -396,7 +403,7 @@ func applyProviders(loop *agent.Loop, cfg config.File) error {
 		}
 		loop.Model = live
 	default:
-		return fmt.Errorf("model provider %q is not in this slice", cfg.Model)
+		loop.Model = agent.NewScripted()
 	}
 	return nil
 }

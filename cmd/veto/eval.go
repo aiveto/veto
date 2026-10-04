@@ -42,7 +42,7 @@ func newEvalCommand() (*cobra.Command, error) {
 }
 
 func runEval(cmd evalCmd) {
-	loop, cfg, err := buildLoop(cmd.contract, cmd.config, cmd.agent, cmd.relations, cmd.baseURL)
+	loop, cfg, err := buildEvalLoop(cmd.contract, cmd.config, cmd.agent, cmd.relations, cmd.baseURL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "eval: %v\n", err)
 		exitMain(1)

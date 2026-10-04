@@ -49,6 +49,9 @@ func (s *Scripted) WithOperation(operationID string) *Scripted {
 func (s *Scripted) Complete(ctx context.Context, req Request) (Response, error) {
 	_, span := telemetry.StartSpan(ctx, "model.request")
 	defer span.End()
+	if err := emptyPack(req); err != nil {
+		return Response{}, err
+	}
 	msg := strings.TrimSpace(req.UserMessage)
 	if msg != "" && !strings.Contains(req.Context, msg) {
 		return Response{}, nil

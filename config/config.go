@@ -10,11 +10,20 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/aiveto/veto/internal/yamlfile"
 	"gopkg.in/yaml.v3"
+)
+
+var (
+	modelProviders      = []string{"scripted", "openai"}
+	memoryProviders     = []string{"local", "file"}
+	semanticsProviders  = []string{"derived", "file"}
+	policyProviders     = []string{"builtin", "opa"}
+	authSourceProviders = []string{"env", "invoke", "login", "client_credentials", "command", "token_exchange"}
 )
 
 type File struct {
@@ -62,6 +71,17 @@ type File struct {
 type Expose struct {
 	Tags  []string `yaml:"tags"`
 	Paths []string `yaml:"paths"`
+}
+
+func knownProvider(got string, want []string) bool {
+	return slices.Contains(want, got)
+}
+
+func unknownProvider(kind, got string, want []string) error {
+	if knownProvider(got, want) {
+		return nil
+	}
+	return fmt.Errorf("%s provider %q is not in this slice", kind, got)
 }
 
 func Defaults() File {
@@ -160,24 +180,22 @@ func (f *File) applyDefaults() {
 }
 
 func (f *File) validate() error {
-	if f.Model != "scripted" && f.Model != "openai" {
-		return fmt.Errorf("model provider %q is not in this slice", f.Model)
+	if err := unknownProvider("model", f.Model, modelProviders); err != nil {
+		return err
 	}
-	if f.Memory != "local" && f.Memory != "file" {
-		return fmt.Errorf("memory provider %q is not in this slice", f.Memory)
+	if err := unknownProvider("memory", f.Memory, memoryProviders); err != nil {
+		return err
 	}
 	if f.Memory == "file" && f.MemoryFile == "" {
 		return errors.New("memory file provider needs memory_file")
 	}
-	if f.Semantics != "derived" && f.Semantics != "file" {
-		return fmt.Errorf("semantics provider %q is not in this slice", f.Semantics)
+	if err := unknownProvider("semantics", f.Semantics, semanticsProviders); err != nil {
+		return err
 	}
 	if f.Semantics == "file" && f.SemanticsFile == "" {
 		return errors.New("semantics file provider needs semantics_file")
 	}
-	switch f.Policy {
-	case "builtin", "opa":
-	default:
+	if !knownProvider(f.Policy, policyProviders) {
 		return fmt.Errorf("unsupported policy provider %q", f.Policy)
 	}
 	if f.Policy == "opa" && f.PolicyFile != "" && f.PolicyBundle != "" {
@@ -501,9 +519,10 @@ func (d *Duration) UnmarshalYAML(node *yaml.Node) error {
 }
 
 func (s Source) validate(name string) error {
+	if !knownProvider(s.Kind(), authSourceProviders) {
+		return fmt.Errorf("auth source %q is not in this slice", s.Kind())
+	}
 	switch s.Kind() {
-	case "env", "invoke":
-		return nil
 	case "login":
 		if s.ClientID == "" {
 			return fmt.Errorf("auth %s: client_id required", name)
@@ -511,25 +530,20 @@ func (s Source) validate(name string) error {
 		if s.Issuer == "" && (s.AuthorizationURL == "" || s.TokenURL == "") {
 			return fmt.Errorf("auth %s: authorization_url and token_url, or issuer", name)
 		}
-		return nil
 	case "client_credentials":
 		if s.TokenURL == "" || s.ClientID == "" || s.ClientSecretEnv == "" {
 			return fmt.Errorf("auth %s: token_url, client_id, and client_secret_env required", name)
 		}
-		return nil
 	case "command":
 		if len(s.Command) == 0 {
 			return fmt.Errorf("auth %s: command required", name)
 		}
-		return nil
 	case "token_exchange":
 		if s.TokenURL == "" || s.Audience == "" || s.ClientID == "" || s.ClientSecretEnv == "" || s.Subject == "" {
 			return fmt.Errorf("auth %s: token_url, audience, client_id, client_secret_env, and subject required", name)
 		}
-		return nil
-	default:
-		return fmt.Errorf("auth source %q is not in this slice", s.Kind())
 	}
+	return nil
 }
 
 func remoteContract(name string) bool {

@@ -3,6 +3,10 @@
 ## Unreleased
 
 - Invoke says why a call did not run when it was held or missing auth, and whether HTTP left. `caller` is who asked.
+- `veto eval` uses the scripted model even when `veto.yaml` names openai.
+- The confirmation form names the caller, the operation, and the parameters.
+- Auth sources are types. Doctor uses the same source as invoke.
+- An empty context pack is an error for every model.
 
 ## v0.1.4 - 2026-10-03
 

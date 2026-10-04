@@ -12,6 +12,7 @@ import (
 
 	"github.com/aiveto/veto/auth"
 	"github.com/aiveto/veto/catalog"
+	"github.com/aiveto/veto/policy"
 	"github.com/aiveto/veto/runtime"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -153,7 +154,7 @@ func invokeCall(ctx context.Context, req *mcp.CallToolRequest, srv *Server, args
 		answered = true
 		if reply == nil || reply.Action != "accept" {
 			return invokeToolResult(InvokeResult{
-				Status:      "confirmation_required",
+				Status:      runtime.StatusConfirmationRequired,
 				ApprovalID:  requestState(req),
 				OperationID: args.OperationID,
 			}, nil)
@@ -175,8 +176,12 @@ func invokeCall(ctx context.Context, req *mcp.CallToolRequest, srv *Server, args
 		Offset:    args.Offset,
 		Limit:     args.Limit,
 	})
-	if !answered && res.Status == "confirmation_required" && chat && clientCanElicit(req) {
-		return elicitConfirmation(res), nil, nil
+	if !answered && res.Status == runtime.StatusConfirmationRequired && chat && clientCanElicit(req) {
+		var pending *policy.PendingConfirmation
+		if srv != nil && srv.Calls != nil && srv.Calls.State != nil {
+			pending = srv.Calls.State.Pending(ctx, res.ApprovalID)
+		}
+		return elicitConfirmation(res, pending), nil, nil
 	}
 	return invokeToolResult(res, err)
 }
@@ -223,11 +228,19 @@ func acceptElicitation(ctx context.Context, srv *Server, req *mcp.CallToolReques
 	return srv.Calls.State.Approve(ctx, id)
 }
 
-func elicitConfirmation(res InvokeResult) *mcp.CallToolResult {
+func elicitConfirmation(res InvokeResult, pending *policy.PendingConfirmation) *mcp.CallToolResult {
+	op := res.OperationID
+	var params map[string]string
+	var caller string
+	if pending != nil {
+		op = pending.OperationID
+		params = pending.Params
+		caller = pending.Caller
+	}
 	return &mcp.CallToolResult{
 		InputRequests: mcp.InputRequestMap{
 			"confirm": &mcp.ElicitParams{
-				Message: fmt.Sprintf("Approve %s? The call does not run until you accept.", res.OperationID),
+				Message: policy.ConfirmAsk(caller, op, params),
 			},
 		},
 		RequestState: res.ApprovalID,
@@ -263,7 +276,7 @@ func invokeToolResult(res InvokeResult, callErr error) (*mcp.CallToolResult, any
 	if callErr != nil && res.Status == "" {
 		return toolError(callErr)
 	}
-	if res.Status == "error" {
+	if res.Status == runtime.StatusError {
 		cause := res.Error
 		if cause == "" && callErr != nil {
 			cause = callErr.Error()
@@ -276,7 +289,7 @@ func invokeToolResult(res InvokeResult, callErr error) (*mcp.CallToolResult, any
 	}
 	result, _, err := textResult(string(b))
 	if result != nil {
-		result.IsError = res.Status != "" && res.Status != "ok" && res.Status != "confirmation_required"
+		result.IsError = res.Status != "" && res.Status != runtime.StatusOK && res.Status != runtime.StatusConfirmationRequired
 	}
 	return result, nil, err
 }

@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/aiveto/veto/agent"
 	"github.com/aiveto/veto/agent/openai"
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/config"
@@ -354,6 +355,20 @@ func TestCheckRunsTheCaseDirectory(t *testing.T) {
 	loop, _, err := buildLoop(nil, cfg, "", "", "")
 	require.NoError(t, err)
 	require.NoError(t, runCases(loop, []string{cases}))
+}
+
+func TestEvalPinsTheScriptedModel(t *testing.T) {
+	contract, err := filepath.Abs("../../testdata/orders.yaml")
+	require.NoError(t, err)
+	conf := filepath.Join(t.TempDir(), "veto.yaml")
+	require.NoError(t, os.WriteFile(conf, []byte(fmt.Sprintf("model: openai\ncontracts:\n  - %s\n", contract)), 0o600))
+	t.Setenv("OPENAI_API_KEY", "")
+	_, _, err = buildLoop(nil, conf, "", "", "")
+	require.ErrorContains(t, err, "API key")
+	loop, _, err := buildEvalLoop(nil, conf, "", "", "")
+	require.NoError(t, err)
+	_, ok := loop.Model.(*agent.Scripted)
+	assert.True(t, ok)
 }
 
 func TestDoctorReportsPinsAuthAndPing(t *testing.T) {

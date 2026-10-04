@@ -24,6 +24,28 @@ func TestSetSignerRejectsAnEmptySecret(t *testing.T) {
 	require.Error(t, missing.SetSigner([]byte("secret"), 0))
 }
 
+func TestOpenDialsTheStoreURL(t *testing.T) {
+	s := NewState()
+	got := &captureStore{}
+	require.NoError(t, s.Open(t.Context(), StoreOptions{
+		URL: "redis://example",
+		Dial: func(context.Context, string) (Store, error) {
+			return got, nil
+		},
+	}))
+	id, err := s.RequestFor(t.Context(), "ada", "orders.delete", map[string]string{"id": "1"})
+	require.NoError(t, err)
+	assert.Equal(t, 1, got.puts)
+	pending := s.Pending(t.Context(), id)
+	require.NotNil(t, pending)
+	assert.Equal(t, "ada", pending.Caller)
+}
+
+func TestOpenRequiresADialerForAURL(t *testing.T) {
+	s := NewState()
+	require.Error(t, s.Open(t.Context(), StoreOptions{URL: "redis://example"}))
+}
+
 func TestSetStoreUsesTheGivenStore(t *testing.T) {
 	s := NewState()
 	got := &captureStore{}
