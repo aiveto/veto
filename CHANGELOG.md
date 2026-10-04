@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Runtime authorizes every pagination page. Exposure tags and paths are AND. Structured query integers stay digits on the HTTP request. A shared Memory store claims once. `veto serve --json` polls stdin so SIGTERM stops an idle process. Group and pin names cannot replace the three capabilities. A pin omits `operation_id`.
+- Runtime authorizes every pagination page. Exposure tags and paths are AND. Structured query integers stay digits on the HTTP request. A shared Memory store claims once. `veto serve --json` polls stdin so SIGTERM stops an idle process. Group and pin names cannot replace the three capabilities. A pin omits `operation_id`. The guide names `sent` versus `http`, shared approval storage, and check drift bounds. ADR 029 supersedes the OR in ADR 022.
 - MCP and JSON encode one invoke result. MCP only sets IsError and the confirmation form on that body.
 - Approval binds one deterministic JSON form for structured arguments. Large integers stay digits through MCP and JSON. A JSON failure keeps the structured result. Search, serve, preview, and doctor build the catalog without the agent model. `veto serve --json` closes stdin on SIGTERM. Search keeps one synonym snapshot.
 - Search, describe, and invoke live in `capability`. Server lives there. MCP and `veto serve --json` call it. `--json` serves JSON lines for skills and scripts. `veto search`, `describe`, and `invoke` are a shorthand. `--help-json` is that contract. `semantics.Notes` is the note and synonym map. The agent and Server use it.

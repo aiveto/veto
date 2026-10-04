@@ -81,7 +81,7 @@ veto init orders.yaml customers.yaml
 
 Credentials come from the environment, OAuth, a caller-supplied token, token exchange, a command that returns headers, or a Go provider that signs the request. The agent does not perform that login. [Authentication](docs/guide.md#auth).
 
-Commands for validate, doctor, preview, eval, check, and replay are in the [setup guide](docs/guide.md#check).
+Commands for validate, doctor, preview, eval, check, and replay are in the [setup guide](docs/guide.md#check-in-ci).
 
 ```bash
 veto validate --config testdata/veto.yaml
