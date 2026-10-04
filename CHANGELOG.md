@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Invoke says why a call did not run (`held until you approve`, missing auth, bad body) and whether HTTP left. `caller` is who asked.
+- Invoke says why a call did not run when it was held or missing auth, and whether HTTP left. `caller` is who asked.
 
 ## v0.1.4 - 2026-10-03
 

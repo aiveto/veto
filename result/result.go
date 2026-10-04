@@ -1,4 +1,4 @@
-// Package result is an HTTP result and the parameter errors returned to a caller.
+// Package result is an HTTP result and the invoke errors returned to a caller.
 package result
 
 import "fmt"
@@ -31,10 +31,29 @@ type (
 		Path      string
 		Reason    string
 	}
+
+	// AuthError is a required credential that is not set. It does not carry the secret.
+	AuthError struct {
+		Name   string
+		Detail string
+	}
 )
 
 func (e BodyError) Error() string {
 	return fmt.Sprintf("operation %s: body %s: %s", e.Operation, e.Path, e.Reason)
+}
+
+func (e AuthError) Error() string {
+	if e.Detail != "" {
+		if e.Name == "" {
+			return e.Detail
+		}
+		return fmt.Sprintf("%s %s", e.Name, e.Detail)
+	}
+	if e.Name == "" {
+		return "credential is unset"
+	}
+	return fmt.Sprintf("%s is unset", e.Name)
 }
 
 func (e ParamError) Error() string {

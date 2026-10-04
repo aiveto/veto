@@ -2,12 +2,12 @@ package auth
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/credentials"
+	"github.com/aiveto/veto/result"
 )
 
 type (
@@ -66,7 +66,7 @@ func (p fixedProvider) Resolve(context.Context, credentials.Request) (credential
 		if name == "" {
 			name = "credential"
 		}
-		return credentials.Credential{}, fmt.Errorf("%s is unset", name)
+		return credentials.Credential{}, result.AuthError{Name: name}
 	}
 	return credentialOf(placeToken(p.a, "", p.token, time.Time{})), nil
 }

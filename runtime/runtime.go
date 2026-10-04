@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/aiveto/veto/auth"
@@ -160,6 +159,7 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 				Status:      "confirmation_required",
 				ApprovalID:  id,
 				OperationID: req.Operation,
+				Why:         "held until you approve",
 			}
 			if err := rt.notify(ctx, policy.Notice{ID: id, Operation: req.Operation, Caller: caller}); err != nil {
 				res.Error = err.Error()
@@ -271,6 +271,9 @@ func errorResult(op, code string, err error) Result {
 			res.Code = paramCode(err)
 		}
 	}
+	if res.Code == "missing_auth" {
+		res.Why = "missing auth"
+	}
 	return res
 }
 
@@ -281,48 +284,8 @@ func paramCode(err error) string {
 	if _, ok := errors.AsType[result.BodyError](err); ok {
 		return "invalid_body"
 	}
-	if missingAuth(err) {
+	if _, ok := errors.AsType[result.AuthError](err); ok {
 		return "missing_auth"
-	}
-	return ""
-}
-
-func missingAuth(err error) bool {
-	return err != nil && strings.Contains(err.Error(), " is unset")
-}
-
-func whyOf(res Result) string {
-	if res.HTTP && (res.Status == "ok" || res.Status == "") {
-		return ""
-	}
-	switch res.Status {
-	case "confirmation_required":
-		return "held until you approve"
-	case "denied":
-		return "policy denied"
-	case "limited":
-		return "invoke limit"
-	}
-	switch res.Code {
-	case "invalid_body":
-		if res.Error != "" {
-			return res.Error
-		}
-		return "body does not match the schema"
-	case "missing_param":
-		if res.Error != "" {
-			return res.Error
-		}
-		return "a required parameter is missing"
-	case "missing_auth":
-		return "missing auth"
-	case "not_callable":
-		if res.Error != "" {
-			return res.Error
-		}
-	}
-	if !res.HTTP && res.Error != "" {
-		return res.Error
 	}
 	return ""
 }
@@ -370,9 +333,6 @@ func (rt *Runtime) decide(ctx context.Context, op *catalog.Operation) (policy.De
 func (rt *Runtime) record(ctx context.Context, res Result) Result {
 	if res.Caller == "" {
 		res.Caller = auth.Caller(ctx)
-	}
-	if res.Why == "" {
-		res.Why = whyOf(res)
 	}
 	_, span := telemetry.StartSpan(ctx, "runtime.outcome")
 	defer span.End()

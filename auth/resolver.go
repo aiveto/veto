@@ -13,6 +13,7 @@ import (
 
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/credentials"
+	"github.com/aiveto/veto/result"
 )
 
 type (
@@ -171,24 +172,24 @@ func (r *Resolver) Ready(ctx context.Context, a catalog.Auth) bool {
 
 func (r *Resolver) UnsetError(a catalog.Auth) error {
 	if r == nil {
-		return fmt.Errorf("%s is unset", a.Name)
+		return result.AuthError{Name: a.Name}
 	}
 	s, ok := r.schemes[a.Name]
 	if !ok {
-		return fmt.Errorf("%s is unset", a.Name)
+		return result.AuthError{Name: a.Name}
 	}
 	switch s.Source {
 	case "client_credentials":
-		return fmt.Errorf("%s client secret is unset", a.Name)
+		return result.AuthError{Name: a.Name, Detail: "client secret is unset"}
 	case "login":
-		return fmt.Errorf("%s has no stored token", a.Name)
+		return result.AuthError{Name: a.Name, Detail: "has no stored token"}
 	case "token_exchange":
 		if s.ClientSecretEnv == "" || r.env(s.ClientSecretEnv) == "" {
-			return fmt.Errorf("%s client secret is unset", a.Name)
+			return result.AuthError{Name: a.Name, Detail: "client secret is unset"}
 		}
-		return fmt.Errorf("%s subject token is unset", a.Name)
+		return result.AuthError{Name: a.Name, Detail: "subject token is unset"}
 	default:
-		return fmt.Errorf("%s is unset", a.Name)
+		return result.AuthError{Name: a.Name}
 	}
 }
 
