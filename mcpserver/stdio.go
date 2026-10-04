@@ -238,7 +238,7 @@ func elicitConfirmation(res InvokeResult, pending *policy.PendingConfirmation) *
 	return &mcp.CallToolResult{
 		InputRequests: mcp.InputRequestMap{
 			"confirm": &mcp.ElicitParams{
-				Message: policy.ConfirmSentence(op, params) + ". The call does not run until you accept.",
+				Message: policy.ConfirmAsk(op, params),
 			},
 		},
 		RequestState: res.ApprovalID,

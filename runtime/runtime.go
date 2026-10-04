@@ -19,12 +19,14 @@ const (
 	StatusError                = "error"
 	StatusDenied               = "denied"
 	StatusLimited              = "limited"
-	StatusConfirmationRequired = "confirmation_required"
+	StatusConfirmationRequired = string(policy.DecisionConfirmationNeeded)
 	CodeMissingAuth            = "missing_auth"
 	CodeInvalidBody            = "invalid_body"
 	CodeMissingParam           = "missing_param"
 	CodeNotCallable            = "not_callable"
 	CodeInvokeLimited          = "invoke_limited"
+	WhyHeld                    = "held until you approve"
+	WhyMissingAuth             = "missing auth"
 )
 
 // ErrInvalidApproval is an approved id that does not match this caller, operation, and parameters.
@@ -172,7 +174,7 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 				Status:      StatusConfirmationRequired,
 				ApprovalID:  id,
 				OperationID: req.Operation,
-				Why:         "held until you approve",
+				Why:         WhyHeld,
 			}
 			if err := rt.notify(ctx, policy.Notice{ID: id, Operation: req.Operation, Caller: caller}); err != nil {
 				res.Error = err.Error()
@@ -285,7 +287,7 @@ func errorResult(op, code string, err error) Result {
 		}
 	}
 	if res.Code == CodeMissingAuth {
-		res.Why = "missing auth"
+		res.Why = WhyMissingAuth
 	}
 	return res
 }

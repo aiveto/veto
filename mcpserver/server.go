@@ -126,22 +126,7 @@ func (s *Server) Call(ctx context.Context, req runtime.Request) (InvokeResult, e
 }
 
 func invokeResultOf(call runtime.Result) InvokeResult {
-	return InvokeResult{
-		Status:      call.Status,
-		ApprovalID:  call.ApprovalID,
-		OperationID: call.OperationID,
-		HTTPStatus:  call.HTTPStatus,
-		Body:        call.Body,
-		Code:        call.Code,
-		Retryable:   call.Retryable,
-		RetryAfter:  call.RetryAfter,
-		Error:       call.Error,
-		Truncated:   call.Truncated,
-		Page:        call.Page,
-		Why:         call.Why,
-		Caller:      call.Caller,
-		HTTP:        call.HTTP,
-	}
+	return InvokeResult(call)
 }
 
 // Grouped mode adds one tool per resource, never one tool per operation.

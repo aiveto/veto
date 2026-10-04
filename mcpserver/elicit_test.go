@@ -31,6 +31,7 @@ func TestElicitationRunsTheDeleteOnAccept(t *testing.T) {
 	assert.Contains(t, body, `"status":"ok"`)
 	assert.Contains(t, asked, "orders.delete")
 	assert.Contains(t, asked, "id=123")
+	assert.Contains(t, asked, "does not run")
 	assert.Equal(t, int32(1), hits.Load())
 }
 

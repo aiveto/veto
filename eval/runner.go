@@ -15,6 +15,7 @@ import (
 	"github.com/aiveto/veto/internal/yamlfile"
 	"github.com/aiveto/veto/result"
 	"github.com/aiveto/veto/runctx"
+	"github.com/aiveto/veto/runtime"
 )
 
 type (
@@ -135,8 +136,8 @@ func (r *Runner) Run(ctx context.Context, c *Case) error {
 	if c.Expect.OperationID != "" && out.OperationID != c.Expect.OperationID {
 		return fmt.Errorf("expected operation %q, got %q", c.Expect.OperationID, out.OperationID)
 	}
-	if c.Expect.ConfirmationRequired && out.Status != "confirmation_required" {
-		return fmt.Errorf("expected confirmation_required, got %q", out.Status)
+	if c.Expect.ConfirmationRequired && out.Status != runtime.StatusConfirmationRequired {
+		return fmt.Errorf("expected %s, got %q", runtime.StatusConfirmationRequired, out.Status)
 	}
 	return nil
 }

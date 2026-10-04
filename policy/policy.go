@@ -151,6 +151,11 @@ func ConfirmSentence(operationID string, params map[string]string) string {
 	return b.String()
 }
 
+// ConfirmAsk is the confirmation form. The call does not run until accept.
+func ConfirmAsk(operationID string, params map[string]string) string {
+	return ConfirmSentence(operationID, params) + ". The call does not run until you accept."
+}
+
 // Check runs hook. Nil hook is Builtin.
 func Check(ctx context.Context, hook Hook, op *catalog.Operation) (Decision, error) {
 	if hook == nil {
