@@ -217,18 +217,30 @@ func requestState(req *mcp.CallToolRequest) string {
 }
 
 func acceptElicitation(ctx context.Context, srv *capability.Server, req *mcp.CallToolRequest, operationID string) (string, error) {
+	return approveHeld(ctx, srv, operationID, requestState(req))
+}
+
+func approveHeld(ctx context.Context, srv *capability.Server, operationID, pendingID string) (string, error) {
 	if srv == nil || srv.Calls == nil || srv.Calls.State == nil {
 		return "", errors.New("confirmation state is not set")
 	}
-	id := requestState(req)
-	pending := srv.Calls.State.Pending(ctx, id)
+	pending := srv.Calls.State.Pending(ctx, pendingID)
 	if pending == nil || pending.OperationID != operationID {
 		return "", fmt.Errorf("approval does not match %s", operationID)
 	}
-	return srv.Calls.State.Approve(ctx, id)
+	return srv.Calls.State.Approve(ctx, pendingID)
 }
 
 func elicitConfirmation(res capability.InvokeResult, pending *policy.PendingConfirmation) *mcp.CallToolResult {
+	return &mcp.CallToolResult{
+		InputRequests: mcp.InputRequestMap{
+			"confirm": confirmElicitParams(res, pending),
+		},
+		RequestState: res.ApprovalID,
+	}
+}
+
+func confirmElicitParams(res capability.InvokeResult, pending *policy.PendingConfirmation) *mcp.ElicitParams {
 	op := res.OperationID
 	var params map[string]string
 	var caller string
@@ -237,13 +249,18 @@ func elicitConfirmation(res capability.InvokeResult, pending *policy.PendingConf
 		params = pending.Params
 		caller = pending.Caller
 	}
-	return &mcp.CallToolResult{
-		InputRequests: mcp.InputRequestMap{
-			"confirm": &mcp.ElicitParams{
-				Message: policy.ConfirmAsk(caller, op, params),
-			},
-		},
-		RequestState: res.ApprovalID,
+	return &mcp.ElicitParams{
+		Mode:            "form",
+		Message:         policy.ConfirmAsk(caller, op, params),
+		RequestedSchema: confirmSchema(),
+	}
+}
+
+func confirmSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"properties":           map[string]any{},
+		"additionalProperties": false,
 	}
 }
 

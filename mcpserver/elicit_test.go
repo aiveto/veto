@@ -20,9 +20,13 @@ import (
 
 func TestElicitationRunsTheDeleteOnAccept(t *testing.T) {
 	var asked string
+	var mode string
+	var schema map[string]any
 	hits, session := elicitSession(t, true, func(_ context.Context, req *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
 		if req != nil && req.Params != nil {
 			asked = req.Params.Message
+			mode = req.Params.Mode
+			schema, _ = req.Params.RequestedSchema.(map[string]any)
 		}
 		return &mcp.ElicitResult{Action: "accept"}, nil
 	})
@@ -33,6 +37,9 @@ func TestElicitationRunsTheDeleteOnAccept(t *testing.T) {
 	assert.Contains(t, asked, "orders.delete")
 	assert.Contains(t, asked, "id=123")
 	assert.Contains(t, asked, "does not run")
+	assert.Equal(t, "form", mode)
+	require.NotNil(t, schema)
+	assert.Equal(t, "object", schema["type"])
 	assert.Equal(t, int32(1), hits.Load())
 }
 

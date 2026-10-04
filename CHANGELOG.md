@@ -2,8 +2,7 @@
 
 ## Unreleased
 
-- The README says MCP, JSON lines, and the CLI are the same three capabilities.
-- The runtime figure keeps the invoke path off the catalog and the HTTP label off the line to your APIs.
+- A confirmation form sends a confirm schema. `veto invoke` on a TTY asks the same sentence; `y` runs the call once. A skill or `veto serve --json` still returns the pending id.
 
 ## v0.1.6 - 2026-10-04
 

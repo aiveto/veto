@@ -81,6 +81,86 @@ func TestCLIInvokeDeleteWaits(t *testing.T) {
 	assert.Equal(t, int32(0), hits.Load())
 }
 
+func TestCLIInvokeTTYAcceptRunsOnce(t *testing.T) {
+	loop, err := testCapabilityLoop(t)
+	require.NoError(t, err)
+	var hits atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer ts.Close()
+	loop.Exec = execute.Client{BaseURL: ts.URL, HTTP: ts.Client()}
+	srv := newServer(loop)
+	in, err := decodeInvoke([]string{`{"operation_id":"orders.delete","params":{"id":"123"}}`})
+	require.NoError(t, err)
+	ctx := auth.WithCaller(context.Background(), auth.OrLocal(""))
+	var asked string
+	confirmInvoke = func(sentence string) (bool, bool) {
+		asked = sentence
+		return true, true
+	}
+	t.Cleanup(func() { confirmInvoke = confirmInvokeTTY })
+	raw, err := runInvoke(ctx, srv, in)
+	require.NoError(t, err)
+	var res capability.InvokeResult
+	require.NoError(t, json.Unmarshal(raw, &res))
+	assert.Equal(t, "ok", res.Status)
+	assert.True(t, res.HTTP)
+	assert.True(t, res.Sent)
+	assert.Contains(t, asked, "orders.delete")
+	assert.Contains(t, asked, "id=123")
+	assert.Equal(t, int32(1), hits.Load())
+}
+
+func TestCLIInvokeTTYDeclineLeavesPending(t *testing.T) {
+	loop, err := testCapabilityLoop(t)
+	require.NoError(t, err)
+	var hits atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		hits.Add(1)
+	}))
+	defer ts.Close()
+	loop.Exec = execute.Client{BaseURL: ts.URL, HTTP: ts.Client()}
+	srv := newServer(loop)
+	in, err := decodeInvoke([]string{`{"operation_id":"orders.delete","params":{"id":"123"}}`})
+	require.NoError(t, err)
+	ctx := auth.WithCaller(context.Background(), auth.OrLocal(""))
+	confirmInvoke = func(string) (bool, bool) { return false, true }
+	t.Cleanup(func() { confirmInvoke = confirmInvokeTTY })
+	raw, err := runInvoke(ctx, srv, in)
+	require.NoError(t, err)
+	var res capability.InvokeResult
+	require.NoError(t, json.Unmarshal(raw, &res))
+	assert.Equal(t, "confirmation_required", res.Status)
+	assert.NotEmpty(t, res.ApprovalID)
+	assert.False(t, res.HTTP)
+	assert.Equal(t, int32(0), hits.Load())
+}
+
+func TestCLIInvokeWithoutTTYLeavesPending(t *testing.T) {
+	loop, err := testCapabilityLoop(t)
+	require.NoError(t, err)
+	var hits atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		hits.Add(1)
+	}))
+	defer ts.Close()
+	loop.Exec = execute.Client{BaseURL: ts.URL, HTTP: ts.Client()}
+	srv := newServer(loop)
+	in, err := decodeInvoke([]string{`{"operation_id":"orders.delete","params":{"id":"123"}}`})
+	require.NoError(t, err)
+	ctx := auth.WithCaller(context.Background(), auth.OrLocal(""))
+	raw, err := runInvoke(ctx, srv, in)
+	require.NoError(t, err)
+	var res capability.InvokeResult
+	require.NoError(t, json.Unmarshal(raw, &res))
+	assert.Equal(t, "confirmation_required", res.Status)
+	assert.NotEmpty(t, res.ApprovalID)
+	assert.False(t, res.HTTP)
+	assert.Equal(t, int32(0), hits.Load())
+}
+
 func TestCapabilityHelpJSONIsTheMCPContract(t *testing.T) {
 	root, err := newRoot()
 	require.NoError(t, err)
