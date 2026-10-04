@@ -20,36 +20,13 @@ import (
 // Version is the MCP server build. A release sets it with -X.
 var Version = "dev"
 
-type (
-	Options struct {
-		Pins       []string
-		DirectPins bool
-		Grouped    bool
-		// ChatApproval lets an elicitation answer approve a held call. RunStdio turns it on.
-		ChatApproval bool
-	}
-
-	searchArgs struct {
-		Query  string `json:"query" jsonschema:"search query"`
-		Offset int    `json:"offset,omitempty" jsonschema:"hit offset"`
-		Limit  int    `json:"limit,omitempty" jsonschema:"page size"`
-	}
-
-	describeArgs struct {
-		OperationID string `json:"operation_id" jsonschema:"operation id"`
-	}
-
-	invokeArgs struct {
-		OperationID string         `json:"operation_id" jsonschema:"operation id"`
-		Params      map[string]any `json:"params,omitempty" jsonschema:"parameters; strings, or a JSON object for body"`
-		ApprovalID  string         `json:"approval_id,omitempty" jsonschema:"approved id from veto approve; a pending id does not run the call"`
-		Token       string         `json:"token,omitempty" jsonschema:"user token for this call when the scheme source is invoke"`
-		Preview     bool           `json:"preview,omitempty" jsonschema:"resolve, validate, and check policy, then stop before a token URL and upstream HTTP"`
-		Fields      []string       `json:"fields,omitempty" jsonschema:"response fields to return; omit them to keep the whole body"`
-		Offset      int            `json:"offset,omitempty" jsonschema:"page offset when fields are set"`
-		Limit       int            `json:"limit,omitempty" jsonschema:"page size when fields are set"`
-	}
-)
+type Options struct {
+	Pins       []string
+	DirectPins bool
+	Grouped    bool
+	// ChatApproval lets an elicitation answer approve a held call. RunStdio turns it on.
+	ChatApproval bool
+}
 
 func RunStdio(ctx context.Context, srv *Server, opt Options) error {
 	opt.ChatApproval = true
@@ -64,15 +41,14 @@ func newMCP(srv *Server, opt Options) *mcp.Server {
 
 func register(server *mcp.Server, srv *Server, opt Options) {
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "capabilities_search",
-		Description: "Search operations in the contract catalog",
+		Name:        SearchName,
+		Description: SearchDescription,
 		Annotations: readOnlyAnnotations(),
-	}, func(ctx context.Context, req *mcp.CallToolRequest, args searchArgs) (*mcp.CallToolResult, any, error) {
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args SearchArgs) (*mcp.CallToolResult, any, error) {
 		if err := ctx.Err(); err != nil {
 			return toolError(err)
 		}
-		matches := srv.Search(args.Query, args.Offset, args.Limit)
-		b, err := srv.encode(matches)
+		b, err := srv.RunSearch(args)
 		if err != nil {
 			return toolError(err)
 		}
@@ -80,14 +56,14 @@ func register(server *mcp.Server, srv *Server, opt Options) {
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "capabilities_describe",
-		Description: "Describe one operation by id",
+		Name:        DescribeName,
+		Description: DescribeDescription,
 		Annotations: readOnlyAnnotations(),
-	}, func(ctx context.Context, req *mcp.CallToolRequest, args describeArgs) (*mcp.CallToolResult, any, error) {
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args DescribeArgs) (*mcp.CallToolResult, any, error) {
 		if err := ctx.Err(); err != nil {
 			return toolError(err)
 		}
-		b, err := srv.Describe(args.OperationID)
+		b, err := srv.RunDescribe(args)
 		if err != nil {
 			return toolError(err)
 		}
@@ -95,10 +71,10 @@ func register(server *mcp.Server, srv *Server, opt Options) {
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "capabilities_invoke",
-		Description: "Invoke an operation through policy and HTTP. params values are strings. params.body may be a JSON object and is sent as the request body. confirmation_required includes a pending id. That id does not run the call. why is held until you approve or missing auth. http is true only when upstream HTTP left. When chat approval is on and the host supports elicitation, the host asks the person; accept runs the call, and decline leaves the pending id. veto approve records the approval and prints the id a later invoke accepts once. preview stops before a token URL and before upstream HTTP. fields names the JSON fields a successful call returns. With no fields, the body is unchanged.",
+		Name:        InvokeName,
+		Description: InvokeDescription,
 		Annotations: invokeAnnotations(true),
-	}, func(ctx context.Context, req *mcp.CallToolRequest, args invokeArgs) (*mcp.CallToolResult, any, error) {
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args InvokeArgs) (*mcp.CallToolResult, any, error) {
 		return invokeCall(ctx, req, srv, args, opt.ChatApproval)
 	})
 
@@ -109,7 +85,7 @@ func register(server *mcp.Server, srv *Server, opt Options) {
 				Name:        group,
 				Description: "Invoke an operation in " + group,
 				Annotations: groupAnnotations(srv.Catalog, group),
-			}, func(ctx context.Context, req *mcp.CallToolRequest, args invokeArgs) (*mcp.CallToolResult, any, error) {
+			}, func(ctx context.Context, req *mcp.CallToolRequest, args InvokeArgs) (*mcp.CallToolResult, any, error) {
 				op := srv.Catalog.ByID(args.OperationID)
 				if op == nil || op.Group != group {
 					return toolError(fmt.Errorf("operation %q is not in group %s", args.OperationID, group))
@@ -130,7 +106,7 @@ func register(server *mcp.Server, srv *Server, opt Options) {
 				Name:        pinnedID,
 				Description: op.Description,
 				Annotations: operationAnnotations(op),
-			}, func(ctx context.Context, req *mcp.CallToolRequest, args invokeArgs) (*mcp.CallToolResult, any, error) {
+			}, func(ctx context.Context, req *mcp.CallToolRequest, args InvokeArgs) (*mcp.CallToolResult, any, error) {
 				args.OperationID = pinnedID
 				return invokeCall(ctx, req, srv, args, opt.ChatApproval)
 			})
@@ -138,7 +114,7 @@ func register(server *mcp.Server, srv *Server, opt Options) {
 	}
 }
 
-func invokeCall(ctx context.Context, req *mcp.CallToolRequest, srv *Server, args invokeArgs, chat bool) (*mcp.CallToolResult, any, error) {
+func invokeCall(ctx context.Context, req *mcp.CallToolRequest, srv *Server, args InvokeArgs, chat bool) (*mcp.CallToolResult, any, error) {
 	caller := callerID(ctx, req)
 	if args.Preview {
 		out, err := srv.Preview(ctx, runtime.Request{

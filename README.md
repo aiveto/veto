@@ -8,7 +8,7 @@ The model may request a call. Veto checks policy, requires approval for a destru
 
 Connect an MCP client, or embed the Go runtime. MCP, the CLI, eval, and a generated Go client share that runtime. Your services stay where they already run.
 
-<img src="docs/veto-runtime.png" width="1280" alt="Claude, Cursor, or ChatGPT talks to veto over MCP. Search, describe, and invoke sit on catalog, semantics, relations, and a short brief that is not the OpenAPI file. Destructive calls can be configured for approval. Then HTTP reaches your APIs.">
+<img src="docs/veto-runtime.png" width="1280" alt="Claude, Cursor, or ChatGPT talks to veto over MCP. A CLI or skill uses search, describe, and invoke. Those three sit on catalog, semantics, relations, and a short brief that is not the OpenAPI file. Destructive calls can be configured for approval. Then HTTP reaches your APIs.">
 
 ```bash
 brew install aiveto/veto/veto
@@ -22,7 +22,7 @@ go install github.com/aiveto/veto/cmd/veto@latest
 
 ## See veto in action
 
-[veto-demo](https://github.com/aiveto/veto-demo) is the full walk. Harbor sells home goods. Orders, customers, and billing are the APIs. The walk follows a customer from an order, holds a delete until a person approves it, and keeps the secret out of the trace. `make demo` runs the story. `make mcp` leaves Harbor listening and prints the config for Claude, Cursor, or ChatGPT.
+[veto-demo](https://github.com/aiveto/veto-demo) is the full walk. Harbor sells home goods. Orders, customers, and billing are the APIs. The walk follows a customer from an order, holds a delete until a person approves it, and keeps the secret out of the trace. `make demo` runs that story over the CLI, then over MCP. `make mcp` leaves Harbor listening and prints the config for Claude, Cursor, or ChatGPT. `make cli` is the same story through `veto search`, `describe`, and `invoke`.
 
 This repo runs the relation, the held delete, and the redacted trace, then exits. No model key.
 
@@ -61,11 +61,11 @@ relations:
     to: customers.get
 ```
 
-Search returns the related operation. Describe returns the note, such as `Order.customerId identifies customers.get`. The Go Follow API walks that link. MCP invoke runs one operation. [Relations](docs/guide.md#relations).
+Search returns the related operation. Describe returns the note, such as `Order.customerId identifies customers.get`. The Go Follow API walks that link. Invoke runs one operation. [Relations](docs/guide.md#relations).
 
 ## What the agent receives
 
-The tool names are `capabilities_search`, `capabilities_describe`, and `capabilities_invoke`. Direct pins add a few operations beside those three. Grouped mode adds one tool per resource. Search matches the summary, tags, the path noun, and synonyms such as retire for delete. An overlay can add a word of your own.
+The tool names are `capabilities_search`, `capabilities_describe`, and `capabilities_invoke`. A skill calls `veto search`, `veto describe`, and `veto invoke`. `--help-json` prints that same contract. Direct pins add a few operations beside those three. Grouped mode adds one tool per resource. Search matches the summary, tags, the path noun, and synonyms such as retire for delete. An overlay can add a word of your own.
 
 [Response shaping](docs/guide.md#mcp) returns named fields and a bounded list, and marks pagination and truncation. A Go [context pack](docs/guide.md#pack) holds rules, operation summaries, the conversation, relations, and a pending confirmation, inside a byte budget. The raw OpenAPI document stays out of the pack.
 
@@ -103,7 +103,7 @@ veto eval --config testdata/veto.yaml --case testdata/delete.yaml
 veto serve --config testdata/veto.yaml --stdio
 ```
 
-`testdata/veto.yaml` is already written, so these commands start at `validate`. `eval` runs the delete case in this repo. `serve --stdio` is the MCP process. A call needs an API that is still listening, which is what veto-demo keeps up.
+`testdata/veto.yaml` is already written, so these commands start at `validate`. `eval` runs the delete case in this repo. `serve --stdio` is MCP. `veto search`, `describe`, and `invoke` are the same three capabilities on the CLI. A call needs an API that is still listening, which is what veto-demo keeps up.
 
 ## Scope
 

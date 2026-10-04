@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- The README figure is a PNG. Search, describe, and invoke sit on catalog, semantics, relations, and the brief. Destructive calls can be configured for approval.
+- `veto search`, `veto describe`, and `veto invoke` call the same methods as the MCP tools. `--help-json` on those commands is the capability schema. A skill uses that JSON.
+- The README figure is a PNG. MCP is one inbound. A CLI or skill is the other. Both reach search, describe, and invoke.
 
 ## v0.1.5 - 2026-10-03
 

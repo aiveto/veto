@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/aiveto/veto/mcpserver"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -24,14 +25,33 @@ type (
 		Usage    string `json:"usage"`
 		Required bool   `json:"required,omitempty"`
 	}
+
+	capabilityHelp struct {
+		mcpserver.Capability
+		Flags []flagDoc `json:"flags"`
+	}
+
+	rootHelp struct {
+		commandDoc
+		Capabilities []mcpserver.Capability `json:"capabilities,omitempty"`
+	}
 )
 
 func jsonHelp(w io.Writer, root *cobra.Command, args []string) (bool, error) {
 	if !wantsHelpJSON(args) {
 		return false, nil
 	}
-	doc := describeCommand(targetCommand(root, args))
-	if err := writeIndentedJSON(w, doc); err != nil {
+	cmd := targetCommand(root, args)
+	doc := describeCommand(cmd)
+	var err error
+	if spec, ok := mcpserver.CapabilityByCommand(doc.Command); ok {
+		err = writeIndentedJSON(w, capabilityHelp{Capability: spec, Flags: doc.Flags})
+	} else if cmd == root {
+		err = writeIndentedJSON(w, rootHelp{commandDoc: doc, Capabilities: mcpserver.Capabilities()})
+	} else {
+		err = writeIndentedJSON(w, doc)
+	}
+	if err != nil {
 		return true, err
 	}
 	return true, nil

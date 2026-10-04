@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/aiveto/veto/agent"
+	"github.com/aiveto/veto/auth"
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/jsonopts"
 	"github.com/aiveto/veto/result"
@@ -97,7 +98,53 @@ func (s *Server) Describe(operationID string) ([]byte, error) {
 		"call":      runctx.OperationLine(s.Catalog, *op, note.Text()),
 		"relation":  note.Relation,
 	}
-	return s.encode(payload)
+	return s.Encode(payload)
+}
+
+func (s *Server) RunSearch(args SearchArgs) ([]byte, error) {
+	return s.Encode(s.Search(args.Query, args.Offset, args.Limit))
+}
+
+func (s *Server) RunDescribe(args DescribeArgs) ([]byte, error) {
+	return s.Describe(args.OperationID)
+}
+
+// RunInvoke is invoke without MCP elicitation. CLI and a skill use it. The host form stays in invokeCall.
+func (s *Server) RunInvoke(ctx context.Context, args InvokeArgs) ([]byte, error) {
+	ctx = auth.WithUserToken(ctx, args.Token)
+	req := runtime.Request{
+		Operation: args.OperationID,
+		Arguments: args.Params,
+		Approval:  args.ApprovalID,
+		Fields:    args.Fields,
+		Offset:    args.Offset,
+		Limit:     args.Limit,
+	}
+	if args.Preview {
+		out, err := s.Preview(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		b, err := s.Encode(out)
+		if err != nil {
+			return nil, err
+		}
+		if len(out.Errors) > 0 {
+			return b, fmt.Errorf("preview failed")
+		}
+		return b, nil
+	}
+	res, err := s.Call(ctx, req)
+	b, encErr := s.Encode(res)
+	if encErr != nil {
+		return b, encErr
+	}
+	return b, err
+}
+
+// Encode writes the same JSON MCP returns for search, describe, and invoke.
+func (s *Server) Encode(v any) ([]byte, error) {
+	return s.encode(v)
 }
 
 func (s *Server) encode(v any) ([]byte, error) {
@@ -140,9 +187,9 @@ func invokeResultOf(call runtime.Result) InvokeResult {
 // Grouped mode adds one tool per resource, never one tool per operation.
 func ToolNames(cat *catalog.Catalog, pins []string, directPins, grouped bool) []string {
 	names := []string{
-		"capabilities_search",
-		"capabilities_describe",
-		"capabilities_invoke",
+		SearchName,
+		DescribeName,
+		InvokeName,
 	}
 	if directPins {
 		names = append(names, pins...)

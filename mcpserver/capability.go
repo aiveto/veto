@@ -1,0 +1,118 @@
+package mcpserver
+
+import (
+	"reflect"
+	"strings"
+)
+
+const (
+	SearchName          = "capabilities_search"
+	SearchCommand       = "search"
+	SearchDescription   = "Search operations in the contract catalog"
+	DescribeName        = "capabilities_describe"
+	DescribeCommand     = "describe"
+	DescribeDescription = "Describe one operation by id"
+	InvokeName          = "capabilities_invoke"
+	InvokeCommand       = "invoke"
+	InvokeDescription   = "Invoke an operation through policy and HTTP. params values are strings. params.body may be a JSON object and is sent as the request body. confirmation_required includes a pending id. That id does not run the call. why is held until you approve or missing auth. http is true only when upstream HTTP left. When chat approval is on and the host supports elicitation, the host asks the person; accept runs the call, and decline leaves the pending id. veto approve records the approval and prints the id a later invoke accepts once. preview stops before a token URL and before upstream HTTP. fields names the JSON fields a successful call returns. With no fields, the body is unchanged."
+)
+
+type (
+	// SearchArgs is the shared search input for MCP and the CLI.
+	SearchArgs struct {
+		Query  string `json:"query" jsonschema:"search query"`
+		Offset int    `json:"offset,omitempty" jsonschema:"hit offset"`
+		Limit  int    `json:"limit,omitempty" jsonschema:"page size"`
+	}
+
+	// DescribeArgs is the shared describe input for MCP and the CLI.
+	DescribeArgs struct {
+		OperationID string `json:"operation_id" jsonschema:"operation id"`
+	}
+
+	// InvokeArgs is the shared invoke input for MCP and the CLI.
+	InvokeArgs struct {
+		OperationID string         `json:"operation_id" jsonschema:"operation id"`
+		Params      map[string]any `json:"params,omitempty" jsonschema:"parameters; strings, or a JSON object for body"`
+		ApprovalID  string         `json:"approval_id,omitempty" jsonschema:"approved id from veto approve; a pending id does not run the call"`
+		Token       string         `json:"token,omitempty" jsonschema:"user token for this call when the scheme source is invoke"`
+		Preview     bool           `json:"preview,omitempty" jsonschema:"resolve, validate, and check policy, then stop before a token URL and before upstream HTTP"`
+		Fields      []string       `json:"fields,omitempty" jsonschema:"response fields to return; omit them to keep the whole body"`
+		Offset      int            `json:"offset,omitempty" jsonschema:"page offset when fields are set"`
+		Limit       int            `json:"limit,omitempty" jsonschema:"page size when fields are set"`
+	}
+
+	// Capability is one of search, describe, or invoke. Help JSON and MCP share it.
+	Capability struct {
+		Name        string       `json:"name"`
+		Command     string       `json:"command"`
+		Description string       `json:"description"`
+		Input       []InputField `json:"input"`
+	}
+
+	InputField struct {
+		Name        string `json:"name"`
+		Type        string `json:"type"`
+		Required    bool   `json:"required,omitempty"`
+		Description string `json:"description,omitempty"`
+	}
+)
+
+// Capabilities is the MCP tool list and the CLI command list for a skill.
+func Capabilities() []Capability {
+	return []Capability{
+		{Name: SearchName, Command: SearchCommand, Description: SearchDescription, Input: inputFields(SearchArgs{})},
+		{Name: DescribeName, Command: DescribeCommand, Description: DescribeDescription, Input: inputFields(DescribeArgs{})},
+		{Name: InvokeName, Command: InvokeCommand, Description: InvokeDescription, Input: inputFields(InvokeArgs{})},
+	}
+}
+
+func CapabilityByCommand(name string) (Capability, bool) {
+	for _, c := range Capabilities() {
+		if c.Command == name {
+			return c, true
+		}
+	}
+	return Capability{}, false
+}
+
+func inputFields(sample any) []InputField {
+	t := reflect.TypeOf(sample)
+	var out []InputField
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		name, typ, required := jsonField(f)
+		if name == "" || name == "-" {
+			continue
+		}
+		out = append(out, InputField{
+			Name:        name,
+			Type:        typ,
+			Required:    required,
+			Description: f.Tag.Get("jsonschema"),
+		})
+	}
+	return out
+}
+
+func jsonField(f reflect.StructField) (name, typ string, required bool) {
+	tag := f.Tag.Get("json")
+	name, opt, _ := strings.Cut(tag, ",")
+	if name == "" {
+		name = f.Name
+	}
+	required = opt != "omitempty" && name != "-"
+	switch f.Type.Kind() {
+	case reflect.Map:
+		typ = "object"
+	case reflect.Slice:
+		typ = "array"
+	case reflect.Bool:
+		typ = "boolean"
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		typ = "integer"
+	default:
+		typ = "string"
+	}
+	return name, typ, required
+}

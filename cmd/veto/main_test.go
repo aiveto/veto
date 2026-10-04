@@ -60,7 +60,7 @@ func TestHelpJSONStaysOffTheHumanHelpPath(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, got)
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &doc))
-	for _, name := range []string{"serve", "eval", "replay", "validate", "generate", "pack", "doctor", "check", "init", "approve", "preview"} {
+	for _, name := range []string{"serve", "eval", "replay", "validate", "generate", "pack", "doctor", "check", "init", "approve", "preview", "search", "describe", "invoke"} {
 		assert.Contains(t, doc.Commands, name)
 	}
 }

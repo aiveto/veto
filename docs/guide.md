@@ -207,6 +207,17 @@ The env block is what `veto approve` in another shell must share, or set `approv
 
 `veto serve` listens on stdio. The registered tools are `capabilities_search`, `capabilities_describe`, and `capabilities_invoke`. `--pin orders.get` also registers that operation id. `--grouped` registers one tool per resource. Search returns `id`, the pack call line, related ids, and `confirmation` when the gate is on. Describe still returns the operation.
 
+`veto search`, `veto describe`, and `veto invoke` call those same methods. `--help-json` prints the capability, not a second Cobra schema. A skill starts with `veto --help-json`. Words are a search shorthand. A JSON object is the tool arguments.
+
+```bash
+veto --help-json
+veto search --help-json
+veto search --config veto.yaml retire order 123
+veto search --config veto.yaml '{"query":"retire order 123"}'
+veto describe --config veto.yaml orders.delete
+veto invoke --config veto.yaml '{"operation_id":"orders.delete","params":{"id":"123"}}'
+```
+
 `capabilities_invoke` arguments:
 
 ```json
