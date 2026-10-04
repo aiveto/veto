@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"encoding/json"
 	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
@@ -10,7 +11,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
-// CheckParams reports a missing required value, a parameter the call cannot send, or a body that is not the declared JSON object.
+// CheckParams reports a missing required value, a parameter the call cannot send, a body that is not the declared JSON object, or a query, path, or header value that is not the declared schema.
 func (op Operation) CheckParams(params map[string]string) error {
 	for _, p := range op.Params {
 		if why := p.Unserializable(); why != "" {
@@ -30,6 +31,12 @@ func (op Operation) CheckParams(params map[string]string) error {
 			}
 			if p.Type() == "object" && !jsonObject(v) {
 				return result.BodyError{Operation: op.ID, Path: "/", Reason: "must be a JSON object"}
+			}
+			continue
+		}
+		if v != "" && (p.In == "query" || p.In == "path" || p.In == "header") {
+			if err := p.checkValue(op.ID, v); err != nil {
+				return err
 			}
 		}
 	}
@@ -155,6 +162,90 @@ func (p Param) kind() string {
 		return kind
 	}
 	return "structured"
+}
+
+func (p Param) checkValue(operationID, raw string) error {
+	if p.Schema == "" {
+		return nil
+	}
+	schema, ok := parseSchema(p.Schema)
+	if !ok {
+		return nil
+	}
+	value, err := valueForSchema(raw, p)
+	if err != nil {
+		return result.ParamError{Operation: operationID, Name: p.Name, Reason: err.Error()}
+	}
+	if err := schema.VisitJSON(value, openapi3.VisitAsRequest()); err != nil {
+		reason := "does not match the schema"
+		if se, ok := errors.AsType[*openapi3.SchemaError](err); ok && se.Reason != "" {
+			reason = se.Reason
+		}
+		return result.ParamError{Operation: operationID, Name: p.Name, Reason: reason}
+	}
+	return nil
+}
+
+func valueForSchema(raw string, p Param) (any, error) {
+	if p.Structured() {
+		value, err := decodeJSON(raw)
+		if err != nil {
+			return nil, errors.New("is not JSON")
+		}
+		return value, nil
+	}
+	return scalarValue(raw, p.Type())
+}
+
+func scalarValue(raw, typ string) (any, error) {
+	switch typ {
+	case "integer", "number":
+		var n json.Number
+		if err := json.Unmarshal([]byte(raw), &n); err != nil {
+			return nil, scalarTypeError(typ)
+		}
+		if typ == "integer" && !integerNumber(n) {
+			return nil, scalarTypeError(typ)
+		}
+		return n, nil
+	case "boolean":
+		switch raw {
+		case "true":
+			return true, nil
+		case "false":
+			return false, nil
+		default:
+			return nil, errors.New("must be a boolean")
+		}
+	default:
+		return raw, nil
+	}
+}
+
+func scalarTypeError(typ string) error {
+	if typ == "integer" {
+		return errors.New("must be an integer")
+	}
+	return errors.New("must be a number")
+}
+
+func integerNumber(n json.Number) bool {
+	s := string(n)
+	if s == "" || strings.ContainsAny(s, ".eE") {
+		return false
+	}
+	if s[0] == '-' || s[0] == '+' {
+		s = s[1:]
+	}
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func (p Param) checkBody(operationID, raw string) error {

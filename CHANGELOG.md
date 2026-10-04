@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- A confirmation form sends a confirm schema. `veto invoke` on a TTY asks the same sentence; `y` runs the call once. A skill or `veto serve --json` still returns the pending id.
+- A confirmation form sends a confirm schema. `veto invoke` asks the same sentence when stdin and stdout are a terminal; `y` runs the call once. A skill or `veto serve --json` still returns the pending id.
+- Preview keeps integer digits in the request body. Query, path, and header values are checked against their schema before HTTP. A mismatch is `invalid_param` and does not echo the value. A relation that would only join an operation to itself is refused. Related ids are listed once.
 
 ## v0.1.6 - 2026-10-04
 

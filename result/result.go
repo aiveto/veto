@@ -25,6 +25,7 @@ type (
 	ParamError struct {
 		Operation string
 		Name      string
+		Reason    string
 	}
 
 	// BodyError is a request body that does not match the operation's schema. It does not carry the value.
@@ -59,6 +60,12 @@ func (e AuthError) Error() string {
 }
 
 func (e ParamError) Error() string {
+	if e.Reason != "" {
+		if e.Name == "" {
+			return fmt.Sprintf("operation %s: %s", e.Operation, e.Reason)
+		}
+		return fmt.Sprintf("operation %s: %s: %s", e.Operation, e.Name, e.Reason)
+	}
 	if e.Name == "" {
 		return fmt.Sprintf("operation %s: empty path parameter", e.Operation)
 	}

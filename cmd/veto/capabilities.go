@@ -158,7 +158,7 @@ func heldSentence(ctx context.Context, srv *capability.Server, res capability.In
 var confirmInvoke = confirmInvokeTTY
 
 func confirmInvokeTTY(sentence string) (accepted bool, asked bool) {
-	if !invokeStdinTTY() {
+	if !invokeIsTTY() {
 		return false, false
 	}
 	fmt.Fprintf(os.Stderr, "%s [y/N] ", sentence)
@@ -174,8 +174,17 @@ func confirmInvokeTTY(sentence string) (accepted bool, asked bool) {
 	}
 }
 
-func invokeStdinTTY() bool {
-	fi, err := os.Stdin.Stat()
+var invokeIsTTY = detectInvokeTTY
+
+func detectInvokeTTY() bool {
+	return isCharDevice(os.Stdin) && isCharDevice(os.Stdout)
+}
+
+func isCharDevice(f *os.File) bool {
+	if f == nil {
+		return false
+	}
+	fi, err := f.Stat()
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }
 

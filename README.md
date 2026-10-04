@@ -45,7 +45,7 @@ The trace left the secret out.
 ```text
 Agent requests the call                          -> pending ID; no upstream HTTP
 Person accepts the form in the chat              -> one matching invocation
-TTY veto invoke: same sentence, y                -> one matching invocation
+TTY stdin and stdout: same sentence, y           -> one matching invocation
 Host without that form: veto approve <id>        -> approved ID, then the agent submits it once
 ```
 

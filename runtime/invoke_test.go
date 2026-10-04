@@ -352,6 +352,35 @@ func TestDiscoveryOnlyDoesNotCallHTTP(t *testing.T) {
 	assert.Equal(t, int32(0), hits.Load())
 }
 
+func TestInvokeRejectsAQueryOutsideTheSchemaBeforeHTTP(t *testing.T) {
+	const secret = "s3cret-value"
+	var hits atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		hits.Add(1)
+	}))
+	defer ts.Close()
+	cat := &catalog.Catalog{Operations: []catalog.Operation{{
+		ID:           "orders.list",
+		Method:       http.MethodGet,
+		PathTemplate: "/orders",
+		Params: []catalog.Param{{
+			Name: "status", In: "query", Schema: `{"type":"string","enum":["open","closed"]}`,
+		}},
+	}}}
+	cat.Finalize()
+	rt := runtime.Runtime{Catalog: cat, State: policy.NewState(), Exec: execute.Client{BaseURL: ts.URL}}
+	out, err := rt.Invoke(context.Background(), runtime.Request{
+		Operation: "orders.list",
+		Arguments: runtime.FromStrings(map[string]string{"status": secret}),
+	})
+	require.Error(t, err)
+	assert.Equal(t, runtime.CodeInvalidParam, out.Code)
+	assert.False(t, out.HTTP)
+	assert.NotContains(t, err.Error(), secret)
+	assert.NotContains(t, out.Error, secret)
+	assert.Equal(t, int32(0), hits.Load())
+}
+
 func TestMissingParamSkipsHTTP(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
