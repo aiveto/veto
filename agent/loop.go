@@ -74,6 +74,8 @@ type (
 		Packs     *runctx.Builder
 		gate      *runtime.InvokeGate
 		JSON      jsonopts.Set
+		Pages     int
+		MaxBody   int64
 	}
 )
 
@@ -125,6 +127,17 @@ func (l *Loop) SetInvokeLimit(n int) {
 		l.gate = &runtime.InvokeGate{}
 	}
 	l.gate.Per = n
+}
+
+// SetGate shares one limiter with another Runtime.
+func (l *Loop) SetGate(gate *runtime.InvokeGate) {
+	if l == nil {
+		return
+	}
+	if gate == nil {
+		gate = &runtime.InvokeGate{}
+	}
+	l.gate = gate
 }
 
 func (l *Loop) WrapPolicy(around policy.Around) {
@@ -241,6 +254,8 @@ func (l *Loop) Runtime() runtime.Runtime {
 		Notify:  l.Notify,
 		Gate:    l.gate,
 		JSON:    l.JSON,
+		Pages:   l.Pages,
+		MaxBody: l.MaxBody,
 	}
 }
 

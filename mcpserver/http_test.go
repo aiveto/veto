@@ -169,7 +169,7 @@ func TestHTTPTwoCallersDoNotShareApprovalsOrTokens(t *testing.T) {
 		"params":       map[string]any{"id": "123"},
 		"approval_id":  pending.ApprovalID,
 	})
-	assert.Contains(t, again, "invalid approval")
+	assert.Contains(t, again, "pending_approval")
 	assert.Equal(t, int32(0), hits.Load())
 
 	stolen := callTool(t, grace, map[string]any{

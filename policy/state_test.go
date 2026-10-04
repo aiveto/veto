@@ -168,6 +168,18 @@ func TestConcurrentMemoryRequestsDoNotRace(t *testing.T) {
 	}
 }
 
+func TestConsumeForNamesAPendingIDForItsCaller(t *testing.T) {
+	s := NewState()
+	id, err := s.RequestFor(t.Context(), "ada", "orders.delete", map[string]string{"id": "1"})
+	require.NoError(t, err)
+	ok, err := s.ConsumeFor(t.Context(), "grace", id, "orders.delete", map[string]string{"id": "1"})
+	require.NoError(t, err)
+	assert.False(t, ok)
+	ok, err = s.ConsumeFor(t.Context(), "ada", id, "orders.delete", map[string]string{"id": "1"})
+	require.ErrorIs(t, err, ErrPendingApproval)
+	assert.False(t, ok)
+}
+
 func TestConfirmationKeepsItsOwnParams(t *testing.T) {
 	s := NewState()
 	params := map[string]string{"id": "1"}
@@ -510,6 +522,9 @@ func consumed(t *testing.T, s *State, id string, params map[string]string) bool 
 func consumedFor(t *testing.T, s *State, caller, id string, params map[string]string) bool {
 	t.Helper()
 	ok, err := s.ConsumeFor(t.Context(), caller, id, "orders.delete", params)
+	if errors.Is(err, ErrPendingApproval) {
+		return false
+	}
 	require.NoError(t, err)
 	return ok
 }

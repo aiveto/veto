@@ -72,6 +72,9 @@ func TestSearchHitIsTheCallLine(t *testing.T) {
 	op := cat.ByID("orders.get")
 	assert.Equal(t, runctx.OperationLine(cat, *op, sem.Note(op.ID).Text()), get.Call)
 	assert.Contains(t, get.Related, "customers.get")
+	related := cat.ByID("customers.get")
+	require.NotNil(t, related)
+	assert.Contains(t, get.RelatedCalls, runctx.OperationLine(cat, *related, sem.Note(related.ID).Text()))
 	assert.False(t, get.Confirmation)
 
 	del := hitByID(t, srv.Search("retire", 0, 8), "orders.delete")

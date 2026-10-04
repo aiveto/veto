@@ -27,6 +27,7 @@ const (
 	CodeMissingParam           = "missing_param"
 	CodeNotCallable            = "not_callable"
 	CodeInvokeLimited          = "invoke_limited"
+	CodePendingApproval        = "pending_approval"
 	WhyHeld                    = "held until you approve"
 	WhyMissingAuth             = "missing auth"
 )
@@ -191,6 +192,16 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 			return rt.record(ctx, res), nil
 		}
 		ok, err := rt.State.ConsumeFor(ctx, caller, req.Approval, req.Operation, args)
+		if errors.Is(err, policy.ErrPendingApproval) {
+			return rt.record(ctx, Result{
+				Status:      StatusConfirmationRequired,
+				ApprovalID:  req.Approval,
+				OperationID: req.Operation,
+				Code:        CodePendingApproval,
+				Why:         WhyHeld,
+				Error:       err.Error(),
+			}), err
+		}
 		if err != nil {
 			return rt.record(ctx, errorResult(req.Operation, "", err)), err
 		}
@@ -383,6 +394,15 @@ func (rt *Runtime) record(ctx context.Context, res Result) Result {
 	}
 	if res.Status != "" {
 		span.SetAttributes(telemetry.Attr("decision", res.Status))
+	}
+	if res.Why != "" {
+		span.SetAttributes(telemetry.Attr("why", res.Why))
+	}
+	if res.Sent {
+		span.SetAttributes(telemetry.Attr("sent", "true"))
+	}
+	if res.HTTP {
+		span.SetAttributes(telemetry.Attr("http", "true"))
 	}
 	return res
 }

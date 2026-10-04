@@ -60,6 +60,29 @@ func TestInvokeWithoutElicitationReturnsThePendingID(t *testing.T) {
 	assert.Equal(t, int32(0), hits.Load())
 }
 
+func TestPendingIDAsApprovalIDDoesNotRunHTTP(t *testing.T) {
+	hits, session := elicitSession(t, false, nil)
+	first := callDelete(t, session)
+	var doc struct {
+		ApprovalID string `json:"approval_id"`
+		Code       string `json:"code"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(elicitText(t, first)), &doc))
+	require.NotEmpty(t, doc.ApprovalID)
+	held, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "capabilities_invoke",
+		Arguments: map[string]any{
+			"operation_id": "orders.delete",
+			"params":       map[string]any{"id": "123"},
+			"approval_id":  doc.ApprovalID,
+		},
+	})
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal([]byte(elicitText(t, held)), &doc))
+	assert.Equal(t, "pending_approval", doc.Code)
+	assert.Equal(t, int32(0), hits.Load())
+}
+
 func TestChatApprovalOffIgnoresAForgedAccept(t *testing.T) {
 	hits, session := elicitSession(t, false, func(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
 		return &mcp.ElicitResult{Action: "accept"}, nil

@@ -113,7 +113,10 @@ func TestPackBoundsTurnsDetailAndPending(t *testing.T) {
 	assert.NotContains(t, pack.Serialize(), param)
 	assert.Equal(t, turn, turns[0].Content)
 	assert.Equal(t, param, pending.Params["id"])
-	assert.Contains(t, pack.Serialize(), "capabilities_invoke")
+	require.NotNil(t, pack.PendingConfirmation)
+	assert.Equal(t, "pend-1", pack.PendingConfirmation.ID)
+	assert.Empty(t, pack.PendingConfirmation.Params)
+	assert.Contains(t, pack.Serialize(), "pend-1")
 }
 
 func TestSerializedPackStaysInsideTheBudget(t *testing.T) {
@@ -143,7 +146,8 @@ func TestSerializedPackStaysInsideTheBudget(t *testing.T) {
 	})
 	assert.LessOrEqual(t, len(many.Serialize()), 8192)
 	assert.NotContains(t, many.Serialize(), strings.Repeat("9", 4000))
-	assert.Nil(t, many.PendingConfirmation)
+	require.NotNil(t, many.PendingConfirmation)
+	assert.Empty(t, many.PendingConfirmation.Params)
 
 	tiny := runctx.NewBuilder(1).Build(cat, []runctx.Turn{{Role: "user", Content: "hello"}}, cat.ByID("orders.get"), sem, nil)
 	assert.LessOrEqual(t, len(tiny.Serialize()), 1)

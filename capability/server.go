@@ -21,6 +21,7 @@ type (
 		ID           string   `json:"id"`
 		Call         string   `json:"call"`
 		Related      []string `json:"related,omitempty"`
+		RelatedCalls []string `json:"related_calls,omitempty"`
 		Confirmation bool     `json:"confirmation,omitempty"`
 	}
 
@@ -83,6 +84,7 @@ func (s *Server) Search(query string, offset, limit int) []SearchHit {
 			ID:           m.Operation.ID,
 			Call:         runctx.OperationLine(cat, m.Operation, note),
 			Related:      m.Related,
+			RelatedCalls: relatedCalls(cat, s, m.Related),
 			Confirmation: m.Operation.RequiresConfirmation,
 		})
 	}
@@ -128,19 +130,40 @@ func (a PinArgs) Invoke(operationID string) InvokeArgs {
 		Fields:      a.Fields,
 		Offset:      a.Offset,
 		Limit:       a.Limit,
+		Idempotency: a.Idempotency,
 	}
 }
 
 // Request is the runtime call for these arguments. Caller is set by the adapter.
 func (a InvokeArgs) Request() runtime.Request {
 	return runtime.Request{
-		Operation: a.OperationID,
-		Arguments: map[string]any(a.Params),
-		Approval:  a.ApprovalID,
-		Fields:    a.Fields,
-		Offset:    a.Offset,
-		Limit:     a.Limit,
+		Operation:   a.OperationID,
+		Arguments:   map[string]any(a.Params),
+		Approval:    a.ApprovalID,
+		Fields:      a.Fields,
+		Offset:      a.Offset,
+		Limit:       a.Limit,
+		Idempotency: a.Idempotency,
 	}
+}
+
+func relatedCalls(cat *catalog.Catalog, s *Server, ids []string) []string {
+	if cat == nil || len(ids) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		op := cat.ByID(id)
+		if op == nil {
+			continue
+		}
+		note := ""
+		if s != nil && s.Semantics != nil {
+			note = s.Semantics.Note(id).Text()
+		}
+		out = append(out, runctx.OperationLine(cat, *op, note))
+	}
+	return out
 }
 
 // RunInvoke encodes one invoke. MCP wraps IsError and elicitation around EncodeInvoke.
@@ -223,7 +246,27 @@ func (s *Server) Call(ctx context.Context, req runtime.Request) (InvokeResult, e
 		return InvokeResult{Status: runtime.StatusError, Error: "runtime required"}, errors.New("runtime required")
 	}
 	call, err := s.Calls.Invoke(ctx, req)
-	return InvokeResult(call), err
+	return toInvokeResult(call), err
+}
+
+func toInvokeResult(call runtime.Result) InvokeResult {
+	return InvokeResult{
+		Status:      call.Status,
+		ApprovalID:  call.ApprovalID,
+		OperationID: call.OperationID,
+		HTTPStatus:  call.HTTPStatus,
+		Body:        call.Body,
+		Code:        call.Code,
+		Retryable:   call.Retryable,
+		RetryAfter:  call.RetryAfter,
+		Error:       call.Error,
+		Truncated:   call.Truncated,
+		Page:        call.Page,
+		Why:         call.Why,
+		Caller:      call.Caller,
+		HTTP:        call.HTTP,
+		Sent:        call.Sent,
+	}
 }
 
 // Handle runs exactly one of search, describe, or invoke on a line.

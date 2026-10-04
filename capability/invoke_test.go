@@ -13,6 +13,7 @@ import (
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/openapi"
+	"github.com/aiveto/veto/policy"
 	"github.com/aiveto/veto/runtime"
 	"github.com/aiveto/veto/semantics"
 	"github.com/stretchr/testify/assert"
@@ -46,8 +47,10 @@ func TestInvokeDeleteRequiresApprovalBeforeHTTP(t *testing.T) {
 	assert.False(t, first.HTTP)
 	assert.False(t, first.Sent)
 	assert.Equal(t, int32(0), hits.Load())
-	_, err = call(srv, ctx, "orders.delete", map[string]string{"id": "123"}, first.ApprovalID)
-	require.Error(t, err)
+	held, err := call(srv, ctx, "orders.delete", map[string]string{"id": "123"}, first.ApprovalID)
+	require.ErrorIs(t, err, policy.ErrPendingApproval)
+	assert.Equal(t, runtime.CodePendingApproval, held.Code)
+	assert.Equal(t, "confirmation_required", held.Status)
 	assert.Equal(t, int32(0), hits.Load())
 	approved, err := loop.State.Approve(t.Context(), first.ApprovalID)
 	require.NoError(t, err)

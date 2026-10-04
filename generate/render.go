@@ -21,6 +21,7 @@ package sdk
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/aiveto/veto/catalog"
@@ -30,11 +31,13 @@ import (
 )
 
 // Client is the Go client for one contract. Calls go through the invoke runtime.
+// New is catalog-faithful and policy-minimal. Production embedders should
+// construct the same runtime serve uses, or call SetPolicy.
 type Client struct {
-	Calls runtime.Runtime
+	rt runtime.Runtime
 }
 
-// New builds a client whose calls pass the policy gate.
+// New builds a client whose calls pass the builtin policy gate.
 func New(baseURL string, httpClient *http.Client) (*Client, error) {
 	cat := &catalog.Catalog{
 		Operations: []catalog.Operation{
@@ -66,7 +69,7 @@ func New(baseURL string, httpClient *http.Client) (*Client, error) {
 		},
 	}
 	cat.Finalize()
-	return &Client{Calls: runtime.Runtime{
+	return &Client{rt: runtime.Runtime{
 		Catalog: cat,
 		Policy:  policy.Builtin{},
 		State:   policy.NewState(),
@@ -75,9 +78,36 @@ func New(baseURL string, httpClient *http.Client) (*Client, error) {
 	}}, nil
 }
 
+// Operation is the catalog entry for id.
+func (c *Client) Operation(id string) *catalog.Operation {
+	if c == nil {
+		return nil
+	}
+	return c.rt.Catalog.ByID(id)
+}
+
+// SetPolicy replaces builtin policy. Nil restores builtin.
+func (c *Client) SetPolicy(hook policy.Hook) {
+	if c == nil {
+		return
+	}
+	if hook == nil {
+		hook = policy.Builtin{}
+	}
+	c.rt.Policy = hook
+}
+
+// Confirm records a yes for a pending id and returns the approved id.
+func (c *Client) Confirm(ctx context.Context, pendingID string) (string, error) {
+	if c == nil {
+		return "", errors.New("client required")
+	}
+	return c.rt.State.Approve(ctx, pendingID)
+}
+
 {{range .Ops}}
 func (c *Client) {{.GoName}}(ctx context.Context{{range .Params}}, {{.GoName}} string{{end}}, approvalID string) (runtime.Result, error) {
-	return c.Calls.Invoke(ctx, runtime.Request{
+	return c.rt.Invoke(ctx, runtime.Request{
 		Operation: {{quote .ID}},
 		Arguments: map[string]any{
 {{- range .Params}}
@@ -212,7 +242,7 @@ func run{{.GoName}}(args []string) {
 			fmt.Fprintln(os.Stderr, "confirmation required")
 			os.Exit(2)
 		}
-		approved, aerr := c.Calls.State.Approve(context.Background(), call.ApprovalID)
+		approved, aerr := c.Confirm(context.Background(), call.ApprovalID)
 		if aerr != nil {
 			fmt.Fprintln(os.Stderr, aerr)
 			os.Exit(1)
@@ -239,7 +269,7 @@ import (
 
 // Call sends one operation id through the Go client and the policy gate.
 func Call(ctx context.Context, c *sdk.Client, operationID string, params map[string]string, approvalID string) (runtime.Result, error) {
-	if c == nil || c.Calls.Catalog == nil {
+	if c == nil {
 		return runtime.Result{}, fmt.Errorf("nil sdk client")
 	}
 	switch operationID {

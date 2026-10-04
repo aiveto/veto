@@ -32,7 +32,7 @@ valkey/      policy.Store on Valkey or Redis. Claim is SET NX
 flow/        Sequential steps. The model may pick the flow. Code runs it
 agent/       One turn. Completer, scripted default, policy, execute. The follow-up pack goes to the caller
 agent/openai OpenAI HTTP client for the openai provider key
-generate/    Typed SDK and CLI. Dispatch calls runtime.Invoke
+generate/    Client, CLI, and MCP dispatch. The client hides Runtime.
 execute/     HTTP from an Operation
 memory/      Local map. The Memory interface is agent.Memory
 config/      Provider keys. One file, defaults when unset
@@ -42,7 +42,7 @@ bundle/      Contracts, relations, and check cases. Deployment stays outside
 opa/         Rego policy. The builtin permission floor still runs
 result/      HTTP result and parameter errors
 runtime/     Invoke sequence for the CLI, MCP, and generated clients
-capability/  search, describe, invoke. Server. MCP and JSON call it
+capability/  search, describe, invoke. Server. MCP and JSON call it. Search hits include related_calls.
 mcpserver/   MCP adapter. pins. elicitation
 eval/        Cases on the agent loop. No network LLM
 telemetry/   OpenTelemetry spans. Stdout export is optional
