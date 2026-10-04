@@ -134,41 +134,32 @@ func decodeInvokeArgs(req *mcp.CallToolRequest) (capability.InvokeArgs, error) {
 
 func invokeCall(ctx context.Context, req *mcp.CallToolRequest, srv *capability.Server, args capability.InvokeArgs, chat bool) (*mcp.CallToolResult, any, error) {
 	caller := callerID(ctx, req)
+	ctx = auth.WithUserToken(ctx, args.Token)
+	ctx = auth.WithCaller(ctx, caller)
+	call := args.Request()
+	call.Caller = caller
 	if args.Preview {
-		out, err := srv.Preview(ctx, runtime.Request{
-			Operation: args.OperationID,
-			Arguments: map[string]any(args.Params),
-			Caller:    caller,
-		})
-		return previewToolResult(srv, out, err)
+		out, b, err := srv.EncodePreview(ctx, call)
+		return previewToolResult(out, b, err)
 	}
 	answered := false
 	if reply, ok := elicitationReply(req); ok && chat {
 		answered = true
 		if reply == nil || reply.Action != "accept" {
-			return invokeToolResult(srv, capability.InvokeResult{
+			res, b, err := srv.EncodeResult(capability.InvokeResult{
 				Status:      runtime.StatusConfirmationRequired,
 				ApprovalID:  requestState(req),
 				OperationID: args.OperationID,
 			}, nil)
+			return invokeToolResult(res, b, err)
 		}
 		approved, err := acceptElicitation(ctx, srv, req, args.OperationID)
 		if err != nil {
 			return toolError(err)
 		}
-		args.ApprovalID = approved
+		call.Approval = approved
 	}
-	ctx = auth.WithUserToken(ctx, args.Token)
-	ctx = auth.WithCaller(ctx, caller)
-	res, err := srv.Call(ctx, runtime.Request{
-		Operation: args.OperationID,
-		Arguments: map[string]any(args.Params),
-		Approval:  args.ApprovalID,
-		Caller:    caller,
-		Fields:    args.Fields,
-		Offset:    args.Offset,
-		Limit:     args.Limit,
-	})
+	res, b, err := srv.EncodeInvoke(ctx, call)
 	if !answered && res.Status == runtime.StatusConfirmationRequired && chat && clientCanElicit(req) {
 		var pending *policy.PendingConfirmation
 		if srv != nil && srv.Calls != nil && srv.Calls.State != nil {
@@ -176,7 +167,7 @@ func invokeCall(ctx context.Context, req *mcp.CallToolRequest, srv *capability.S
 		}
 		return elicitConfirmation(res, pending), nil, nil
 	}
-	return invokeToolResult(srv, res, err)
+	return invokeToolResult(res, b, err)
 }
 
 func clientCanElicit(req *mcp.CallToolRequest) bool {
@@ -250,41 +241,26 @@ func callerID(ctx context.Context, req *mcp.CallToolRequest) string {
 	return auth.Caller(ctx)
 }
 
-func previewToolResult(srv *capability.Server, out runtime.Preview, callErr error) (*mcp.CallToolResult, any, error) {
-	if callErr != nil {
-		return toolError(callErr)
-	}
-	b, err := srv.Encode(out)
-	if err != nil {
+func previewToolResult(out runtime.Preview, b []byte, err error) (*mcp.CallToolResult, any, error) {
+	if len(b) == 0 && err != nil {
 		return toolError(err)
 	}
-	result, _, err := textResult(string(b))
+	result, _, wrapErr := textResult(string(b))
 	if result != nil {
 		result.IsError = len(out.Errors) > 0
 	}
-	return result, nil, err
+	return result, nil, wrapErr
 }
 
-func invokeToolResult(srv *capability.Server, res capability.InvokeResult, callErr error) (*mcp.CallToolResult, any, error) {
-	if callErr != nil && res.Status == "" {
-		return toolError(callErr)
-	}
-	if res.Status == runtime.StatusError {
-		cause := res.Error
-		if cause == "" && callErr != nil {
-			cause = callErr.Error()
-		}
-		res.Error = capability.Sanitize(cause)
-	}
-	b, err := srv.Encode(res)
-	if err != nil {
+func invokeToolResult(res capability.InvokeResult, b []byte, err error) (*mcp.CallToolResult, any, error) {
+	if len(b) == 0 && err != nil {
 		return toolError(err)
 	}
-	result, _, err := textResult(string(b))
+	result, _, wrapErr := textResult(string(b))
 	if result != nil {
 		result.IsError = res.Status != "" && res.Status != runtime.StatusOK && res.Status != runtime.StatusConfirmationRequired
 	}
-	return result, nil, err
+	return result, nil, wrapErr
 }
 
 func textResult(s string) (*mcp.CallToolResult, any, error) {
