@@ -41,14 +41,9 @@ type (
 		Sent        bool         `json:"sent,omitempty"`
 	}
 
-	Notes interface {
-		Note(operationID string) semantics.Note
-		AllSynonyms() map[string][]string
-	}
-
 	Server struct {
 		Catalog   *catalog.Catalog
-		Semantics Notes
+		Semantics semantics.Notes
 		Calls     *runtime.Runtime
 	}
 )
@@ -151,15 +146,6 @@ func (s *Server) Encode(v any) ([]byte, error) {
 		return s.Calls.JSON.Marshal(v)
 	}
 	return (jsonopts.Set{}).Marshal(v)
-}
-
-// Invoke adapts string parameters at the boundary and calls the shared runtime.
-func (s *Server) Invoke(ctx context.Context, operationID string, params map[string]string, approvalID string) (InvokeResult, error) {
-	return s.Call(ctx, runtime.Request{
-		Operation: operationID,
-		Arguments: runtime.FromStrings(params),
-		Approval:  approvalID,
-	})
 }
 
 // Preview runs the shared runtime and stops before a token URL and upstream HTTP.

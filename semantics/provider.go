@@ -39,13 +39,14 @@ type (
 		Synonyms    []string `yaml:"synonyms"`
 	}
 
-	notes interface {
+	// Notes is a note and the synonym map search uses.
+	Notes interface {
 		Note(operationID string) Note
 		AllSynonyms() map[string][]string
 	}
 
 	FileOverlay struct {
-		base  notes
+		base  Notes
 		notes map[string]Note
 		syns  map[string][]string
 	}
@@ -149,7 +150,7 @@ func relationSentence(cat *catalog.Catalog, operationID string) string {
 	return strings.Join(parts, " ")
 }
 
-func ParseOverlay(data []byte, base notes) (*FileOverlay, error) {
+func ParseOverlay(data []byte, base Notes) (*FileOverlay, error) {
 	var entries []OverlayEntry
 	if err := decodeStrict(data, &entries); err != nil {
 		return nil, fmt.Errorf("parse semantics: %w", err)

@@ -59,15 +59,10 @@ type (
 		Recent(ctx context.Context, n int) ([]memory.Item, error)
 	}
 
-	Notes interface {
-		Note(operationID string) semantics.Note
-		AllSynonyms() map[string][]string
-	}
-
 	// The follow-up pack is returned. The model is not called again.
 	Loop struct {
 		Catalog   *catalog.Catalog
-		Semantics Notes
+		Semantics semantics.Notes
 		Model     Completer
 		Policy    policy.Hook
 		base      policy.Hook
@@ -82,7 +77,7 @@ type (
 	}
 )
 
-func New(cat *catalog.Catalog, sem Notes, exec Executor) (*Loop, error) {
+func New(cat *catalog.Catalog, sem semantics.Notes, exec Executor) (*Loop, error) {
 	if cat == nil {
 		return nil, errors.New("catalog required")
 	}

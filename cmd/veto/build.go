@@ -302,7 +302,7 @@ func assembleLoop(src sources, baseURL string) (*agent.Loop, config.File, error)
 	if err := cat.SelectServer(cfg.Server); err != nil {
 		return nil, config.File{}, err
 	}
-	var sem agent.Notes = semantics.New(cat)
+	var sem semantics.Notes = semantics.New(cat)
 	if cfg.SemanticsFile != "" {
 		data, err := os.ReadFile(cfg.SemanticsFile)
 		if err != nil {
