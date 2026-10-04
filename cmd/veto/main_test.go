@@ -59,10 +59,17 @@ func TestHelpJSONStaysOffTheHumanHelpPath(t *testing.T) {
 	got, err = jsonHelp(&buf, root, []string{"--help-json"})
 	require.NoError(t, err)
 	require.True(t, got)
-	require.NoError(t, json.Unmarshal(buf.Bytes(), &doc))
-	for _, name := range []string{"serve", "eval", "replay", "validate", "generate", "pack", "doctor", "check", "init", "approve", "preview", "search", "describe", "invoke"} {
-		assert.Contains(t, doc.Commands, name)
+	var help struct {
+		Capabilities []struct {
+			Name    string `json:"name"`
+			Command string `json:"command"`
+		} `json:"capabilities"`
 	}
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &help))
+	require.Len(t, help.Capabilities, 3)
+	assert.Equal(t, "capabilities_search", help.Capabilities[0].Name)
+	assert.Equal(t, "search", help.Capabilities[0].Command)
+	assert.NotContains(t, buf.String(), `"command": "serve"`)
 }
 
 func TestApproveReadsStoreFromConfig(t *testing.T) {

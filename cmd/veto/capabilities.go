@@ -10,6 +10,7 @@ import (
 
 	"github.com/aiveto/veto/agent"
 	"github.com/aiveto/veto/auth"
+	"github.com/aiveto/veto/capability"
 	"github.com/aiveto/veto/mcpserver"
 	"github.com/spf13/cobra"
 )
@@ -20,16 +21,23 @@ type catalogFlags struct {
 	agent     string
 	relations string
 	baseURL   string
+	caller    string
 }
 
 func newSearchCommand() *cobra.Command {
 	var flags catalogFlags
 	c := &cobra.Command{
 		Use:   "search [query JSON or words]",
-		Short: mcpserver.SearchDescription,
+		Short: capability.SearchDescription,
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(_ *cobra.Command, args []string) {
-			runSearch(flags, args)
+			runCap("search", flags, func(srv *mcpserver.Server) ([]byte, error) {
+				in, err := decodeSearch(args)
+				if err != nil {
+					return nil, err
+				}
+				return srv.RunSearch(in)
+			})
 		},
 	}
 	addCatalogFlags(c, &flags)
@@ -40,10 +48,16 @@ func newDescribeCommand() *cobra.Command {
 	var flags catalogFlags
 	c := &cobra.Command{
 		Use:   "describe [operation JSON or id]",
-		Short: mcpserver.DescribeDescription,
+		Short: capability.DescribeDescription,
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(_ *cobra.Command, args []string) {
-			runDescribe(flags, args)
+			runCap("describe", flags, func(srv *mcpserver.Server) ([]byte, error) {
+				in, err := decodeDescribe(args)
+				if err != nil {
+					return nil, err
+				}
+				return srv.RunDescribe(in)
+			})
 		},
 	}
 	addCatalogFlags(c, &flags)
@@ -57,10 +71,18 @@ func newInvokeCommand() *cobra.Command {
 		Short: "Invoke an operation through policy and HTTP.",
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(_ *cobra.Command, args []string) {
-			runInvoke(flags, args)
+			runCap("invoke", flags, func(srv *mcpserver.Server) ([]byte, error) {
+				in, err := decodeInvoke(args)
+				if err != nil {
+					return nil, err
+				}
+				ctx := auth.WithCaller(context.Background(), callerName(flags.caller))
+				return srv.RunInvoke(ctx, in)
+			})
 		},
 	}
 	addCatalogFlags(c, &flags)
+	c.Flags().StringVar(&flags.caller, "caller", "", "Caller or tenant passed to policy.")
 	return c
 }
 
@@ -92,59 +114,15 @@ func openCapabilityServer(flags catalogFlags) (*mcpserver.Server, error) {
 	return capabilityServer(loop), nil
 }
 
-func runSearch(flags catalogFlags, args []string) {
+func runCap(name string, flags catalogFlags, fn func(*mcpserver.Server) ([]byte, error)) {
 	srv, err := openCapabilityServer(flags)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "search: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s: %v\n", name, err)
 		exitMain(1)
 	}
-	in, err := decodeSearch(args)
+	b, err := fn(srv)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "search: %v\n", err)
-		exitMain(1)
-	}
-	b, err := srv.RunSearch(in)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "search: %v\n", err)
-		exitMain(1)
-	}
-	fmt.Printf("%s\n", b)
-}
-
-func runDescribe(flags catalogFlags, args []string) {
-	srv, err := openCapabilityServer(flags)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "describe: %v\n", err)
-		exitMain(1)
-	}
-	in, err := decodeDescribe(args)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "describe: %v\n", err)
-		exitMain(1)
-	}
-	b, err := srv.RunDescribe(in)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "describe: %v\n", err)
-		exitMain(1)
-	}
-	fmt.Printf("%s\n", b)
-}
-
-func runInvoke(flags catalogFlags, args []string) {
-	srv, err := openCapabilityServer(flags)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "invoke: %v\n", err)
-		exitMain(1)
-	}
-	in, err := decodeInvoke(args)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "invoke: %v\n", err)
-		exitMain(1)
-	}
-	ctx := auth.WithCaller(context.Background(), callerName(""))
-	b, err := srv.RunInvoke(ctx, in)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "invoke: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s: %v\n", name, err)
 		if len(b) > 0 {
 			fmt.Printf("%s\n", b)
 		}
@@ -153,8 +131,8 @@ func runInvoke(flags catalogFlags, args []string) {
 	fmt.Printf("%s\n", b)
 }
 
-func decodeSearch(args []string) (mcpserver.SearchArgs, error) {
-	var in mcpserver.SearchArgs
+func decodeSearch(args []string) (capability.SearchArgs, error) {
+	var in capability.SearchArgs
 	ok, err := unmarshalObject(args, &in)
 	if err != nil || ok {
 		return in, err
@@ -163,8 +141,8 @@ func decodeSearch(args []string) (mcpserver.SearchArgs, error) {
 	return in, nil
 }
 
-func decodeDescribe(args []string) (mcpserver.DescribeArgs, error) {
-	var in mcpserver.DescribeArgs
+func decodeDescribe(args []string) (capability.DescribeArgs, error) {
+	var in capability.DescribeArgs
 	ok, err := unmarshalObject(args, &in)
 	if err != nil || ok {
 		return in, err
@@ -173,8 +151,8 @@ func decodeDescribe(args []string) (mcpserver.DescribeArgs, error) {
 	return in, nil
 }
 
-func decodeInvoke(args []string) (mcpserver.InvokeArgs, error) {
-	var in mcpserver.InvokeArgs
+func decodeInvoke(args []string) (capability.InvokeArgs, error) {
+	var in capability.InvokeArgs
 	ok, err := unmarshalObject(args, &in)
 	if err != nil || ok {
 		return in, err

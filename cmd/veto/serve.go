@@ -20,6 +20,7 @@ type serveCmd struct {
 	relations  string
 	stdio      bool
 	http       bool
+	jsonLines  bool
 	addr       string
 	pin        []string
 	directPins bool
@@ -31,7 +32,7 @@ func newServeCommand() *cobra.Command {
 	cmd := &serveCmd{stdio: true}
 	c := &cobra.Command{
 		Use:   "serve",
-		Short: "Serve MCP from the contract catalog.",
+		Short: "Serve the three capabilities over MCP or JSON.",
 		Run: func(c *cobra.Command, _ []string) {
 			runServe(*cmd, c)
 		},
@@ -42,6 +43,7 @@ func newServeCommand() *cobra.Command {
 	c.Flags().StringVar(&cmd.relations, "relations", "", "Relations file. Overrides relations_file.")
 	c.Flags().BoolVar(&cmd.stdio, "stdio", true, "Listen on stdio for MCP.")
 	c.Flags().BoolVar(&cmd.http, "http", false, "Listen for MCP on Streamable HTTP. Requires the Veto-Caller header.")
+	c.Flags().BoolVar(&cmd.jsonLines, "json", false, "Read search, describe, and invoke as JSON lines on stdin. A skill uses this.")
 	c.Flags().StringVar(&cmd.addr, "addr", mcpserver.DefaultAddr, "Listen address for --http.")
 	c.Flags().StringArrayVar(&cmd.pin, "pin", nil, "Register a direct MCP tool for this operation id.")
 	c.Flags().BoolVar(&cmd.directPins, "direct-pins", false, "Register pinned ids as tools. Implied by --pin.")
@@ -52,11 +54,15 @@ func newServeCommand() *cobra.Command {
 
 func runServe(cmd serveCmd, c *cobra.Command) {
 	stdio := cmd.stdio
-	if cmd.http && c != nil && !c.Flags().Changed("stdio") {
+	if (cmd.http || cmd.jsonLines) && c != nil && !c.Flags().Changed("stdio") {
 		stdio = false
 	}
-	if !cmd.http && !stdio {
-		fmt.Fprintf(os.Stderr, "serve: stdio or http required\n")
+	if cmd.jsonLines && stdio {
+		fmt.Fprintf(os.Stderr, "serve: --json and --stdio both use stdin\n")
+		exitMain(1)
+	}
+	if !cmd.http && !stdio && !cmd.jsonLines {
+		fmt.Fprintf(os.Stderr, "serve: stdio, http, or json required\n")
 		exitMain(1)
 	}
 	loop, cfg, err := buildLoop(cmd.contract, cmd.config, cmd.agent, cmd.relations, cmd.baseURL)
@@ -64,7 +70,7 @@ func runServe(cmd serveCmd, c *cobra.Command) {
 		fmt.Fprintf(os.Stderr, "serve: %v\n", err)
 		exitMain(1)
 	}
-	if err := stdioTraceConflict(stdio, cfg.TraceExport); err != nil {
+	if err := stdioTraceConflict(stdio || cmd.jsonLines, cfg.TraceExport); err != nil {
 		fmt.Fprintf(os.Stderr, "serve: %v\n", err)
 		exitMain(1)
 	}
@@ -95,6 +101,14 @@ func runServe(cmd serveCmd, c *cobra.Command) {
 		Calls:     &calls,
 	}
 	opt := serveOptions(cmd)
+	if cmd.jsonLines {
+		if err := srv.RunJSON(ctx, os.Stdin, os.Stdout); err != nil && !errors.Is(err, context.Canceled) {
+			fmt.Fprintf(os.Stderr, "serve: %v\n", err)
+			fail()
+		}
+		finish()
+		return
+	}
 	if cmd.http {
 		ids, err := mcpserver.Identities(cfg.Callers, os.Getenv)
 		if err != nil {

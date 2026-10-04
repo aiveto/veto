@@ -1,4 +1,5 @@
-package mcpserver
+// Package capability is the three operations MCP and a skill share.
+package capability
 
 import (
 	"reflect"
@@ -18,19 +19,16 @@ const (
 )
 
 type (
-	// SearchArgs is the shared search input for MCP and the CLI.
 	SearchArgs struct {
 		Query  string `json:"query" jsonschema:"search query"`
 		Offset int    `json:"offset,omitempty" jsonschema:"hit offset"`
 		Limit  int    `json:"limit,omitempty" jsonschema:"page size"`
 	}
 
-	// DescribeArgs is the shared describe input for MCP and the CLI.
 	DescribeArgs struct {
 		OperationID string `json:"operation_id" jsonschema:"operation id"`
 	}
 
-	// InvokeArgs is the shared invoke input for MCP and the CLI.
 	InvokeArgs struct {
 		OperationID string         `json:"operation_id" jsonschema:"operation id"`
 		Params      map[string]any `json:"params,omitempty" jsonschema:"parameters; strings, or a JSON object for body"`
@@ -42,7 +40,14 @@ type (
 		Limit       int            `json:"limit,omitempty" jsonschema:"page size when fields are set"`
 	}
 
-	// Capability is one of search, describe, or invoke. Help JSON and MCP share it.
+	// Line is one skill request. Exactly one of Search, Describe, or Invoke is set.
+	Line struct {
+		Search   *SearchArgs   `json:"search,omitempty"`
+		Describe *DescribeArgs `json:"describe,omitempty"`
+		Invoke   *InvokeArgs   `json:"invoke,omitempty"`
+		Caller   string        `json:"caller,omitempty"`
+	}
+
 	Capability struct {
 		Name        string       `json:"name"`
 		Command     string       `json:"command"`
@@ -56,10 +61,13 @@ type (
 		Required    bool   `json:"required,omitempty"`
 		Description string `json:"description,omitempty"`
 	}
+
+	Help struct {
+		Capabilities []Capability `json:"capabilities"`
+	}
 )
 
-// Capabilities is the MCP tool list and the CLI command list for a skill.
-func Capabilities() []Capability {
+func All() []Capability {
 	return []Capability{
 		{Name: SearchName, Command: SearchCommand, Description: SearchDescription, Input: inputFields(SearchArgs{})},
 		{Name: DescribeName, Command: DescribeCommand, Description: DescribeDescription, Input: inputFields(DescribeArgs{})},
@@ -67,8 +75,12 @@ func Capabilities() []Capability {
 	}
 }
 
-func CapabilityByCommand(name string) (Capability, bool) {
-	for _, c := range Capabilities() {
+func HelpJSON() Help {
+	return Help{Capabilities: All()}
+}
+
+func ByCommand(name string) (Capability, bool) {
+	for _, c := range All() {
 		if c.Command == name {
 			return c, true
 		}

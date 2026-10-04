@@ -1,5 +1,5 @@
-# ADR 028: CLI search, describe, and invoke
+# ADR 028: One capability kernel, MCP and JSON as adapters
 
-`veto search`, `veto describe`, and `veto invoke` call the same `mcpserver.Server` methods as `capabilities_search`, `capabilities_describe`, and `capabilities_invoke`. `--help-json` on those commands prints `mcpserver.Capability`. A skill unmarshals the same JSON the tools take. Catalog flags stay process setup. The generated per-API CLI stays typed invoke.
+`capability` holds search, describe, and invoke. MCP and `veto serve --json` are adapters. The JSON session loads the catalog once and reads those three as lines. `veto search`, `describe`, and `invoke` are a human shorthand. `--help-json` is the capability list. The generated per-API CLI stays typed invoke.
 
-Refused: a second search path. A second help schema.
+Refused: a second search path. A second help schema. The CLI importing the contract from `mcpserver`.

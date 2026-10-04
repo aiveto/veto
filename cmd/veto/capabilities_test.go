@@ -14,6 +14,7 @@ import (
 
 	"github.com/aiveto/veto/agent"
 	"github.com/aiveto/veto/auth"
+	"github.com/aiveto/veto/capability"
 	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/mcpserver"
 	"github.com/stretchr/testify/assert"
@@ -29,7 +30,7 @@ func TestCLISearchDescribeInvokeMatchMCP(t *testing.T) {
 	require.NoError(t, err)
 	searchRaw, err := srv.RunSearch(in)
 	require.NoError(t, err)
-	mcpSearch, err := srv.RunSearch(mcpserver.SearchArgs{Query: "retire order 123"})
+	mcpSearch, err := srv.RunSearch(capability.SearchArgs{Query: "retire order 123"})
 	require.NoError(t, err)
 	assert.JSONEq(t, string(mcpSearch), string(searchRaw))
 	var hits []mcpserver.SearchHit
@@ -46,7 +47,7 @@ func TestCLISearchDescribeInvokeMatchMCP(t *testing.T) {
 	require.NoError(t, err)
 	descRaw, err := srv.RunDescribe(descIn)
 	require.NoError(t, err)
-	mcpDesc, err := srv.RunDescribe(mcpserver.DescribeArgs{OperationID: "orders.get"})
+	mcpDesc, err := srv.RunDescribe(capability.DescribeArgs{OperationID: "orders.get"})
 	require.NoError(t, err)
 	assert.JSONEq(t, string(mcpDesc), string(descRaw))
 	assert.Contains(t, string(descRaw), "Order.customerId identifies customers.get")
@@ -96,16 +97,12 @@ func TestCapabilityHelpJSONIsTheMCPContract(t *testing.T) {
 			Name     string `json:"name"`
 			Required bool   `json:"required"`
 		} `json:"input"`
-		Flags []struct {
-			Name string `json:"name"`
-		} `json:"flags"`
 	}
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &spec))
-	assert.Equal(t, mcpserver.SearchName, spec.Name)
-	assert.Equal(t, mcpserver.SearchCommand, spec.Command)
-	assert.Equal(t, mcpserver.SearchDescription, spec.Description)
+	assert.Equal(t, capability.SearchName, spec.Name)
+	assert.Equal(t, capability.SearchCommand, spec.Command)
+	assert.Equal(t, capability.SearchDescription, spec.Description)
 	input := make([]string, 0, len(spec.Input))
-	flags := make([]string, 0, len(spec.Flags))
 	queryRequired := false
 	for _, f := range spec.Input {
 		input = append(input, f.Name)
@@ -113,22 +110,18 @@ func TestCapabilityHelpJSONIsTheMCPContract(t *testing.T) {
 			queryRequired = f.Required
 		}
 	}
-	for _, f := range spec.Flags {
-		flags = append(flags, f.Name)
-	}
 	assert.Contains(t, input, "query")
 	assert.Contains(t, input, "offset")
 	assert.True(t, queryRequired)
-	assert.Contains(t, flags, "config")
 	assert.NotContains(t, input, "config")
-	assert.NotContains(t, flags, "query")
+	assert.NotContains(t, buf.String(), `"flags"`)
 
 	buf.Reset()
 	got, err = jsonHelp(&buf, root, []string{"invoke", "--help-json"})
 	require.NoError(t, err)
 	require.True(t, got)
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &spec))
-	assert.Equal(t, mcpserver.InvokeName, spec.Name)
+	assert.Equal(t, capability.InvokeName, spec.Name)
 	input = make([]string, 0, len(spec.Input))
 	for _, f := range spec.Input {
 		input = append(input, f.Name)
@@ -140,8 +133,11 @@ func TestCapabilityHelpJSONIsTheMCPContract(t *testing.T) {
 	got, err = jsonHelp(&buf, root, []string{"--help-json"})
 	require.NoError(t, err)
 	require.True(t, got)
-	assert.Contains(t, buf.String(), `"command": "search"`)
-	assert.Contains(t, buf.String(), mcpserver.SearchName)
+	var help capability.Help
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &help))
+	require.Len(t, help.Capabilities, 3)
+	assert.Equal(t, capability.SearchName, help.Capabilities[0].Name)
+	assert.NotContains(t, buf.String(), `"command": "serve"`)
 }
 
 func testCapabilityLoop(t *testing.T) (*agent.Loop, error) {

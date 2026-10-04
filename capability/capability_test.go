@@ -1,4 +1,4 @@
-package mcpserver
+package capability
 
 import (
 	"testing"
@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCapabilitiesAreTheThreeTools(t *testing.T) {
-	caps := Capabilities()
+func TestAllAreTheThreeTools(t *testing.T) {
+	caps := All()
 	require.Len(t, caps, 3)
 	assert.Equal(t, SearchName, caps[0].Name)
 	assert.Equal(t, SearchCommand, caps[0].Command)
@@ -23,9 +23,12 @@ func TestCapabilitiesAreTheThreeTools(t *testing.T) {
 	assert.Equal(t, []string{"query", "offset", "limit"}, names)
 	assert.True(t, required["query"])
 	assert.False(t, required["offset"])
-	spec, ok := CapabilityByCommand(SearchCommand)
+	spec, ok := ByCommand(SearchCommand)
 	require.True(t, ok)
 	assert.Equal(t, SearchName, spec.Name)
-	_, ok = CapabilityByCommand("serve")
+	_, ok = ByCommand("serve")
 	assert.False(t, ok)
+	help := HelpJSON()
+	require.Len(t, help.Capabilities, 3)
+	assert.Equal(t, SearchName, help.Capabilities[0].Name)
 }
