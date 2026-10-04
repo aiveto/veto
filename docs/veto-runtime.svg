@@ -1,56 +1,70 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 860" role="img" aria-labelledby="veto-runtime-title">
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1180" viewBox="0 0 800 1180" role="img" aria-labelledby="veto-runtime-title">
   <title id="veto-runtime-title">Claude, Cursor, or ChatGPT talks to veto over MCP. Search, describe, and invoke sit on catalog, semantics, relations, and a short brief that is not the OpenAPI file. Destructive calls can be configured for approval. Then HTTP reaches your APIs.</title>
   <defs>
-    <marker id="veto-runtime-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <marker id="veto-runtime-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#1A1916"/>
     </marker>
   </defs>
-  <rect width="1280" height="860" fill="#F4F1EA"/>
-  <g font-family="ui-sans-serif, system-ui, sans-serif" font-size="16" fill="#1A1916">
-    <rect x="440" y="20" width="400" height="56" rx="8" fill="#FFFFFF" stroke="#1A1916" stroke-width="1.5"/>
-    <text x="640" y="44" text-anchor="middle" font-weight="600">Agent</text>
-    <text x="640" y="64" text-anchor="middle" fill="#5C5854" font-size="13">Claude, Cursor, ChatGPT</text>
-    <line x1="640" y1="76" x2="640" y2="104" stroke="#1A1916" stroke-width="1.5" marker-end="url(#veto-runtime-arrow)"/>
-    <text x="654" y="96" fill="#5C5854" font-size="13">MCP</text>
-    <rect x="48" y="112" width="1184" height="468" rx="12" fill="#E8E2D6" stroke="#1A1916" stroke-width="1.5"/>
-    <text x="640" y="140" text-anchor="middle" font-weight="600">veto</text>
-    <rect x="80" y="160" width="357" height="104" rx="8" fill="#D7E4F2" stroke="#1A1916" stroke-width="1.5"/>
-    <text x="258" y="204" text-anchor="middle" font-weight="600">search</text>
-    <text x="258" y="230" text-anchor="middle" fill="#5C5854" font-size="13">find an operation</text>
-    <rect x="461" y="160" width="357" height="104" rx="8" fill="#D7E4F2" stroke="#1A1916" stroke-width="1.5"/>
-    <text x="639" y="204" text-anchor="middle" font-weight="600">describe</text>
-    <text x="639" y="230" text-anchor="middle" fill="#5C5854" font-size="13">see the operation</text>
-    <rect x="842" y="160" width="357" height="104" rx="8" fill="#D7E4F2" stroke="#1A1916" stroke-width="1.5"/>
-    <text x="1020" y="204" text-anchor="middle" font-weight="600">invoke</text>
-    <text x="1020" y="230" text-anchor="middle" fill="#5C5854" font-size="13">request the call</text>
-    <line x1="258" y1="264" x2="258" y2="292" stroke="#1A1916" stroke-width="1.5"/>
-    <line x1="639" y1="264" x2="639" y2="292" stroke="#1A1916" stroke-width="1.5"/>
-    <line x1="1020" y1="264" x2="1020" y2="292" stroke="#1A1916" stroke-width="1.5"/>
-    <line x1="258" y1="292" x2="1020" y2="292" stroke="#1A1916" stroke-width="1.5"/>
-    <line x1="639" y1="292" x2="639" y2="312" stroke="#1A1916" stroke-width="1.5" marker-end="url(#veto-runtime-arrow)"/>
-    <rect x="80" y="320" width="1119" height="148" rx="8" fill="#D3EEF0" stroke="#1A1916" stroke-width="1.5"/>
-    <text x="640" y="348" text-anchor="middle" font-weight="600">context</text>
-    <rect x="96" y="364" width="260" height="84" rx="6" fill="#FFFFFF" stroke="#1A1916" stroke-width="1"/>
-    <text x="226" y="398" text-anchor="middle" font-weight="600">catalog</text>
-    <text x="226" y="422" text-anchor="middle" fill="#5C5854" font-size="13">from your OpenAPI</text>
-    <rect x="372" y="364" width="260" height="84" rx="6" fill="#FFFFFF" stroke="#1A1916" stroke-width="1"/>
-    <text x="502" y="398" text-anchor="middle" font-weight="600">semantics</text>
-    <text x="502" y="422" text-anchor="middle" fill="#5C5854" font-size="13">retire finds delete</text>
-    <rect x="648" y="364" width="260" height="84" rx="6" fill="#FFFFFF" stroke="#1A1916" stroke-width="1"/>
-    <text x="778" y="398" text-anchor="middle" font-weight="600">relations</text>
-    <text x="778" y="422" text-anchor="middle" fill="#5C5854" font-size="13">field to operation</text>
-    <rect x="924" y="364" width="259" height="84" rx="6" fill="#FFFFFF" stroke="#1A1916" stroke-width="1"/>
-    <text x="1053" y="398" text-anchor="middle" font-weight="600">the brief</text>
-    <text x="1053" y="422" text-anchor="middle" fill="#5C5854" font-size="13">not the OpenAPI file</text>
-    <line x1="1020" y1="468" x2="1020" y2="492" stroke="#1A1916" stroke-width="1.5"/>
-    <rect x="842" y="492" width="357" height="72" rx="6" fill="#F4D4C4" stroke="#1A1916" stroke-width="1.5"/>
-    <text x="1020" y="520" text-anchor="middle" font-weight="600">Destructive calls</text>
-    <text x="1020" y="544" text-anchor="middle" fill="#5C5854" font-size="13">can be configured for approval</text>
-    <line x1="1020" y1="564" x2="1020" y2="688" stroke="#1A1916" stroke-width="1.5"/>
-    <line x1="1020" y1="688" x2="640" y2="688" stroke="#1A1916" stroke-width="1.5"/>
-    <text x="830" y="678" text-anchor="middle" font-weight="600">HTTP</text>
-    <line x1="640" y1="688" x2="640" y2="756" stroke="#1A1916" stroke-width="1.5" marker-end="url(#veto-runtime-arrow)"/>
-    <rect x="440" y="768" width="400" height="56" rx="8" fill="#FFFFFF" stroke="#1A1916" stroke-width="1.5"/>
-    <text x="640" y="802" text-anchor="middle" font-weight="600">Your APIs</text>
+  <rect width="800" height="1180" fill="#F4F1EA"/>
+  <g font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" fill="#1A1916">
+    <rect x="220" y="28" width="360" height="88" rx="10" fill="#FFFFFF" stroke="#1A1916" stroke-width="1.75"/>
+    <text x="400" y="64" text-anchor="middle" font-size="26" font-weight="650">Agent</text>
+    <text x="400" y="94" text-anchor="middle" font-size="17" fill="#5C5854">Claude, Cursor, ChatGPT</text>
+
+    <line x1="400" y1="116" x2="400" y2="156" stroke="#1A1916" stroke-width="1.75" marker-end="url(#veto-runtime-arrow)"/>
+    <text x="416" y="144" font-size="16" fill="#5C5854">MCP</text>
+
+    <rect x="28" y="164" width="744" height="820" rx="14" fill="#E8E2D6" stroke="#1A1916" stroke-width="1.75"/>
+    <text x="400" y="206" text-anchor="middle" font-size="26" font-weight="650">veto</text>
+
+    <rect x="52" y="228" width="224" height="128" rx="10" fill="#D7E4F2" stroke="#1A1916" stroke-width="1.75"/>
+    <text x="164" y="282" text-anchor="middle" font-size="24" font-weight="650">search</text>
+    <text x="164" y="316" text-anchor="middle" font-size="18" fill="#5C5854">find an operation</text>
+
+    <rect x="288" y="228" width="224" height="128" rx="10" fill="#D7E4F2" stroke="#1A1916" stroke-width="1.75"/>
+    <text x="400" y="282" text-anchor="middle" font-size="24" font-weight="650">describe</text>
+    <text x="400" y="316" text-anchor="middle" font-size="18" fill="#5C5854">see the operation</text>
+
+    <rect x="524" y="228" width="224" height="128" rx="10" fill="#D7E4F2" stroke="#1A1916" stroke-width="1.75"/>
+    <text x="636" y="282" text-anchor="middle" font-size="24" font-weight="650">invoke</text>
+    <text x="636" y="316" text-anchor="middle" font-size="18" fill="#5C5854">request the call</text>
+
+    <line x1="164" y1="356" x2="164" y2="392" stroke="#1A1916" stroke-width="1.75"/>
+    <line x1="400" y1="356" x2="400" y2="392" stroke="#1A1916" stroke-width="1.75"/>
+    <line x1="636" y1="356" x2="636" y2="392" stroke="#1A1916" stroke-width="1.75"/>
+    <line x1="164" y1="392" x2="636" y2="392" stroke="#1A1916" stroke-width="1.75"/>
+    <line x1="400" y1="392" x2="400" y2="420" stroke="#1A1916" stroke-width="1.75" marker-end="url(#veto-runtime-arrow)"/>
+
+    <rect x="52" y="428" width="696" height="336" rx="10" fill="#D3EEF0" stroke="#1A1916" stroke-width="1.75"/>
+    <text x="400" y="468" text-anchor="middle" font-size="22" font-weight="650">context</text>
+
+    <rect x="72" y="488" width="328" height="120" rx="8" fill="#FFFFFF" stroke="#1A1916" stroke-width="1.25"/>
+    <text x="236" y="538" text-anchor="middle" font-size="22" font-weight="650">catalog</text>
+    <text x="236" y="574" text-anchor="middle" font-size="18" fill="#5C5854">from your OpenAPI</text>
+
+    <rect x="416" y="488" width="312" height="120" rx="8" fill="#FFFFFF" stroke="#1A1916" stroke-width="1.25"/>
+    <text x="572" y="538" text-anchor="middle" font-size="22" font-weight="650">semantics</text>
+    <text x="572" y="574" text-anchor="middle" font-size="18" fill="#5C5854">retire finds delete</text>
+
+    <rect x="72" y="624" width="328" height="120" rx="8" fill="#FFFFFF" stroke="#1A1916" stroke-width="1.25"/>
+    <text x="236" y="674" text-anchor="middle" font-size="22" font-weight="650">relations</text>
+    <text x="236" y="710" text-anchor="middle" font-size="18" fill="#5C5854">field to operation</text>
+
+    <rect x="416" y="624" width="312" height="120" rx="8" fill="#FFFFFF" stroke="#1A1916" stroke-width="1.25"/>
+    <text x="572" y="674" text-anchor="middle" font-size="22" font-weight="650">the brief</text>
+    <text x="572" y="710" text-anchor="middle" font-size="18" fill="#5C5854">not the OpenAPI file</text>
+
+    <line x1="636" y1="764" x2="636" y2="792" stroke="#1A1916" stroke-width="1.75"/>
+    <rect x="524" y="792" width="224" height="100" rx="8" fill="#F4D4C4" stroke="#1A1916" stroke-width="1.75"/>
+    <text x="636" y="832" text-anchor="middle" font-size="18" font-weight="650">Destructive calls</text>
+    <text x="636" y="860" text-anchor="middle" font-size="14" fill="#5C5854">can be configured</text>
+    <text x="636" y="880" text-anchor="middle" font-size="14" fill="#5C5854">for approval</text>
+
+    <line x1="636" y1="892" x2="636" y2="948" stroke="#1A1916" stroke-width="1.75"/>
+    <line x1="636" y1="948" x2="400" y2="948" stroke="#1A1916" stroke-width="1.75"/>
+    <text x="518" y="936" text-anchor="middle" font-size="18" font-weight="650">HTTP</text>
   </g>
+  <line x1="400" y1="948" x2="400" y2="1028" stroke="#1A1916" stroke-width="1.75" marker-end="url(#veto-runtime-arrow)"/>
+  <rect x="220" y="1040" width="360" height="88" rx="10" fill="#FFFFFF" stroke="#1A1916" stroke-width="1.75"/>
+  <text x="400" y="1094" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="26" font-weight="650" fill="#1A1916">Your APIs</text>
 </svg>
