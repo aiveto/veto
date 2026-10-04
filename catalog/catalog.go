@@ -153,9 +153,7 @@ func (c *Catalog) ByID(id string) *Operation {
 	if c == nil {
 		return nil
 	}
-	if !c.ready.Load() {
-		c.ensureIndex()
-	}
+	c.ensureIndex()
 	return c.byID[id]
 }
 

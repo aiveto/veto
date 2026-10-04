@@ -38,9 +38,7 @@ func SearchPage(cat *Catalog, query string, synonyms map[string][]string, offset
 	if cat == nil || q == "" {
 		return nil
 	}
-	if !cat.ready.Load() {
-		cat.ensureIndex()
-	}
+	cat.ensureIndex()
 	var hits []scored
 	for i, op := range cat.Operations {
 		s := scoreOp(cat.search[i], q, synonyms[op.ID])

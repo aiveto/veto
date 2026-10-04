@@ -196,7 +196,12 @@ func decodeValue(dec *jsontext.Decoder, cut bool, fields []string) (any, bool, e
 		return decodeObject(dec, cut, fields)
 	case jsontext.KindBeginArray:
 		return decodeArray(dec, cut, fields)
-	case jsontext.KindNull, jsontext.KindFalse, jsontext.KindTrue, jsontext.KindString, jsontext.KindNumber:
+	case jsontext.KindNull:
+		if _, err := dec.ReadValue(); err != nil {
+			return nil, false, err
+		}
+		return nil, false, nil
+	case jsontext.KindFalse, jsontext.KindTrue, jsontext.KindString, jsontext.KindNumber:
 		raw, err := dec.ReadValue()
 		if err != nil {
 			return nil, false, err
@@ -321,8 +326,6 @@ func partialOrError[T any](cut bool, v T) (T, bool, error) {
 func decodeRaw(raw jsontext.Value) (any, error) {
 	raw = jsontext.Value(bytes.TrimSpace(raw))
 	switch raw.Kind() {
-	case jsontext.KindNull:
-		return nil, nil
 	case jsontext.KindFalse:
 		return false, nil
 	case jsontext.KindTrue:
@@ -335,6 +338,8 @@ func decodeRaw(raw jsontext.Value) (any, error) {
 		return s, nil
 	case jsontext.KindNumber:
 		return json.Number(string(raw)), nil
+	case jsontext.KindNull, jsontext.KindInvalid, jsontext.KindBeginObject, jsontext.KindEndObject, jsontext.KindBeginArray, jsontext.KindEndArray:
+		return nil, errNotJSON
 	default:
 		return nil, errNotJSON
 	}

@@ -104,7 +104,10 @@ func received(resp *http.Response) result.HTTPResult {
 
 // InvokeResponse runs one call and returns the HTTP response.
 func InvokeResponse(ctx context.Context, cfg Client, op *catalog.Operation, params map[string]string) (*http.Response, error) {
-	resp, _, _, _, err := invokeResponse(ctx, cfg, op, params)
+	resp, view, body, sent, err := invokeResponse(ctx, cfg, op, params)
+	_ = view
+	_ = body
+	_ = sent
 	return resp, err
 }
 

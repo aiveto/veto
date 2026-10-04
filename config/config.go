@@ -573,6 +573,6 @@ func (f *File) Redact() bool {
 }
 
 // JSONSet is v2 when json is unset or v2.
-func (f File) JSONSet() jsonopts.Set {
+func (f *File) JSONSet() jsonopts.Set {
 	return jsonopts.Set{V1: f.JSON == "v1"}
 }
