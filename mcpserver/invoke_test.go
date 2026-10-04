@@ -41,6 +41,8 @@ func TestInvokeDeleteRequiresApprovalBeforeHTTP(t *testing.T) {
 	first, err := srv.Invoke(ctx, "orders.delete", map[string]string{"id": "123"}, "")
 	require.NoError(t, err)
 	assert.Equal(t, "confirmation_required", first.Status)
+	assert.Equal(t, "held until you approve", first.Why)
+	assert.False(t, first.HTTP)
 	assert.Equal(t, int32(0), hits.Load())
 	_, err = srv.Invoke(ctx, "orders.delete", map[string]string{"id": "123"}, first.ApprovalID)
 	require.Error(t, err)
@@ -60,6 +62,8 @@ func TestInvokeDeleteRequiresApprovalBeforeHTTP(t *testing.T) {
 	var doc map[string]any
 	require.NoError(t, json.Unmarshal(raw, &doc))
 	assert.Equal(t, "confirmation_required", doc["status"])
+	assert.Equal(t, "held until you approve", doc["why"])
+	assert.Equal(t, false, doc["http"])
 	assert.NotEmpty(t, doc["approval_id"])
 }
 

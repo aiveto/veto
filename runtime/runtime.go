@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aiveto/veto/auth"
@@ -49,6 +50,9 @@ type (
 		Error       string       `json:"Error"`
 		Truncated   bool         `json:"Truncated"`
 		Page        *result.Page `json:"Page"`
+		Why         string       `json:"Why,omitempty"`
+		Caller      string       `json:"Caller,omitempty"`
+		HTTP        bool         `json:"HTTP"`
 	}
 
 	// HTTPRequest is the call that would be sent, with secret values removed.
@@ -97,6 +101,7 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 		return Result{Status: "error"}, errors.New("runtime required")
 	}
 	caller := requestCaller(ctx, req)
+	ctx = auth.WithCaller(ctx, caller)
 	if ok, wait := rt.invokeGate().allow(caller, rt.clock()); !ok {
 		retry := ""
 		if wait > 0 {
@@ -110,27 +115,22 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 			RetryAfter:  retry,
 		}), nil
 	}
-	ctx = auth.WithCaller(ctx, caller)
 	op := rt.operation(req.Operation)
 	if op == nil {
-		return rt.record(ctx, Result{Status: "error"}), fmt.Errorf("unknown operation %q", req.Operation)
+		err := fmt.Errorf("unknown operation %q", req.Operation)
+		return rt.record(ctx, errorResult(req.Operation, "", err)), err
 	}
 	if op.Exposure == catalog.ExposureDiscovery {
 		err := fmt.Errorf("operation %q is discovery-only", req.Operation)
-		return rt.record(ctx, Result{
-			Status:      "error",
-			OperationID: req.Operation,
-			Code:        "not_callable",
-			Error:       err.Error(),
-		}), err
+		return rt.record(ctx, errorResult(req.Operation, "not_callable", err)), err
 	}
 
 	args, err := wire(req.Arguments)
 	if err != nil {
-		return rt.record(ctx, Result{Status: "error", OperationID: op.ID}), err
+		return rt.record(ctx, errorResult(op.ID, "", err)), err
 	}
 	if err := op.CheckParams(args); err != nil {
-		return rt.record(ctx, Result{Status: "error", OperationID: op.ID, Code: paramCode(err)}), err
+		return rt.record(ctx, errorResult(op.ID, "", err)), err
 	}
 
 	ctx = policy.WithInput(ctx, policy.Input{
@@ -140,16 +140,12 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 	})
 	decision, err := rt.decide(ctx, op)
 	if err != nil {
-		return rt.record(ctx, Result{Status: "error"}), err
+		return rt.record(ctx, errorResult(req.Operation, "", err)), err
 	}
 	if decision == policy.DecisionConfirmationNeeded {
 		if rt.State == nil {
 			err := errors.New("confirmation state is not set")
-			return rt.record(ctx, Result{
-				Status:      "error",
-				OperationID: req.Operation,
-				Error:       err.Error(),
-			}), err
+			return rt.record(ctx, errorResult(req.Operation, "", err)), err
 		}
 		ctx, span := telemetry.StartSpan(ctx, "policy.confirmation")
 		defer span.End()
@@ -157,7 +153,7 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 		if req.Approval == "" {
 			id, err := rt.State.RequestFor(ctx, caller, req.Operation, args)
 			if err != nil {
-				return rt.record(ctx, Result{Status: "error", OperationID: req.Operation}), err
+				return rt.record(ctx, errorResult(req.Operation, "", err)), err
 			}
 			span.SetAttributes(telemetry.Attr("approval.id", id))
 			res := Result{
@@ -172,10 +168,10 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 		}
 		ok, err := rt.State.ConsumeFor(ctx, caller, req.Approval, req.Operation, args)
 		if err != nil {
-			return rt.record(ctx, Result{Status: "error"}), err
+			return rt.record(ctx, errorResult(req.Operation, "", err)), err
 		}
 		if !ok {
-			return rt.record(ctx, Result{Status: "error", OperationID: req.Operation, Error: ErrInvalidApproval.Error()}), ErrInvalidApproval
+			return rt.record(ctx, errorResult(req.Operation, "", ErrInvalidApproval)), ErrInvalidApproval
 		}
 		span.SetAttributes(telemetry.Attr("approval.id", req.Approval))
 		decision = policy.DecisionAllow
@@ -184,7 +180,8 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 		return rt.record(ctx, Result{Status: "denied", OperationID: req.Operation}), nil
 	}
 	if rt.Exec == nil {
-		return rt.record(ctx, Result{Status: "error"}), errors.New("missing executor")
+		err := errors.New("missing executor")
+		return rt.record(ctx, errorResult(req.Operation, "", err)), err
 	}
 	ctx = WithIdempotency(ctx, req.Idempotency)
 	if len(req.Fields) > 0 || req.Limit > 0 || req.Offset > 0 {
@@ -196,7 +193,7 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 	}
 	call, err := rt.Exec.InvokeHTTPResult(ctx, op, args)
 	if err != nil {
-		return rt.record(ctx, Result{Status: "error", OperationID: req.Operation, Code: paramCode(err)}), err
+		return rt.record(ctx, errorResult(req.Operation, "", err)), err
 	}
 	status := call.Code
 	if status == "" {
@@ -211,6 +208,7 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 		Retryable:   call.Retryable,
 		Truncated:   call.Truncated,
 		Page:        call.Page,
+		HTTP:        true,
 	}), nil
 }
 
@@ -265,12 +263,66 @@ func (rt *Runtime) clock() time.Time {
 	return time.Now()
 }
 
+func errorResult(op, code string, err error) Result {
+	res := Result{Status: "error", OperationID: op, Code: code}
+	if err != nil {
+		res.Error = err.Error()
+		if res.Code == "" {
+			res.Code = paramCode(err)
+		}
+	}
+	return res
+}
+
 func paramCode(err error) string {
 	if _, ok := errors.AsType[result.ParamError](err); ok {
 		return "missing_param"
 	}
 	if _, ok := errors.AsType[result.BodyError](err); ok {
 		return "invalid_body"
+	}
+	if missingAuth(err) {
+		return "missing_auth"
+	}
+	return ""
+}
+
+func missingAuth(err error) bool {
+	return err != nil && strings.Contains(err.Error(), " is unset")
+}
+
+func whyOf(res Result) string {
+	if res.HTTP && (res.Status == "ok" || res.Status == "") {
+		return ""
+	}
+	switch res.Status {
+	case "confirmation_required":
+		return "held until you approve"
+	case "denied":
+		return "policy denied"
+	case "limited":
+		return "invoke limit"
+	}
+	switch res.Code {
+	case "invalid_body":
+		if res.Error != "" {
+			return res.Error
+		}
+		return "body does not match the schema"
+	case "missing_param":
+		if res.Error != "" {
+			return res.Error
+		}
+		return "a required parameter is missing"
+	case "missing_auth":
+		return "missing auth"
+	case "not_callable":
+		if res.Error != "" {
+			return res.Error
+		}
+	}
+	if !res.HTTP && res.Error != "" {
+		return res.Error
 	}
 	return ""
 }
@@ -316,6 +368,12 @@ func (rt *Runtime) decide(ctx context.Context, op *catalog.Operation) (policy.De
 }
 
 func (rt *Runtime) record(ctx context.Context, res Result) Result {
+	if res.Caller == "" {
+		res.Caller = auth.Caller(ctx)
+	}
+	if res.Why == "" {
+		res.Why = whyOf(res)
+	}
 	_, span := telemetry.StartSpan(ctx, "runtime.outcome")
 	defer span.End()
 	if res.OperationID != "" {
