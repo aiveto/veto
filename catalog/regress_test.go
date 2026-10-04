@@ -84,6 +84,16 @@ func TestSurfaceRegressions(t *testing.T) {
 	}
 }
 
+func TestSurfaceRegressionsLostConfirmationOnARead(t *testing.T) {
+	base := map[string]catalog.OpFact{
+		"orders.get": {Referenced: true, Confirmation: true},
+	}
+	next := map[string]catalog.OpFact{
+		"orders.get": {Referenced: true, Confirmation: false},
+	}
+	assert.Equal(t, []string{"operation orders.get lost confirmation"}, catalog.SurfaceRegressions(base, next, nil, false))
+}
+
 func TestSurfaceRegressionsLoadsANewDestructiveOperation(t *testing.T) {
 	dir := t.TempDir()
 	basePath := filepath.Join(dir, "base.yaml")

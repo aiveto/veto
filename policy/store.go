@@ -90,7 +90,10 @@ func (m *Memory) FindApproved(ctx context.Context, id string) (Record, bool, err
 		return Record{}, false, nil
 	}
 	rec, ok := m.pending[pendingID]
-	if !ok || rec.ApprovedID != id || rec.Status != StatusApproved {
+	if !ok || rec.ApprovedID != id || rec.Status != StatusApproved || m.claimed[pendingID] {
+		if ok && m.claimed[pendingID] {
+			return Record{}, false, nil
+		}
 		m.remove(rec)
 		delete(m.approved, id)
 		return Record{}, false, nil
@@ -189,7 +192,11 @@ func (f *Files) FindApproved(ctx context.Context, id string) (Record, bool, erro
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
 		}
-		rec, err := f.read(strings.TrimSuffix(entry.Name(), ".json"))
+		pendingID := strings.TrimSuffix(entry.Name(), ".json")
+		if f.claimedOnDisk(pendingID) {
+			continue
+		}
+		rec, err := f.read(pendingID)
 		if err != nil || rec.ApprovedID != id || rec.Status != StatusApproved {
 			continue
 		}
@@ -221,7 +228,19 @@ func (f *Files) Claim(ctx context.Context, id string) (bool, error) {
 	if err := handle.Close(); err != nil {
 		return false, fmt.Errorf("approval: %w", err)
 	}
+	f.markClaimed(id)
 	return true, nil
+}
+
+func (m *Memory) markClaimed(id string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.claimed == nil {
+		m.claimed = map[string]bool{}
+	}
+	if id != "" {
+		m.claimed[id] = true
+	}
 }
 
 func (f *Files) Remove(ctx context.Context, rec Record) {
@@ -255,7 +274,20 @@ func (f *Files) write(rec Record) error {
 	return nil
 }
 
+func (f *Files) claimedOnDisk(id string) bool {
+	id = filepath.Base(id)
+	if !plainID(id) {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(f.Dir, "confirmations", id+".claimed"))
+	return err == nil
+}
+
 func (f *Files) approvedOnDisk(ctx context.Context, rec Record, id string) (Record, bool, error) {
+	if f.claimedOnDisk(rec.ID) {
+		f.Memory.Remove(ctx, rec)
+		return Record{}, false, nil
+	}
 	disk, err := f.read(rec.ID)
 	switch {
 	case err == nil && disk.ApprovedID == id && disk.Status == StatusApproved:
@@ -264,7 +296,7 @@ func (f *Files) approvedOnDisk(ctx context.Context, rec Record, id string) (Reco
 	case err != nil && !errors.Is(err, fs.ErrNotExist):
 		return Record{}, false, err
 	default:
-		f.Remove(ctx, rec)
+		f.Memory.Remove(ctx, rec)
 		return Record{}, false, nil
 	}
 }

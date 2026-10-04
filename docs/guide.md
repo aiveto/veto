@@ -38,7 +38,7 @@ veto check --config testdata/veto.yaml --case testdata/cases
 | Missing auth, a colliding operation id, or a parameter that cannot be sent | [doctor](#doctor) |
 | The request and the policy decision, before a token is fetched and before HTTP | [preview](#preview) |
 | Run a case | [eval](#check-in-ci) |
-| Fail when a joined operation disappears, a previously destructive operation loses confirmation, a permission is dropped, a new destructive operation appears, or a case changes `operation`, `confirmation_required`, or `no_http`. `confirmation: false` is the record of a deployment-wide drop | [check --against](#check-in-ci) |
+| Fail when a joined operation disappears, confirmation or a permission is dropped, a new destructive operation appears, or a case expectation changes. `confirmation: false` is the record of a deployment-wide drop | [check --against](#check-in-ci) |
 | Print a saved trace | [replay --from](#replay) |
 | Run a message | [replay](#replay) |
 | Share contracts, relations, and cases apart from deployment credentials | [capability bundle](#capability-bundle) |
@@ -359,7 +359,7 @@ veto pack --config veto.yaml --message "who placed order 123"
 
 ## Check in CI
 
-`veto check` loads the catalog, prints joins, and runs the case files. `--case` names the case file or directory. When it is omitted, check uses the `cases` list from the bundle. `--against` is a git ref or a snapshot JSON file. The check fails when a joined operation disappears, a previously destructive operation loses confirmation without an `agent.yaml` change or `confirmation: false`, a new destructive operation appears, a discovery-only operation becomes callable, or a required permission is removed. Eval drift compares only `operation`, `confirmation_required`, and `no_http`. It does not compare `pack_contains`, `pack_excludes`, or related-operation expectations. Those still run when check executes the cases. `confirmation: false` prints `confirmation is off` and does not also report each operation as lost confirmation.
+`veto check` loads the catalog, prints joins, and runs the case files. `--case` names the case file or directory. When it is omitted, check uses the `cases` list from the bundle. `--against` is a git ref or a snapshot JSON file. The check fails when a joined operation disappears, confirmation is dropped without an `agent.yaml` change or `confirmation: false`, a new destructive operation appears, a discovery-only operation becomes callable, a required permission is removed, or an eval expectation changes. Drift compares `operation`, `confirmation_required`, `no_http`, `pack_contains`, `pack_excludes`, and `related`. `confirmation: false` prints `confirmation is off` and does not also report each operation as lost confirmation.
 
 `--against` reads files from that git ref, so the checkout needs the history.
 

@@ -58,7 +58,7 @@ func newCheckCommand() *cobra.Command {
 	c.Flags().StringVar(&cmd.agent, "agent", "", "Path to agent.yaml. Overrides agent_file.")
 	c.Flags().StringVar(&cmd.relations, "relations", "", "Relations file. Overrides relations_file.")
 	c.Flags().StringVar(&cmd.baseURL, "base-url", "", "Override the server URL on every operation. Empty uses each contract server.")
-	c.Flags().StringVar(&cmd.against, "against", "", "Git ref or snapshot JSON. Fail if a joined operation disappeared, a previously destructive operation lost confirmation without an agent.yaml change or confirmation: false, a new destructive operation appeared, or a case changed operation, confirmation_required, or no_http.")
+	c.Flags().StringVar(&cmd.against, "against", "", "Git ref or snapshot JSON. Fail if a joined operation disappeared, confirmation was dropped without an agent.yaml change or confirmation: false, a new destructive operation appeared, or an eval expectation changed.")
 	return c
 }
 
