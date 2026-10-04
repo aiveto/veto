@@ -100,9 +100,14 @@ func TestInvokeLimitStopsBeforeHTTP(t *testing.T) {
 	assert.Equal(t, "ok", other.Status)
 	assert.Equal(t, int32(invokePerWindow+1), hits.Load())
 
-	fresh := rt
-	fresh.State = policy.NewState()
-	fresh.Gate = rt.Gate
+	fresh := Runtime{
+		Catalog: rt.Catalog,
+		Policy:  rt.Policy,
+		State:   policy.NewState(),
+		Exec:    rt.Exec,
+		Gate:    rt.Gate,
+		now:     rt.now,
+	}
 	still, err := fresh.Invoke(context.Background(), req)
 	require.NoError(t, err)
 	assert.Equal(t, "limited", still.Status)

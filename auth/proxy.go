@@ -9,27 +9,16 @@ func WithEnvProxy(c *http.Client) *http.Client {
 	if c == nil {
 		return &http.Client{Transport: http.DefaultTransport}
 	}
+	if c.Transport == nil {
+		return c
+	}
+	tr, ok := c.Transport.(*http.Transport)
+	if !ok || tr.Proxy != nil {
+		return c
+	}
 	dup := *c
-	if dup.Transport == nil {
-		dup.Transport = http.DefaultTransport
-		return &dup
-	}
-	dup.Transport = ensureProxy(dup.Transport)
-	return &dup
-}
-
-func ensureProxy(rt http.RoundTripper) http.RoundTripper {
-	if rt == nil {
-		return http.DefaultTransport
-	}
-	tr, ok := rt.(*http.Transport)
-	if !ok {
-		return rt
-	}
-	if tr.Proxy != nil {
-		return tr
-	}
 	clone := tr.Clone()
 	clone.Proxy = http.ProxyFromEnvironment
-	return clone
+	dup.Transport = clone
+	return &dup
 }

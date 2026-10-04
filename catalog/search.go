@@ -15,8 +15,16 @@ type (
 	}
 
 	scored struct {
-		op    Operation
+		i     int
 		score int
+	}
+
+	searchText struct {
+		id, name, desc, group string
+		tags                  []string
+		schemas               []string
+		rel                   []string
+		related               []string
 	}
 )
 
@@ -30,19 +38,20 @@ func SearchPage(cat *Catalog, query string, synonyms map[string][]string, offset
 	if cat == nil || q == "" {
 		return nil
 	}
+	cat.ensureIndex()
 	var hits []scored
-	for _, op := range cat.Operations {
-		s := scoreOp(cat, op, q, synonyms[op.ID])
+	for i, op := range cat.Operations {
+		s := scoreOp(cat.search[i], q, synonyms[op.ID])
 		if s <= 0 {
 			continue
 		}
-		hits = append(hits, scored{op: op, score: s})
+		hits = append(hits, scored{i: i, score: s})
 	}
 	slices.SortFunc(hits, func(a, b scored) int {
 		if c := cmp.Compare(b.score, a.score); c != 0 {
 			return c
 		}
-		return strings.Compare(a.op.ID, b.op.ID)
+		return strings.Compare(cat.Operations[a.i].ID, cat.Operations[b.i].ID)
 	})
 	return pageHits(cat, hits, offset, limit)
 }
@@ -63,14 +72,18 @@ func pageHits(cat *Catalog, hits []scored, offset, limit int) []Match {
 	}
 	out := make([]Match, 0, limit)
 	for _, h := range hits[offset : offset+limit] {
-		out = append(out, hit(cat, h.op))
+		op := cat.Operations[h.i]
+		related := []string{}
+		if h.i < len(cat.search) {
+			related = cat.search[h.i].related
+		}
+		out = append(out, Match{Operation: op, Related: related})
 	}
 	return out
 }
 
-func scoreOp(cat *Catalog, op Operation, q string, syns []string) int {
-	id := strings.ToLower(op.ID)
-	if id == q || strings.ToLower(op.Name) == q {
+func scoreOp(text searchText, q string, syns []string) int {
+	if text.id == q || text.name == q {
 		return 1000
 	}
 	score := 0
@@ -79,22 +92,22 @@ func scoreOp(cat *Catalog, op Operation, q string, syns []string) int {
 			score += 800
 		}
 	}
-	if containsFold(op.ID, q) || containsFold(op.Name, q) || containsFold(op.Description, q) || containsFold(op.Group, q) {
+	if strings.Contains(text.id, q) || strings.Contains(text.name, q) || strings.Contains(text.desc, q) || strings.Contains(text.group, q) {
 		score += 100
 	}
-	for _, tag := range op.Tags {
-		if containsFold(tag, q) || containsFold(q, tag) {
+	for _, tag := range text.tags {
+		if strings.Contains(tag, q) || strings.Contains(q, tag) {
 			score += 100
 		}
 	}
-	if usesSchema(cat, op.ID, q) || relationMatch(cat, op.ID, q) {
+	if usesPrepared(text.schemas, q) || usesPrepared(text.rel, q) {
 		score += 40
 	}
 	for tok := range strings.FieldsSeq(q) {
 		if len(tok) < 3 {
 			continue
 		}
-		if containsFold(op.ID, tok) || containsFold(op.Name, tok) || containsFold(op.Description, tok) || containsFold(op.Group, tok) {
+		if strings.Contains(text.id, tok) || strings.Contains(text.name, tok) || strings.Contains(text.desc, tok) || strings.Contains(text.group, tok) {
 			score += 20
 		}
 		for _, syn := range syns {
@@ -106,31 +119,54 @@ func scoreOp(cat *Catalog, op Operation, q string, syns []string) int {
 	return score
 }
 
-func hit(cat *Catalog, op Operation) Match {
-	return Match{Operation: op, Related: cat.Graph.Related(op.ID)}
+func usesPrepared(hay []string, q string) bool {
+	for _, s := range hay {
+		if strings.Contains(s, q) {
+			return true
+		}
+	}
+	return false
 }
 
-func relationMatch(cat *Catalog, operationID, q string) bool {
-	for _, e := range cat.Graph.Edges {
-		if e.From != operationID || (e.Kind != EdgeLinks && e.Kind != EdgeRelates) {
+func (c *Catalog) prepareSearch() {
+	schemas := map[string][]string{}
+	for _, u := range c.Uses {
+		if u.Name == "" {
 			continue
 		}
-		if containsFold(e.Note, q) || containsFold(e.To, q) {
-			return true
+		schemas[u.OperationID] = append(schemas[u.OperationID], strings.ToLower(u.Name))
+	}
+	rel := map[string][]string{}
+	related := map[string][]string{}
+	for _, e := range c.Graph.Edges {
+		if e.Kind != EdgeLinks && e.Kind != EdgeRelates {
+			continue
+		}
+		related[e.From] = append(related[e.From], e.To)
+		if e.Note != "" {
+			rel[e.From] = append(rel[e.From], strings.ToLower(e.Note))
+		}
+		rel[e.From] = append(rel[e.From], strings.ToLower(e.To))
+	}
+	c.search = make([]searchText, len(c.Operations))
+	for i, op := range c.Operations {
+		tags := make([]string, len(op.Tags))
+		for j, tag := range op.Tags {
+			tags[j] = strings.ToLower(tag)
+		}
+		ids := related[op.ID]
+		if ids == nil {
+			ids = []string{}
+		}
+		c.search[i] = searchText{
+			id:      strings.ToLower(op.ID),
+			name:    strings.ToLower(op.Name),
+			desc:    strings.ToLower(op.Description),
+			group:   strings.ToLower(op.Group),
+			tags:    tags,
+			schemas: schemas[op.ID],
+			rel:     rel[op.ID],
+			related: ids,
 		}
 	}
-	return false
-}
-
-func usesSchema(cat *Catalog, operationID, q string) bool {
-	for _, u := range cat.Uses {
-		if u.OperationID == operationID && containsFold(u.Name, q) {
-			return true
-		}
-	}
-	return false
-}
-
-func containsFold(hay, needle string) bool {
-	return strings.Contains(strings.ToLower(hay), needle)
 }

@@ -39,13 +39,34 @@ func (op Operation) CheckParams(params map[string]string) error {
 
 // Type is the single JSON Schema type of the parameter, or empty.
 func (p Param) Type() string {
-	if p.Schema == "" {
+	if p.typ != "" {
+		return p.typ
+	}
+	return schemaType(p.Schema)
+}
+
+func prepareParams(params []Param) {
+	for i := range params {
+		params[i].typ = schemaType(params[i].Schema)
+		if params[i].In != "body" || params[i].Schema == "" || !jsonMedia(params[i].MediaType) {
+			continue
+		}
+		var schema openapi3.Schema
+		if err := json.Unmarshal([]byte(params[i].Schema), &schema); err != nil {
+			continue
+		}
+		params[i].body = &schema
+	}
+}
+
+func schemaType(raw string) string {
+	if raw == "" {
 		return ""
 	}
 	var doc struct {
 		Type any `json:"type"`
 	}
-	if err := json.Unmarshal([]byte(p.Schema), &doc); err != nil {
+	if err := json.Unmarshal([]byte(raw), &doc); err != nil {
 		return ""
 	}
 	switch t := doc.Type.(type) {
@@ -141,7 +162,7 @@ func (p Param) checkBody(operationID, raw string) error {
 	if !jsonMedia(p.MediaType) || p.Schema == "" {
 		return nil
 	}
-	schema, value, ok := decodeBody(p.Schema, raw)
+	schema, value, ok := bodyValue(p, raw)
 	if !ok {
 		return nil
 	}
@@ -155,6 +176,17 @@ func (p Param) checkBody(operationID, raw string) error {
 		bad.Reason = se.Reason
 	}
 	return bad
+}
+
+func bodyValue(p Param, raw string) (*openapi3.Schema, any, bool) {
+	if p.body == nil {
+		return decodeBody(p.Schema, raw)
+	}
+	var value any
+	if json.Unmarshal([]byte(raw), &value) != nil {
+		return nil, nil, false
+	}
+	return p.body, value, true
 }
 
 func decodeBody(schemaText, raw string) (*openapi3.Schema, any, bool) {
