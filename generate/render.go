@@ -96,7 +96,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"flag"
 	"fmt"
 	"os"
@@ -178,8 +178,7 @@ func run{{.GoName}}(args []string) {
 {{- end}}
 	_ = fs.Parse(args)
 	if *helpJSON {
-		enc := json.NewEncoder(os.Stdout)
-		if err := enc.Encode(helpDoc{
+		if err := jsonv2.MarshalWrite(os.Stdout, helpDoc{
 			Command: {{quote .Command}},
 			OperationID: {{quote .ID}},
 			Method: {{quote .Method}},
@@ -198,6 +197,7 @@ func run{{.GoName}}(args []string) {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+		fmt.Fprintln(os.Stdout)
 		return
 	}
 	c := client()

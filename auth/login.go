@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aiveto/veto/jsonopts"
 	"golang.org/x/oauth2"
 )
 
@@ -27,6 +28,7 @@ type LoginOptions struct {
 	HTTP        *http.Client
 	RedirectURL string
 	Out         io.Writer
+	JSON        jsonopts.Set
 }
 
 // Login runs authorization code with PKCE, or device code when there is no browser.
@@ -99,7 +101,7 @@ func SetToken(dir, scheme, token string) error {
 	if dir == "" {
 		dir = DefaultTokenDir()
 	}
-	return writeToken(dir, scheme, storedToken{AccessToken: strings.TrimSpace(token)})
+	return writeToken(dir, scheme, storedToken{AccessToken: strings.TrimSpace(token)}, jsonopts.Set{})
 }
 
 func codeLogin(ctx context.Context, opt LoginOptions, scheme Scheme) error {
@@ -140,7 +142,7 @@ func codeLogin(ctx context.Context, opt LoginOptions, scheme Scheme) error {
 	if err != nil {
 		return err
 	}
-	return saveMinted(opt.Dir, scheme, parsed, scheme.Scopes)
+	return saveMinted(opt.Dir, scheme, parsed, scheme.Scopes, opt.JSON)
 }
 
 func deviceLogin(ctx context.Context, opt LoginOptions, scheme Scheme) error {
@@ -176,10 +178,10 @@ func deviceLogin(ctx context.Context, opt LoginOptions, scheme Scheme) error {
 	if err != nil {
 		return err
 	}
-	return saveMinted(opt.Dir, scheme, parsed, scheme.Scopes)
+	return saveMinted(opt.Dir, scheme, parsed, scheme.Scopes, opt.JSON)
 }
 
-func saveMinted(dir string, scheme Scheme, tok tokenResponse, requested []string) error {
+func saveMinted(dir string, scheme Scheme, tok tokenResponse, requested []string, json jsonopts.Set) error {
 	scopes, err := grantedScopes(tok.Scope, requested)
 	if err != nil {
 		return err
@@ -188,7 +190,7 @@ func saveMinted(dir string, scheme Scheme, tok tokenResponse, requested []string
 	if stored.RefreshToken == "" && stored.AccessToken == "" {
 		return errors.New("token endpoint rejected the request")
 	}
-	return writeToken(dir, scheme.Name, stored)
+	return writeToken(dir, scheme.Name, stored, json)
 }
 
 func waitForCode(ctx context.Context, redirect, state string, open func(listen string) error) (string, error) {

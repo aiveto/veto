@@ -3,7 +3,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -213,7 +213,7 @@ func followOrder(ctx context.Context, loop *agent.Loop, orders, customers *serve
 
 func customerID(body string) (string, error) {
 	var fields map[string]string
-	if err := json.Unmarshal([]byte(body), &fields); err != nil {
+	if err := jsonv2.Unmarshal([]byte(body), &fields); err != nil {
 		return "", fmt.Errorf("orders.get body: %w", err)
 	}
 	id := fields["customerId"]

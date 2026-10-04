@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -68,7 +69,7 @@ func Discover(ctx context.Context, client *http.Client, issuer string) (Endpoint
 		Token         string `json:"token_endpoint"`
 		Device        string `json:"device_authorization_endpoint"`
 	}
-	if err := json.Unmarshal(body, &doc); err != nil {
+	if err := jsonv2.Unmarshal(body, &doc); err != nil {
 		return Endpoints{}, errors.New("discover issuer: invalid document")
 	}
 	if doc.Authorization == "" || doc.Token == "" {
@@ -140,17 +141,17 @@ func postForm(ctx context.Context, client *http.Client, endpoint string, form ur
 
 func decodeTokenResponse(body []byte) (tokenResponse, error) {
 	var tok tokenResponse
-	if err := json.Unmarshal(body, &tok); err != nil {
+	if err := jsonv2.Unmarshal(body, &tok); err != nil {
 		return tokenResponse{}, errors.New("token endpoint returned invalid JSON")
 	}
 	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(body, &raw); err != nil {
+	if err := jsonv2.Unmarshal(body, &raw); err != nil {
 		return tokenResponse{}, errors.New("token endpoint returned invalid JSON")
 	}
 	tok.Fields = map[string]string{}
 	for k, v := range raw {
 		var s string
-		if json.Unmarshal(v, &s) == nil && s != "" {
+		if jsonv2.Unmarshal(v, &s) == nil && s != "" {
 			tok.Fields[k] = s
 		}
 	}

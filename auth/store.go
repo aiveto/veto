@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	"github.com/aiveto/veto/internal/atomicfile"
+	"github.com/aiveto/veto/jsonopts"
 )
 
 type storedToken struct {
@@ -35,7 +35,7 @@ func DefaultTokenDir() string {
 	return filepath.Join(home, ".veto", "tokens")
 }
 
-func writeToken(dir, scheme string, tok storedToken) error {
+func writeToken(dir, scheme string, tok storedToken, json jsonopts.Set) error {
 	path, err := tokenPath(dir, scheme)
 	if err != nil {
 		return err
@@ -55,17 +55,17 @@ func writeToken(dir, scheme string, tok storedToken) error {
 
 // HasAccessToken reports a pasted or minted access token on disk.
 func HasAccessToken(dir, scheme string) bool {
-	tok, err := readToken(dir, scheme)
+	tok, err := readToken(dir, scheme, jsonopts.Set{})
 	return err == nil && tok.AccessToken != ""
 }
 
 // HasRefreshToken reports a stored refresh token.
 func HasRefreshToken(dir, scheme string) bool {
-	tok, err := readToken(dir, scheme)
+	tok, err := readToken(dir, scheme, jsonopts.Set{})
 	return err == nil && tok.RefreshToken != ""
 }
 
-func readToken(dir, scheme string) (storedToken, error) {
+func readToken(dir, scheme string, json jsonopts.Set) (storedToken, error) {
 	path, err := tokenPath(dir, scheme)
 	if err != nil {
 		return storedToken{}, err

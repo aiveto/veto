@@ -38,7 +38,9 @@ func SearchPage(cat *Catalog, query string, synonyms map[string][]string, offset
 	if cat == nil || q == "" {
 		return nil
 	}
-	cat.ensureIndex()
+	if !cat.ready.Load() {
+		cat.ensureIndex()
+	}
 	var hits []scored
 	for i, op := range cat.Operations {
 		s := scoreOp(cat.search[i], q, synonyms[op.ID])
@@ -75,7 +77,10 @@ func pageHits(cat *Catalog, hits []scored, offset, limit int) []Match {
 		op := cat.Operations[h.i]
 		related := []string{}
 		if h.i < len(cat.search) {
-			related = cat.search[h.i].related
+			related = slices.Clone(cat.search[h.i].related)
+			if related == nil {
+				related = []string{}
+			}
 		}
 		out = append(out, Match{Operation: op, Related: related})
 	}

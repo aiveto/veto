@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 
 	"github.com/aiveto/veto/catalog"
@@ -90,6 +91,7 @@ func (d *Derived) Note(operationID string) Note {
 	if !ok {
 		return Note{OperationID: operationID}
 	}
+	n.Synonyms = slices.Clone(n.Synonyms)
 	return n
 }
 
@@ -98,7 +100,7 @@ func (d *Derived) Synonyms(operationID string) []string {
 }
 
 func (d *Derived) AllSynonyms() map[string][]string {
-	return d.syns
+	return cloneSyns(d.syns)
 }
 
 func deriveSynonyms(op catalog.Operation) []string {
@@ -208,7 +210,18 @@ func (f *FileOverlay) Synonyms(operationID string) []string {
 }
 
 func (f *FileOverlay) AllSynonyms() map[string][]string {
-	return f.syns
+	return cloneSyns(f.syns)
+}
+
+func cloneSyns(in map[string][]string) map[string][]string {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string][]string, len(in))
+	for id, syns := range in {
+		out[id] = slices.Clone(syns)
+	}
+	return out
 }
 
 func (f *FileOverlay) allSynonyms() map[string][]string {

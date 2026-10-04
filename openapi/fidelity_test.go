@@ -50,6 +50,15 @@ func TestFallbackOperationIDsDoNotCollide(t *testing.T) {
 	assert.NotEqual(t, list.ID, item.ID)
 }
 
+func TestLoadKeepsValidationConstraints(t *testing.T) {
+	cat := loadFixture(t, constrainedBodySpec)
+	op := cat.ByID("widgets.create")
+	require.NotNil(t, op)
+	err := op.CheckParams(map[string]string{"body": `{"count":-50,"name":"!","extra":true}`})
+	require.Error(t, err)
+	assert.NoError(t, op.CheckParams(map[string]string{"body": `{"count":3,"name":"ada"}`}))
+}
+
 func TestQueryStyleAndExplodeAreKept(t *testing.T) {
 	cat := loadFixture(t, queryStyleSpec)
 	op := cat.ByID("search.find")
@@ -189,6 +198,35 @@ paths:
         required: true
         schema: {type: string}
     get:
+      responses:
+        "200": {description: ok}
+`
+
+const constrainedBodySpec = `openapi: 3.0.3
+info:
+  title: t
+  version: "1"
+paths:
+  /widgets:
+    post:
+      operationId: widgets.create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [count, name]
+              properties:
+                count:
+                  type: integer
+                  minimum: 1
+                  maximum: 10
+                name:
+                  type: string
+                  minLength: 3
+                  pattern: "^[a-z]+$"
       responses:
         "200": {description: ok}
 `

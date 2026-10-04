@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/aiveto/veto/config"
+	"github.com/aiveto/veto/jsonopts"
 	"github.com/aiveto/veto/policy"
 	"github.com/aiveto/veto/valkey"
 	"github.com/spf13/cobra"
@@ -58,7 +59,7 @@ func applyApprovalCLI(ctx context.Context, s *policy.State, configPath string) e
 // applyApprovalEnv points state at the store serve and approve share.
 // VETO_APPROVAL_STORE is a Valkey or Redis URL. Otherwise the directory and signing secret come from the environment.
 func applyApprovalEnv(ctx context.Context, s *policy.State) error {
-	return applyApproval(ctx, s, 0, os.Getenv("VETO_APPROVAL_STORE"))
+	return applyApproval(ctx, s, 0, os.Getenv("VETO_APPROVAL_STORE"), jsonopts.Set{})
 }
 
 func applyApprovalConfig(ctx context.Context, s *policy.State, cfg config.File) error {
@@ -69,10 +70,10 @@ func applyApprovalConfig(ctx context.Context, s *policy.State, cfg config.File) 
 			return fmt.Errorf("approval store %s is unset", cfg.ApprovalStore)
 		}
 	}
-	return applyApproval(ctx, s, cfg.ApprovalTTL, url)
+	return applyApproval(ctx, s, cfg.ApprovalTTL, url, cfg.JSONSet())
 }
 
-func applyApproval(ctx context.Context, s *policy.State, ttl time.Duration, storeURL string) error {
+func applyApproval(ctx context.Context, s *policy.State, ttl time.Duration, storeURL string, json jsonopts.Set) error {
 	dir := ""
 	if storeURL == "" {
 		dir = os.Getenv("VETO_APPROVAL_NONCE_DIR")
@@ -89,8 +90,14 @@ func applyApproval(ctx context.Context, s *policy.State, ttl time.Duration, stor
 		Dir:    dir,
 		Secret: []byte(os.Getenv("VETO_APPROVAL_SECRET")),
 		TTL:    ttl,
+		JSON:   json,
 		Dial: func(ctx context.Context, url string) (policy.Store, error) {
-			return valkey.Dial(ctx, url)
+			store, err := valkey.Dial(ctx, url)
+			if err != nil {
+				return nil, err
+			}
+			store.JSON = json
+			return store, nil
 		},
 	})
 }

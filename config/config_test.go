@@ -29,6 +29,8 @@ func TestLoadResolvesFilesAndDefaults(t *testing.T) {
 	cfg, err := config.Load("../testdata/veto.yaml")
 	require.NoError(t, err)
 	assert.Equal(t, "scripted", cfg.Model)
+	assert.Equal(t, "v2", cfg.JSON)
+	assert.False(t, cfg.JSONSet().V1)
 	assert.Empty(t, cfg.TraceExport)
 	assert.True(t, strings.HasSuffix(cfg.SemanticsFile, "semantics.yaml"))
 	assert.True(t, strings.HasSuffix(cfg.FlowFile, "flow.yaml"))
@@ -162,6 +164,26 @@ func TestApprovalStoreIsAnEnvName(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte("approval_store: redis://127.0.0.1:6379\n"), 0o600))
 	_, err = config.Load(path)
 	assert.ErrorContains(t, err, "approval_store")
+}
+
+func TestJSONDefaultsToV2(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "veto.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("model: scripted\n"), 0o600))
+	cfg, err := config.Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, "v2", cfg.JSON)
+	assert.False(t, cfg.JSONSet().V1)
+
+	require.NoError(t, os.WriteFile(path, []byte("json: v1\n"), 0o600))
+	cfg, err = config.Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, "v1", cfg.JSON)
+	assert.True(t, cfg.JSONSet().V1)
+
+	require.NoError(t, os.WriteFile(path, []byte("json: v3\n"), 0o600))
+	_, err = config.Load(path)
+	assert.ErrorContains(t, err, "json")
 }
 
 func TestApprovalTTLReplacesTheDefault(t *testing.T) {

@@ -2,7 +2,7 @@ package mcpserver
 
 import (
 	"context"
-	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -73,7 +73,7 @@ func register(server *mcp.Server, srv *Server, opt Options) {
 			return toolError(err)
 		}
 		matches := srv.Search(args.Query, args.Offset, args.Limit)
-		b, err := json.Marshal(matches)
+		b, err := jsonv2.Marshal(matches)
 		if err != nil {
 			return toolError(err)
 		}
@@ -261,7 +261,7 @@ func previewToolResult(out runtime.Preview, callErr error) (*mcp.CallToolResult,
 	if callErr != nil {
 		return toolError(callErr)
 	}
-	b, err := json.Marshal(out)
+	b, err := jsonv2.Marshal(out)
 	if err != nil {
 		return toolError(err)
 	}
@@ -283,7 +283,7 @@ func invokeToolResult(res InvokeResult, callErr error) (*mcp.CallToolResult, any
 		}
 		res.Error = sanitizeCause(cause)
 	}
-	b, err := json.Marshal(res)
+	b, err := jsonv2.Marshal(res)
 	if err != nil {
 		return toolError(err)
 	}

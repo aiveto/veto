@@ -20,14 +20,16 @@ func TestClaimIsOnceAcrossClients(t *testing.T) {
 
 	rec := policy.Record{ID: "pending-1", OperationID: "orders.delete", Status: "pending", Params: map[string]string{"id": "1"}}
 	require.NoError(t, a.Put(t.Context(), rec))
-	got, ok := b.Get(t.Context(), rec.ID)
+	got, ok, err := b.Get(t.Context(), rec.ID)
+	require.NoError(t, err)
 	require.True(t, ok)
 	assert.Equal(t, rec.ID, got.ID)
 
 	rec.Status = "approved"
 	rec.ApprovedID = "ok-1"
 	require.NoError(t, a.Put(t.Context(), rec))
-	found, ok := b.FindApproved(t.Context(), "ok-1")
+	found, ok, err := b.FindApproved(t.Context(), "ok-1")
+	require.NoError(t, err)
 	require.True(t, ok)
 	assert.Equal(t, rec.ID, found.ID)
 

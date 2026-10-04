@@ -50,19 +50,21 @@ func (c Client) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, par
 	if follow && len(project.Fields) > 0 {
 		call.Project = runtime.Projection{}
 	}
-	resp, view, body, err := invokeResponse(ctx, call, op, params)
+	resp, view, body, sent, err := invokeResponse(ctx, call, op, params)
 	if err != nil {
-		return result.HTTPResult{}, err
+		out := received(resp)
+		out.Sent = sent || out.HTTP
+		return out, err
 	}
 	if resp != nil && resp.Body != nil {
 		_ = resp.Body.Close()
 	}
 	code, retryable := classify(resp.StatusCode)
-	out := result.HTTPResult{Status: resp.StatusCode, Body: string(body), Code: code, Retryable: retryable}
+	out := result.HTTPResult{Status: resp.StatusCode, Body: string(body), Code: code, Retryable: retryable, HTTP: true, Sent: true}
 	if follow {
 		merged, cut, err := followPages(ctx, call, op, params, string(body), c.FollowPages)
 		if err != nil {
-			return result.HTTPResult{}, err
+			return out, err
 		}
 		out.Body = merged
 		if cut {
@@ -72,7 +74,7 @@ func (c Client) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, par
 	if follow && len(project.Fields) > 0 {
 		shaped, projected, err := shapeBody(resp.StatusCode, []byte(out.Body), false, Client{Project: project, MaxBody: c.MaxBody})
 		if err != nil {
-			return result.HTTPResult{}, err
+			return out, err
 		}
 		out.Body = string(shaped)
 		// The walk may already have stopped early. Field selection must not clear that.
@@ -90,13 +92,23 @@ func (c Client) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, par
 	return out, nil
 }
 
+func received(resp *http.Response) result.HTTPResult {
+	if resp == nil {
+		return result.HTTPResult{}
+	}
+	if resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+	return result.HTTPResult{Status: resp.StatusCode, HTTP: true}
+}
+
 // InvokeResponse runs one call and returns the HTTP response.
 func InvokeResponse(ctx context.Context, cfg Client, op *catalog.Operation, params map[string]string) (*http.Response, error) {
-	resp, _, _, err := invokeResponse(ctx, cfg, op, params)
+	resp, _, _, _, err := invokeResponse(ctx, cfg, op, params)
 	return resp, err
 }
 
-func invokeResponse(ctx context.Context, cfg Client, op *catalog.Operation, params map[string]string) (*http.Response, View, []byte, error) {
+func invokeResponse(ctx context.Context, cfg Client, op *catalog.Operation, params map[string]string) (*http.Response, View, []byte, bool, error) {
 	if cfg.HTTP == nil {
 		cfg.HTTP = http.DefaultClient
 	}
@@ -114,20 +126,20 @@ func invokeResponse(ctx context.Context, cfg Client, op *catalog.Operation, para
 		base = op.BaseURL
 	}
 	if base == "" {
-		return nil, View{}, nil, fmt.Errorf("operation %s has no server URL", op.ID)
+		return nil, View{}, nil, false, fmt.Errorf("operation %s has no server URL", op.ID)
 	}
 
 	req, err := prepareRequest(ctx, base, op, params, true)
 	if err != nil {
-		return nil, View{}, nil, err
+		return nil, View{}, nil, false, err
 	}
 	refresh, creds, err := obtainAuth(ctx, cfg, op, req, false)
 	if err != nil {
-		return nil, View{}, nil, err
+		return nil, View{}, nil, false, err
 	}
 	secrets, queryKeys, err := applyCredentials(req, creds)
 	if err != nil {
-		return nil, View{}, nil, err
+		return nil, View{}, nil, false, err
 	}
 	cfg.HTTP = boundRedirects(cfg.HTTP, len(creds) > 0, cfg.FollowRedirects)
 	if names := paramNames(params); names != "" {
@@ -136,16 +148,19 @@ func invokeResponse(ctx context.Context, cfg Client, op *catalog.Operation, para
 
 	resp, err := doRetry(cfg.HTTP, req, op)
 	if err != nil {
-		return nil, View{}, nil, scrubTransport(err, secrets, queryKeys)
+		return resp, View{}, nil, true, scrubTransport(err, secrets, queryKeys)
 	}
 	raw, cut, err := consumeBody(resp, cfg)
 	if err != nil {
-		return nil, View{}, nil, err
+		return resp, View{}, nil, true, err
 	}
 	if resp.StatusCode == http.StatusUnauthorized && refresh {
 		refreshed, rerr := retryUnauthorized(ctx, cfg, op, req, secrets, queryKeys)
 		if rerr != nil {
-			return nil, View{}, nil, rerr
+			if refreshed.resp != nil {
+				return refreshed.resp, View{}, nil, true, rerr
+			}
+			return resp, View{}, nil, true, rerr
 		}
 		resp = refreshed.resp
 		raw = refreshed.raw
@@ -153,7 +168,7 @@ func invokeResponse(ctx context.Context, cfg Client, op *catalog.Operation, para
 	}
 	body, view, err := shapeBody(resp.StatusCode, raw, cut, cfg)
 	if err != nil {
-		return nil, View{}, nil, err
+		return resp, View{}, nil, true, err
 	}
 	resp.Body = io.NopCloser(bytes.NewReader(body))
 	span.SetAttributes(telemetry.Attr("http.status", strconv.Itoa(resp.StatusCode)))
@@ -161,7 +176,7 @@ func invokeResponse(ctx context.Context, cfg Client, op *catalog.Operation, para
 		recorded := redactBody(auth.Redact(string(body), secrets, queryKeys))
 		span.SetAttributes(telemetry.Attr("http.body", recorded))
 	}
-	return resp, view, body, nil
+	return resp, view, body, true, nil
 }
 
 type readResponse struct {
@@ -264,10 +279,10 @@ func doRetry(client *http.Client, req *http.Request, op *catalog.Operation) (*ht
 		}
 		delay := retryDelay(resp, try)
 		if err := resp.Body.Close(); err != nil {
-			return nil, fmt.Errorf("close body: %w", err)
+			return resp, fmt.Errorf("close body: %w", err)
 		}
 		if err := waitRetry(req.Context(), delay); err != nil {
-			return nil, err
+			return resp, err
 		}
 	}
 	return resp, err

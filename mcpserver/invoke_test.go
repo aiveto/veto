@@ -43,6 +43,7 @@ func TestInvokeDeleteRequiresApprovalBeforeHTTP(t *testing.T) {
 	assert.Equal(t, "confirmation_required", first.Status)
 	assert.Equal(t, "held until you approve", first.Why)
 	assert.False(t, first.HTTP)
+	assert.False(t, first.Sent)
 	assert.Equal(t, int32(0), hits.Load())
 	_, err = srv.Invoke(ctx, "orders.delete", map[string]string{"id": "123"}, first.ApprovalID)
 	require.Error(t, err)
@@ -116,11 +117,19 @@ func TestInvokeJSONCarriesCodeAndRetryable(t *testing.T) {
 	var doc struct {
 		Code      string `json:"code"`
 		Retryable bool   `json:"retryable"`
+		HTTP      bool   `json:"http"`
+		Sent      bool   `json:"sent"`
 	}
 	require.NoError(t, json.Unmarshal(raw, &doc))
 	assert.Equal(t, "not_found", doc.Code)
 	assert.Equal(t, "not_found", got.Status)
 	assert.False(t, doc.Retryable)
+	assert.True(t, doc.HTTP)
+	assert.True(t, doc.Sent)
+	assert.True(t, got.HTTP)
+	assert.True(t, got.Sent)
+	assert.False(t, missing.HTTP)
+	assert.False(t, missing.Sent)
 }
 
 func TestInvokeDiscoveryOnlyDoesNotCallHTTP(t *testing.T) {

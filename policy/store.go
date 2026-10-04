@@ -2,23 +2,24 @@ package policy
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/aiveto/veto/internal/atomicfile"
+	"github.com/aiveto/veto/jsonopts"
 )
 
 // Store persists confirmation records. Memory is the default. Files is one machine.
 // Claim is consume-once. valkey is the replica adapter: SET NX on the pending id.
 type Store interface {
 	Put(ctx context.Context, rec Record) error
-	Get(ctx context.Context, id string) (Record, bool)
-	FindApproved(ctx context.Context, approvedID string) (Record, bool)
+	Get(ctx context.Context, id string) (Record, bool, error)
+	FindApproved(ctx context.Context, approvedID string) (Record, bool, error)
 	Claim(ctx context.Context, id string) (bool, error)
 	Remove(ctx context.Context, rec Record)
 }
@@ -36,6 +37,7 @@ type Record struct {
 
 // Memory keeps records in this process.
 type Memory struct {
+	mu       sync.Mutex
 	pending  map[string]Record
 	approved map[string]string
 }
@@ -44,6 +46,8 @@ func (m *Memory) Put(ctx context.Context, rec Record) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.pending == nil {
 		m.pending = map[string]Record{}
 	}
@@ -60,29 +64,36 @@ func (m *Memory) Put(ctx context.Context, rec Record) error {
 	return nil
 }
 
-func (m *Memory) Get(ctx context.Context, id string) (Record, bool) {
-	if ctx.Err() != nil {
-		return Record{}, false
+func (m *Memory) Get(ctx context.Context, id string) (Record, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return Record{}, false, err
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	rec, ok := m.pending[id]
-	return rec, ok
+	return rec, ok, nil
 }
 
-func (m *Memory) FindApproved(ctx context.Context, id string) (Record, bool) {
-	if ctx.Err() != nil || id == "" {
-		return Record{}, false
+func (m *Memory) FindApproved(ctx context.Context, id string) (Record, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return Record{}, false, err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if id == "" {
+		return Record{}, false, nil
 	}
 	pendingID, ok := m.approved[id]
 	if !ok {
-		return Record{}, false
+		return Record{}, false, nil
 	}
 	rec, ok := m.pending[pendingID]
 	if !ok || rec.ApprovedID != id || rec.Status != StatusApproved {
-		m.Remove(ctx, rec)
+		m.remove(rec)
 		delete(m.approved, id)
-		return Record{}, false
+		return Record{}, false, nil
 	}
-	return rec, true
+	return rec, true, nil
 }
 
 func (m *Memory) Claim(ctx context.Context, _ string) (bool, error) {
@@ -96,6 +107,12 @@ func (m *Memory) Remove(ctx context.Context, rec Record) {
 	if ctx.Err() != nil {
 		return
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.remove(rec)
+}
+
+func (m *Memory) remove(rec Record) {
 	delete(m.pending, rec.ID)
 	if rec.ApprovedID != "" {
 		delete(m.approved, rec.ApprovedID)
@@ -105,7 +122,8 @@ func (m *Memory) Remove(ctx context.Context, rec Record) {
 // Files keeps records as JSON under Dir/confirmations.
 type Files struct {
 	Memory
-	Dir string
+	Dir  string
+	JSON jsonopts.Set
 }
 
 func (f *Files) Put(ctx context.Context, rec Record) error {
@@ -118,46 +136,52 @@ func (f *Files) Put(ctx context.Context, rec Record) error {
 	return f.Memory.Put(ctx, rec)
 }
 
-func (f *Files) Get(ctx context.Context, id string) (Record, bool) {
-	if ctx.Err() != nil {
-		return Record{}, false
+func (f *Files) Get(ctx context.Context, id string) (Record, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return Record{}, false, err
 	}
-	if rec, ok := f.read(id); ok {
+	rec, err := f.read(id)
+	if err == nil {
 		_ = f.Memory.Put(ctx, rec)
-		return rec, true
+		return rec, true, nil
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		return Record{}, false, err
 	}
 	return f.Memory.Get(ctx, id)
 }
 
-func (f *Files) FindApproved(ctx context.Context, id string) (Record, bool) {
-	if ctx.Err() != nil {
-		return Record{}, false
+func (f *Files) FindApproved(ctx context.Context, id string) (Record, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return Record{}, false, err
 	}
-	if rec, ok := f.Memory.FindApproved(ctx, id); ok {
-		disk, ok := f.read(rec.ID)
-		if !ok || disk.ApprovedID != id || disk.Status != StatusApproved {
-			f.Remove(ctx, rec)
-		} else {
-			_ = f.Memory.Put(ctx, disk)
-			return disk, true
+	if rec, ok, err := f.Memory.FindApproved(ctx, id); err != nil {
+		return Record{}, false, err
+	} else if ok {
+		disk, found, err := f.approvedOnDisk(ctx, rec, id)
+		if err != nil || found {
+			return disk, found, err
 		}
 	}
 	entries, err := os.ReadDir(filepath.Join(f.Dir, "confirmations"))
 	if err != nil {
-		return Record{}, false
+		if errors.Is(err, fs.ErrNotExist) {
+			return Record{}, false, nil
+		}
+		return Record{}, false, err
 	}
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
 		}
-		rec, ok := f.read(strings.TrimSuffix(entry.Name(), ".json"))
-		if !ok || rec.ApprovedID != id || rec.Status != StatusApproved {
+		rec, err := f.read(strings.TrimSuffix(entry.Name(), ".json"))
+		if err != nil || rec.ApprovedID != id || rec.Status != StatusApproved {
 			continue
 		}
 		_ = f.Memory.Put(ctx, rec)
-		return rec, true
+		return rec, true, nil
 	}
-	return Record{}, false
+	return Record{}, false, nil
 }
 
 func (f *Files) Claim(ctx context.Context, id string) (bool, error) {
@@ -206,7 +230,7 @@ func (f *Files) write(rec Record) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("approval dir: %w", err)
 	}
-	body, err := json.Marshal(rec)
+	body, err := f.JSON.Marshal(rec)
 	if err != nil {
 		return fmt.Errorf("approval: %w", err)
 	}
@@ -216,18 +240,35 @@ func (f *Files) write(rec Record) error {
 	return nil
 }
 
-func (f *Files) read(id string) (Record, bool) {
+func (f *Files) approvedOnDisk(ctx context.Context, rec Record, id string) (Record, bool, error) {
+	disk, err := f.read(rec.ID)
+	switch {
+	case err == nil && disk.ApprovedID == id && disk.Status == StatusApproved:
+		_ = f.Memory.Put(ctx, disk)
+		return disk, true, nil
+	case err != nil && !errors.Is(err, fs.ErrNotExist):
+		return Record{}, false, err
+	default:
+		f.Remove(ctx, rec)
+		return Record{}, false, nil
+	}
+}
+
+func (f *Files) read(id string) (Record, error) {
 	id = filepath.Base(id)
 	if !plainID(id) {
-		return Record{}, false
+		return Record{}, fs.ErrNotExist
 	}
 	body, err := os.ReadFile(filepath.Join(f.Dir, "confirmations", id+".json"))
 	if err != nil {
-		return Record{}, false
+		return Record{}, err
 	}
 	var rec Record
-	if err := json.Unmarshal(body, &rec); err != nil || rec.ID != id {
-		return Record{}, false
+	if err := f.JSON.Unmarshal(body, &rec); err != nil {
+		return Record{}, fmt.Errorf("approval: %w", err)
 	}
-	return rec, true
+	if rec.ID != id {
+		return Record{}, errors.New("approval: id mismatch")
+	}
+	return rec, nil
 }

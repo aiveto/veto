@@ -14,6 +14,9 @@ type (
 		Resolve(ctx context.Context, in Request) (Credential, error)
 	}
 
+	// ProviderFunc lets a closure satisfy Provider.
+	ProviderFunc func(ctx context.Context, in Request) (Credential, error)
+
 	// Request is the call that needs a credential.
 	Request struct {
 		OperationID string
@@ -34,3 +37,7 @@ type (
 		Sign      func(*http.Request) error
 	}
 )
+
+func (f ProviderFunc) Resolve(ctx context.Context, in Request) (Credential, error) {
+	return f(ctx, in)
+}

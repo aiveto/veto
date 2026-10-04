@@ -3,7 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -139,7 +139,7 @@ func readSnapshot(path string) (baseline, error) {
 		return baseline{}, fmt.Errorf("read snapshot: %w", err)
 	}
 	var file snapshotFile
-	if err := json.Unmarshal(data, &file); err != nil {
+	if err := jsonv2.Unmarshal(data, &file); err != nil {
 		return baseline{}, fmt.Errorf("parse snapshot: %w", err)
 	}
 	if file.Operations == nil {

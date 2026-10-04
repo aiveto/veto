@@ -30,6 +30,33 @@ func TestOverlayMissingKeyKeepsDerivedSentence(t *testing.T) {
 	assert.Equal(t, "Order.customerId identifies customers.get", missing.Relation)
 }
 
+func TestNoteSynonymsAreCallerOwned(t *testing.T) {
+	cat := &catalog.Catalog{Operations: []catalog.Operation{{
+		ID: "widgets.ping", Name: "Ping", Description: "Ping", Tags: []string{"retire"},
+	}}}
+	cat.Finalize()
+	sem := New(cat)
+	got := sem.Note("widgets.ping")
+	got.Synonyms = append(got.Synonyms, "injected")
+	again := sem.Note("widgets.ping")
+	assert.NotContains(t, again.Synonyms, "injected")
+}
+
+func TestAllSynonymsIsCallerOwned(t *testing.T) {
+	cat := &catalog.Catalog{Operations: []catalog.Operation{{
+		ID: "widgets.ping", Name: "Ping", Description: "Ping", Tags: []string{"retire"},
+	}}}
+	cat.Finalize()
+	sem := New(cat)
+	got := sem.AllSynonyms()
+	got["widgets.ping"] = append(got["widgets.ping"], "injected")
+	got["other"] = []string{"nope"}
+	again := sem.AllSynonyms()
+	assert.NotContains(t, again["widgets.ping"], "injected")
+	_, ok := again["other"]
+	assert.False(t, ok)
+}
+
 func TestOverlayRejectsABadFile(t *testing.T) {
 	base := New(&catalog.Catalog{})
 	cases := []struct {

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -67,9 +66,7 @@ func runPreview(cmd previewCmd) {
 		fmt.Fprintf(os.Stderr, "preview: %v\n", err)
 		exitMain(1)
 	}
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(out); err != nil {
+	if err := writeIndentedJSON(os.Stdout, out); err != nil {
 		fmt.Fprintf(os.Stderr, "preview: %v\n", err)
 		exitMain(1)
 	}

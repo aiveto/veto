@@ -3,7 +3,7 @@ package mcpserver
 
 import (
 	"context"
-	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 
@@ -39,6 +39,7 @@ type (
 		Why         string       `json:"why,omitempty"`
 		Caller      string       `json:"caller,omitempty"`
 		HTTP        bool         `json:"http"`
+		Sent        bool         `json:"sent,omitempty"`
 	}
 
 	Server struct {
@@ -96,7 +97,7 @@ func (s *Server) Describe(operationID string) ([]byte, error) {
 		"call":      runctx.OperationLine(s.Catalog, *op, note.Text()),
 		"relation":  note.Relation,
 	}
-	return json.Marshal(payload)
+	return jsonv2.Marshal(payload)
 }
 
 // Invoke adapts string parameters at the MCP boundary and calls the shared runtime.

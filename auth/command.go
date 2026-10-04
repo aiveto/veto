@@ -3,7 +3,7 @@ package auth
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -40,7 +40,7 @@ func runCommand(ctx context.Context, scheme Scheme, in commandIn, timeout time.D
 	}
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	raw, err := json.Marshal(in)
+	raw, err := jsonv2.Marshal(in)
 	if err != nil {
 		return commandResult{}, errors.New("auth command failed")
 	}
@@ -59,7 +59,7 @@ func runCommand(ctx context.Context, scheme Scheme, in commandIn, timeout time.D
 		return commandResult{}, errors.New("auth command failed")
 	}
 	var out commandOut
-	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+	if err := jsonv2.Unmarshal(stdout.Bytes(), &out); err != nil {
 		return commandResult{}, errors.New("auth command returned invalid JSON")
 	}
 	var exp time.Time

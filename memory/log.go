@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -53,7 +53,7 @@ func readItems(f *os.File, l *Log) error {
 			continue
 		}
 		var item Item
-		if err := json.Unmarshal(line, &item); err != nil {
+		if err := jsonv2.Unmarshal(line, &item); err != nil {
 			return fmt.Errorf("parse memory: %w", err)
 		}
 		if err := l.inner.Store(context.Background(), item); err != nil {
@@ -70,7 +70,7 @@ func (l *Log) Store(ctx context.Context, item Item) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	raw, err := json.Marshal(item)
+	raw, err := jsonv2.Marshal(item)
 	if err != nil {
 		return fmt.Errorf("write memory: %w", err)
 	}
@@ -121,11 +121,13 @@ func (l *Log) rewrite(ctx context.Context) error {
 		return err
 	}
 	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
 	for _, item := range items {
-		if err := enc.Encode(item); err != nil {
+		raw, err := jsonv2.Marshal(item)
+		if err != nil {
 			return fmt.Errorf("write memory: %w", err)
 		}
+		buf.Write(raw)
+		buf.WriteByte('\n')
 	}
 	if err := atomicfile.Write(l.path, buf.Bytes(), 0); err != nil {
 		return fmt.Errorf("write memory: %w", err)

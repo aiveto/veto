@@ -117,6 +117,7 @@ func authResolver(cfg config.File) *auth.Resolver {
 		Dir:            tokenDir(cfg),
 		HTTP:           &http.Client{Timeout: cfg.Timeout},
 		CommandTimeout: cfg.Timeout,
+		JSON:           cfg.JSONSet(),
 	})
 }
 

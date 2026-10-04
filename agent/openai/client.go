@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -64,7 +65,7 @@ func (c *Client) Complete(ctx context.Context, req agent.Request) (agent.Respons
 	if c.HTTP == nil {
 		c.HTTP = http.DefaultClient
 	}
-	body, err := json.Marshal(chatRequest{
+	body, err := jsonv2.Marshal(chatRequest{
 		Model: c.Name,
 		Messages: []chatMessage{
 			{Role: "system", Content: req.Context + "\nReply with JSON only: {\"operation_id\":\"\",\"params\":{},\"flow_name\":\"\"}"},
@@ -95,7 +96,7 @@ func (c *Client) Complete(ctx context.Context, req agent.Request) (agent.Respons
 		return agent.Response{}, fmt.Errorf("model status %d", resp.StatusCode)
 	}
 	var parsed chatResponse
-	if err := json.Unmarshal(raw, &parsed); err != nil {
+	if err := jsonv2.Unmarshal(raw, &parsed); err != nil {
 		return agent.Response{}, fmt.Errorf("parse model response: %w", err)
 	}
 	if len(parsed.Choices) == 0 {
@@ -120,7 +121,7 @@ func parseReply(content string) (agent.Response, error) {
 		Params      json.RawMessage `json:"params"`
 		FlowName    string          `json:"flow_name"`
 	}
-	if err := json.Unmarshal([]byte(content), &wire); err != nil {
+	if err := jsonv2.Unmarshal([]byte(content), &wire); err != nil {
 		return agent.Response{}, fmt.Errorf("parse model json: %w", err)
 	}
 	params, err := coerceParams(wire.Params)
@@ -136,7 +137,7 @@ func coerceParams(raw json.RawMessage) (map[string]string, error) {
 		return map[string]string{}, nil
 	}
 	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &obj); err != nil {
+	if err := jsonv2.Unmarshal(raw, &obj); err != nil {
 		return nil, fmt.Errorf("parse model params: %w", err)
 	}
 	out := make(map[string]string, len(obj))
@@ -158,7 +159,7 @@ func coerceValue(raw json.RawMessage) (string, error) {
 	switch raw[0] {
 	case '"':
 		var s string
-		if err := json.Unmarshal(raw, &s); err != nil {
+		if err := jsonv2.Unmarshal(raw, &s); err != nil {
 			return "", err
 		}
 		return s, nil

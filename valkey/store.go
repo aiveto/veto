@@ -3,12 +3,12 @@ package valkey
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/aiveto/veto/jsonopts"
 	"github.com/aiveto/veto/policy"
 	"github.com/valkey-io/valkey-go"
 )
@@ -22,7 +22,8 @@ const (
 
 // Store keeps confirmation records in Valkey or Redis. Claim is SET NX.
 type Store struct {
-	c valkey.Client
+	c    valkey.Client
+	JSON jsonopts.Set
 }
 
 // Dial opens a RESP server. url is a redis://, valkey://, or host:port.
@@ -51,7 +52,7 @@ func Dial(ctx context.Context, url string) (*Store, error) {
 }
 
 func (s *Store) Put(ctx context.Context, rec policy.Record) error {
-	body, err := json.Marshal(rec)
+	body, err := s.JSON.Marshal(rec)
 	if err != nil {
 		return fmt.Errorf("approval: %w", err)
 	}
@@ -70,20 +71,23 @@ func (s *Store) Put(ctx context.Context, rec policy.Record) error {
 	return nil
 }
 
-func (s *Store) Get(ctx context.Context, id string) (policy.Record, bool) {
+func (s *Store) Get(ctx context.Context, id string) (policy.Record, bool, error) {
 	return s.load(ctx, recPrefix+id)
 }
 
-func (s *Store) FindApproved(ctx context.Context, approvedID string) (policy.Record, bool) {
+func (s *Store) FindApproved(ctx context.Context, approvedID string) (policy.Record, bool, error) {
 	id, err := s.c.Do(ctx, s.c.B().Get().Key(approvedPrefix+approvedID).Build()).ToString()
 	if err != nil {
-		return policy.Record{}, false
+		if valkey.IsValkeyNil(err) {
+			return policy.Record{}, false, nil
+		}
+		return policy.Record{}, false, fmt.Errorf("approval store: %w", err)
 	}
-	rec, ok := s.load(ctx, recPrefix+id)
-	if !ok || rec.ApprovedID != approvedID || rec.Status != policy.StatusApproved {
-		return policy.Record{}, false
+	rec, ok, err := s.load(ctx, recPrefix+id)
+	if err != nil || !ok || rec.ApprovedID != approvedID || rec.Status != policy.StatusApproved {
+		return policy.Record{}, false, err
 	}
-	return rec, true
+	return rec, true, nil
 }
 
 func (s *Store) Claim(ctx context.Context, id string) (bool, error) {
@@ -119,16 +123,22 @@ func (s *Store) set(ctx context.Context, key, val string, ttl time.Duration) err
 	return nil
 }
 
-func (s *Store) load(ctx context.Context, key string) (policy.Record, bool) {
+func (s *Store) load(ctx context.Context, key string) (policy.Record, bool, error) {
 	raw, err := s.c.Do(ctx, s.c.B().Get().Key(key).Build()).AsBytes()
 	if err != nil {
-		return policy.Record{}, false
+		if valkey.IsValkeyNil(err) {
+			return policy.Record{}, false, nil
+		}
+		return policy.Record{}, false, fmt.Errorf("approval store: %w", err)
 	}
 	var rec policy.Record
-	if json.Unmarshal(raw, &rec) != nil || rec.ID == "" {
-		return policy.Record{}, false
+	if err := s.JSON.Unmarshal(raw, &rec); err != nil {
+		return policy.Record{}, false, fmt.Errorf("approval store: %w", err)
 	}
-	return rec, true
+	if rec.ID == "" {
+		return policy.Record{}, false, errors.New("approval store: empty id")
+	}
+	return rec, true, nil
 }
 
 func recordTTL(rec policy.Record) time.Duration {

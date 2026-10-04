@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"os"
 
@@ -64,9 +63,7 @@ func packOutput(loop *agent.Loop, message string, asJSON bool) (string, error) {
 		return pack.Serialize() + "\n", nil
 	}
 	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(pack); err != nil {
+	if err := writeIndentedJSON(&buf, pack); err != nil {
 		return "", err
 	}
 	return buf.String(), nil

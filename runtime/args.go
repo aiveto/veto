@@ -1,10 +1,9 @@
 package runtime
 
 import (
-	"bytes"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"fmt"
-	"strings"
 )
 
 // FromStrings adapts a string map at a boundary that does not carry JSON types.
@@ -50,11 +49,9 @@ func wireValue(v any) (string, error) {
 }
 
 func jsonText(v any) (string, error) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(v); err != nil {
+	b, err := jsonv2.Marshal(v)
+	if err != nil {
 		return "", err
 	}
-	return strings.TrimSuffix(buf.String(), "\n"), nil
+	return string(b), nil
 }

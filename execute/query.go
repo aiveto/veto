@@ -2,6 +2,7 @@ package execute
 
 import (
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"maps"
 	"net/url"
 	"slices"
@@ -76,10 +77,8 @@ func writeDelimited(q url.Values, p catalog.Param, value any, sep, raw string) {
 }
 
 func decodeStructured(raw string) (any, bool) {
-	dec := json.NewDecoder(strings.NewReader(raw))
-	dec.UseNumber()
 	var value any
-	if err := dec.Decode(&value); err != nil {
+	if err := jsonv2.Unmarshal([]byte(raw), &value); err != nil {
 		return nil, false
 	}
 	switch value.(type) {
@@ -96,12 +95,14 @@ func scalar(v any) string {
 		return t
 	case json.Number:
 		return t.String()
+	case float64:
+		return strconv.FormatFloat(t, 'f', -1, 64)
 	case bool:
 		return strconv.FormatBool(t)
 	case nil:
 		return ""
 	default:
-		b, err := json.Marshal(t)
+		b, err := jsonv2.Marshal(t)
 		if err != nil {
 			return ""
 		}

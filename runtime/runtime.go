@@ -68,6 +68,7 @@ type (
 		Why         string       `json:"Why,omitempty"`
 		Caller      string       `json:"Caller,omitempty"`
 		HTTP        bool         `json:"HTTP"`
+		Sent        bool         `json:"Sent"`
 	}
 
 	// HTTPRequest is the call that would be sent, with secret values removed.
@@ -212,7 +213,11 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 	}
 	call, err := rt.Exec.InvokeHTTPResult(ctx, op, args)
 	if err != nil {
-		return rt.record(ctx, errorResult(req.Operation, "", err)), err
+		res := errorResult(req.Operation, "", err)
+		res.HTTP = call.HTTP
+		res.HTTPStatus = call.Status
+		res.Sent = call.Sent || call.HTTP
+		return rt.record(ctx, res), err
 	}
 	status := call.Code
 	if status == "" {
@@ -228,6 +233,7 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 		Truncated:   call.Truncated,
 		Page:        call.Page,
 		HTTP:        true,
+		Sent:        true,
 	}), nil
 }
 

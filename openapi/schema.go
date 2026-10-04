@@ -2,6 +2,7 @@ package openapi
 
 import (
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"slices"
 	"sort"
 	"strconv"
@@ -87,7 +88,7 @@ func schemaDefault(ref *openapi3.SchemaRef) string {
 	case json.Number:
 		return v.String()
 	default:
-		b, err := json.Marshal(v)
+		b, err := jsonv2.Marshal(v)
 		if err != nil {
 			return ""
 		}
@@ -142,84 +143,74 @@ func collectFields(ref *openapi3.SchemaRef, names *[]string, seen map[string]boo
 }
 
 func schemaJSON(ref *openapi3.SchemaRef) string {
-	node := inlineSchema(ref, map[*openapi3.Schema]bool{})
-	if node == nil {
+	s := cloneSchema(ref, map[*openapi3.Schema]bool{})
+	if s == nil {
 		return ""
 	}
-	b, err := json.Marshal(node)
+	b, err := jsonv2.Marshal(s)
 	if err != nil {
 		return ""
 	}
 	return string(b)
 }
 
-func inlineSchema(ref *openapi3.SchemaRef, seen map[*openapi3.Schema]bool) any {
+func cloneSchema(ref *openapi3.SchemaRef, seen map[*openapi3.Schema]bool) *openapi3.Schema {
 	if ref == nil || ref.Value == nil {
 		return nil
 	}
 	s := ref.Value
 	if seen[s] {
-		return map[string]any{}
+		return &openapi3.Schema{}
 	}
 	seen[s] = true
 	defer delete(seen, s)
+	out := *s
+	out.Items = cloneRef(s.Items, seen)
+	out.Not = cloneRef(s.Not, seen)
+	out.Contains = cloneRef(s.Contains, seen)
+	out.PropertyNames = cloneRef(s.PropertyNames, seen)
+	out.If = cloneRef(s.If, seen)
+	out.Then = cloneRef(s.Then, seen)
+	out.Else = cloneRef(s.Else, seen)
+	out.AdditionalProperties.Schema = cloneRef(s.AdditionalProperties.Schema, seen)
+	out.Properties = cloneSchemas(s.Properties, seen)
+	out.PatternProperties = cloneSchemas(s.PatternProperties, seen)
+	out.DependentSchemas = cloneSchemas(s.DependentSchemas, seen)
+	out.AllOf = cloneRefs(s.AllOf, seen)
+	out.OneOf = cloneRefs(s.OneOf, seen)
+	out.AnyOf = cloneRefs(s.AnyOf, seen)
+	out.PrefixItems = cloneRefs(s.PrefixItems, seen)
+	return &out
+}
 
-	out := map[string]any{}
-	if s.Type != nil && len(*s.Type) > 0 {
-		types := []string(*s.Type)
-		if len(types) == 1 {
-			out["type"] = types[0]
-		} else {
-			out["type"] = types
+func cloneRef(ref *openapi3.SchemaRef, seen map[*openapi3.Schema]bool) *openapi3.SchemaRef {
+	s := cloneSchema(ref, seen)
+	if s == nil {
+		return nil
+	}
+	return &openapi3.SchemaRef{Value: s}
+}
+
+func cloneRefs(refs openapi3.SchemaRefs, seen map[*openapi3.Schema]bool) openapi3.SchemaRefs {
+	if len(refs) == 0 {
+		return nil
+	}
+	out := make(openapi3.SchemaRefs, 0, len(refs))
+	for _, ref := range refs {
+		if node := cloneRef(ref, seen); node != nil {
+			out = append(out, node)
 		}
-	}
-	if s.Format != "" {
-		out["format"] = s.Format
-	}
-	if s.Description != "" {
-		out["description"] = s.Description
-	}
-	if len(s.Enum) > 0 {
-		out["enum"] = s.Enum
-	}
-	if len(s.Required) > 0 {
-		out["required"] = s.Required
-	}
-	if s.Items != nil {
-		if item := inlineSchema(s.Items, seen); item != nil {
-			out["items"] = item
-		}
-	}
-	if len(s.Properties) > 0 {
-		props := map[string]any{}
-		for name, p := range s.Properties {
-			if node := inlineSchema(p, seen); node != nil {
-				props[name] = node
-			}
-		}
-		out["properties"] = props
-	}
-	if len(s.AllOf) > 0 {
-		out["allOf"] = inlineList(s.AllOf, seen)
-	}
-	if len(s.OneOf) > 0 {
-		out["oneOf"] = inlineList(s.OneOf, seen)
-	}
-	if len(s.AnyOf) > 0 {
-		out["anyOf"] = inlineList(s.AnyOf, seen)
-	}
-	if len(out) == 0 {
-		return map[string]any{}
 	}
 	return out
 }
 
-func inlineList(refs openapi3.SchemaRefs, seen map[*openapi3.Schema]bool) []any {
-	out := make([]any, 0, len(refs))
-	for _, ref := range refs {
-		if node := inlineSchema(ref, seen); node != nil {
-			out = append(out, node)
-		}
+func cloneSchemas(in openapi3.Schemas, seen map[*openapi3.Schema]bool) openapi3.Schemas {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(openapi3.Schemas, len(in))
+	for name, ref := range in {
+		out[name] = cloneRef(ref, seen)
 	}
 	return out
 }
