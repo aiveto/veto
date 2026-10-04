@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/aiveto/veto/capability"
 	"github.com/aiveto/veto/mcpserver"
 	"github.com/aiveto/veto/telemetry"
 	"github.com/spf13/cobra"
@@ -94,15 +95,10 @@ func runServe(cmd serveCmd, c *cobra.Command) {
 	}
 	ctx, stopSig := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopSig()
-	calls := loop.Runtime()
-	srv := &mcpserver.Server{
-		Catalog:   loop.Catalog,
-		Semantics: loop.Semantics,
-		Calls:     &calls,
-	}
+	srv := newServer(loop)
 	opt := serveOptions(cmd)
 	if cmd.jsonLines {
-		if err := srv.RunJSON(ctx, os.Stdin, os.Stdout); err != nil && !errors.Is(err, context.Canceled) {
+		if err := capability.RunJSON(ctx, srv, os.Stdin, os.Stdout); err != nil && !errors.Is(err, context.Canceled) {
 			fmt.Fprintf(os.Stderr, "serve: %v\n", err)
 			fail()
 		}

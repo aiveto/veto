@@ -1,4 +1,4 @@
-package mcpserver_test
+package capability_test
 
 import (
 	"context"
@@ -9,9 +9,9 @@ import (
 	"testing"
 
 	"github.com/aiveto/veto/agent"
+	"github.com/aiveto/veto/capability"
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/execute"
-	"github.com/aiveto/veto/mcpserver"
 	"github.com/aiveto/veto/openapi"
 	"github.com/aiveto/veto/semantics"
 	"github.com/stretchr/testify/assert"
@@ -32,7 +32,7 @@ func TestInvokeDeleteRequiresApprovalBeforeHTTP(t *testing.T) {
 	loop, err := agent.New(cat, sem, execute.Client{BaseURL: ts.URL})
 	require.NoError(t, err)
 	calls := loop.Runtime()
-	srv := &mcpserver.Server{
+	srv := &capability.Server{
 		Catalog:   cat,
 		Semantics: sem,
 		Calls:     &calls,
@@ -84,7 +84,7 @@ func TestInvokeDeleteRunsWhenConfirmationIsOff(t *testing.T) {
 	loop, err := agent.New(cat, sem, execute.Client{BaseURL: ts.URL})
 	require.NoError(t, err)
 	calls := loop.Runtime()
-	srv := &mcpserver.Server{Catalog: cat, Semantics: sem, Calls: &calls}
+	srv := &capability.Server{Catalog: cat, Semantics: sem, Calls: &calls}
 	got, err := srv.Invoke(context.Background(), "orders.delete", map[string]string{"id": "123"}, "")
 	require.NoError(t, err)
 	assert.Equal(t, "ok", got.Status)
@@ -102,7 +102,7 @@ func TestInvokeJSONCarriesCodeAndRetryable(t *testing.T) {
 	loop, err := agent.New(cat, sem, execute.Client{BaseURL: ts.URL})
 	require.NoError(t, err)
 	calls := loop.Runtime()
-	srv := &mcpserver.Server{
+	srv := &capability.Server{
 		Catalog:   cat,
 		Semantics: sem,
 		Calls:     &calls,
@@ -147,7 +147,7 @@ func TestInvokeDiscoveryOnlyDoesNotCallHTTP(t *testing.T) {
 	loop, err := agent.New(cat, sem, execute.Client{BaseURL: ts.URL})
 	require.NoError(t, err)
 	calls := loop.Runtime()
-	srv := &mcpserver.Server{Catalog: cat, Semantics: sem, Calls: &calls}
+	srv := &capability.Server{Catalog: cat, Semantics: sem, Calls: &calls}
 	got, err := srv.Invoke(context.Background(), "orders.get", map[string]string{"id": "1"}, "")
 	require.ErrorContains(t, err, "discovery-only")
 	assert.Equal(t, "not_callable", got.Code)

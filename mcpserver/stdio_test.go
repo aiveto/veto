@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/aiveto/veto/capability"
 	"github.com/aiveto/veto/catalog"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
@@ -45,21 +46,21 @@ func TestToolAnnotationsFollowTheOperation(t *testing.T) {
 func TestMissingParamStaysStructuredOnTheToolResult(t *testing.T) {
 	cases := []struct {
 		name    string
-		res     InvokeResult
+		res     capability.InvokeResult
 		err     error
 		isError bool
 		text    string
 	}{
 		{
 			name:    "missing param",
-			res:     InvokeResult{Status: "error", Code: "missing_param", Error: "operation orders.get: id required"},
+			res:     capability.InvokeResult{Status: "error", Code: "missing_param", Error: "operation orders.get: id required"},
 			err:     errors.New("operation orders.get: id required"),
 			isError: true,
 			text:    `"code":"missing_param"`,
 		},
 		{
 			name: "confirmation",
-			res:  InvokeResult{Status: "confirmation_required", ApprovalID: "id"},
+			res:  capability.InvokeResult{Status: "confirmation_required", ApprovalID: "id"},
 		},
 	}
 	for _, tc := range cases {
@@ -81,7 +82,7 @@ func TestMissingParamStaysStructuredOnTheToolResult(t *testing.T) {
 func TestInvokeErrorReturnsTheSanitizedCause(t *testing.T) {
 	const secret = "super-secret"
 	cause := `Get "https://user:` + secret + `@api.example/orders?api_key=` + secret + `": dial tcp: connection refused Authorization: Bearer ` + secret
-	tool, _, err := invokeToolResult(nil, InvokeResult{Status: "error", OperationID: "orders.get"}, errors.New(cause))
+	tool, _, err := invokeToolResult(nil, capability.InvokeResult{Status: "error", OperationID: "orders.get"}, errors.New(cause))
 	require.NoError(t, err)
 	require.NotNil(t, tool)
 	assert.True(t, tool.IsError)
@@ -92,7 +93,7 @@ func TestInvokeErrorReturnsTheSanitizedCause(t *testing.T) {
 	assert.Contains(t, text.Text, `"error"`)
 	assert.NotContains(t, text.Text, secret)
 
-	stored, _, err := invokeToolResult(nil, InvokeResult{Status: "error", Error: "api_key=" + secret}, nil)
+	stored, _, err := invokeToolResult(nil, capability.InvokeResult{Status: "error", Error: "api_key=" + secret}, nil)
 	require.NoError(t, err)
 	require.NotEmpty(t, stored.Content)
 	storedText, ok := stored.Content[0].(*mcp.TextContent)

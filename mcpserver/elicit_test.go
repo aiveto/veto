@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/aiveto/veto/agent"
+	"github.com/aiveto/veto/capability"
 	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/openapi"
 	"github.com/aiveto/veto/semantics"
@@ -97,7 +98,7 @@ func elicitSession(t *testing.T, chat bool, elicit func(context.Context, *mcp.El
 	loop, err := agent.New(cat, sem, execute.Client{BaseURL: ts.URL})
 	require.NoError(t, err)
 	calls := loop.Runtime()
-	mcpServer := newMCP(&Server{Catalog: cat, Semantics: sem, Calls: &calls}, Options{ChatApproval: chat})
+	mcpServer := newMCP(&capability.Server{Catalog: cat, Semantics: sem, Calls: &calls}, Options{ChatApproval: chat})
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
 	serverSession, err := mcpServer.Connect(context.Background(), serverTransport, nil)
 	require.NoError(t, err)

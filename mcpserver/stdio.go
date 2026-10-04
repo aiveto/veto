@@ -1,3 +1,4 @@
+// Package mcpserver is the MCP adapter for search, describe, and invoke.
 package mcpserver
 
 import (
@@ -10,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/aiveto/veto/auth"
+	"github.com/aiveto/veto/capability"
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/policy"
 	"github.com/aiveto/veto/runtime"
@@ -28,23 +30,23 @@ type Options struct {
 	ChatApproval bool
 }
 
-func RunStdio(ctx context.Context, srv *Server, opt Options) error {
+func RunStdio(ctx context.Context, srv *capability.Server, opt Options) error {
 	opt.ChatApproval = true
 	return newMCP(srv, opt).Run(ctx, &mcp.StdioTransport{})
 }
 
-func newMCP(srv *Server, opt Options) *mcp.Server {
+func newMCP(srv *capability.Server, opt Options) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{Name: "veto", Version: Version}, nil)
 	register(server, srv, opt)
 	return server
 }
 
-func register(server *mcp.Server, srv *Server, opt Options) {
+func register(server *mcp.Server, srv *capability.Server, opt Options) {
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        SearchName,
-		Description: SearchDescription,
+		Name:        capability.SearchName,
+		Description: capability.SearchDescription,
 		Annotations: readOnlyAnnotations(),
-	}, func(ctx context.Context, req *mcp.CallToolRequest, args SearchArgs) (*mcp.CallToolResult, any, error) {
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args capability.SearchArgs) (*mcp.CallToolResult, any, error) {
 		if err := ctx.Err(); err != nil {
 			return toolError(err)
 		}
@@ -56,10 +58,10 @@ func register(server *mcp.Server, srv *Server, opt Options) {
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        DescribeName,
-		Description: DescribeDescription,
+		Name:        capability.DescribeName,
+		Description: capability.DescribeDescription,
 		Annotations: readOnlyAnnotations(),
-	}, func(ctx context.Context, req *mcp.CallToolRequest, args DescribeArgs) (*mcp.CallToolResult, any, error) {
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args capability.DescribeArgs) (*mcp.CallToolResult, any, error) {
 		if err := ctx.Err(); err != nil {
 			return toolError(err)
 		}
@@ -71,10 +73,10 @@ func register(server *mcp.Server, srv *Server, opt Options) {
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        InvokeName,
-		Description: InvokeDescription,
+		Name:        capability.InvokeName,
+		Description: capability.InvokeDescription,
 		Annotations: invokeAnnotations(true),
-	}, func(ctx context.Context, req *mcp.CallToolRequest, args InvokeArgs) (*mcp.CallToolResult, any, error) {
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args capability.InvokeArgs) (*mcp.CallToolResult, any, error) {
 		return invokeCall(ctx, req, srv, args, opt.ChatApproval)
 	})
 
@@ -85,7 +87,7 @@ func register(server *mcp.Server, srv *Server, opt Options) {
 				Name:        group,
 				Description: "Invoke an operation in " + group,
 				Annotations: groupAnnotations(srv.Catalog, group),
-			}, func(ctx context.Context, req *mcp.CallToolRequest, args InvokeArgs) (*mcp.CallToolResult, any, error) {
+			}, func(ctx context.Context, req *mcp.CallToolRequest, args capability.InvokeArgs) (*mcp.CallToolResult, any, error) {
 				op := srv.Catalog.ByID(args.OperationID)
 				if op == nil || op.Group != group {
 					return toolError(fmt.Errorf("operation %q is not in group %s", args.OperationID, group))
@@ -106,7 +108,7 @@ func register(server *mcp.Server, srv *Server, opt Options) {
 				Name:        pinnedID,
 				Description: op.Description,
 				Annotations: operationAnnotations(op),
-			}, func(ctx context.Context, req *mcp.CallToolRequest, args InvokeArgs) (*mcp.CallToolResult, any, error) {
+			}, func(ctx context.Context, req *mcp.CallToolRequest, args capability.InvokeArgs) (*mcp.CallToolResult, any, error) {
 				args.OperationID = pinnedID
 				return invokeCall(ctx, req, srv, args, opt.ChatApproval)
 			})
@@ -114,7 +116,7 @@ func register(server *mcp.Server, srv *Server, opt Options) {
 	}
 }
 
-func invokeCall(ctx context.Context, req *mcp.CallToolRequest, srv *Server, args InvokeArgs, chat bool) (*mcp.CallToolResult, any, error) {
+func invokeCall(ctx context.Context, req *mcp.CallToolRequest, srv *capability.Server, args capability.InvokeArgs, chat bool) (*mcp.CallToolResult, any, error) {
 	caller := callerID(ctx, req)
 	if args.Preview {
 		out, err := srv.Preview(ctx, runtime.Request{
@@ -128,7 +130,7 @@ func invokeCall(ctx context.Context, req *mcp.CallToolRequest, srv *Server, args
 	if reply, ok := elicitationReply(req); ok && chat {
 		answered = true
 		if reply == nil || reply.Action != "accept" {
-			return invokeToolResult(srv, InvokeResult{
+			return invokeToolResult(srv, capability.InvokeResult{
 				Status:      runtime.StatusConfirmationRequired,
 				ApprovalID:  requestState(req),
 				OperationID: args.OperationID,
@@ -191,7 +193,7 @@ func requestState(req *mcp.CallToolRequest) string {
 	return req.Params.RequestState
 }
 
-func acceptElicitation(ctx context.Context, srv *Server, req *mcp.CallToolRequest, operationID string) (string, error) {
+func acceptElicitation(ctx context.Context, srv *capability.Server, req *mcp.CallToolRequest, operationID string) (string, error) {
 	if srv == nil || srv.Calls == nil || srv.Calls.State == nil {
 		return "", errors.New("confirmation state is not set")
 	}
@@ -203,7 +205,7 @@ func acceptElicitation(ctx context.Context, srv *Server, req *mcp.CallToolReques
 	return srv.Calls.State.Approve(ctx, id)
 }
 
-func elicitConfirmation(res InvokeResult, pending *policy.PendingConfirmation) *mcp.CallToolResult {
+func elicitConfirmation(res capability.InvokeResult, pending *policy.PendingConfirmation) *mcp.CallToolResult {
 	op := res.OperationID
 	var params map[string]string
 	var caller string
@@ -232,11 +234,11 @@ func callerID(ctx context.Context, req *mcp.CallToolRequest) string {
 	return auth.Caller(ctx)
 }
 
-func previewToolResult(srv *Server, out runtime.Preview, callErr error) (*mcp.CallToolResult, any, error) {
+func previewToolResult(srv *capability.Server, out runtime.Preview, callErr error) (*mcp.CallToolResult, any, error) {
 	if callErr != nil {
 		return toolError(callErr)
 	}
-	b, err := srv.encode(out)
+	b, err := srv.Encode(out)
 	if err != nil {
 		return toolError(err)
 	}
@@ -247,7 +249,7 @@ func previewToolResult(srv *Server, out runtime.Preview, callErr error) (*mcp.Ca
 	return result, nil, err
 }
 
-func invokeToolResult(srv *Server, res InvokeResult, callErr error) (*mcp.CallToolResult, any, error) {
+func invokeToolResult(srv *capability.Server, res capability.InvokeResult, callErr error) (*mcp.CallToolResult, any, error) {
 	if callErr != nil && res.Status == "" {
 		return toolError(callErr)
 	}
@@ -258,7 +260,7 @@ func invokeToolResult(srv *Server, res InvokeResult, callErr error) (*mcp.CallTo
 		}
 		res.Error = sanitizeCause(cause)
 	}
-	b, err := srv.encode(res)
+	b, err := srv.Encode(res)
 	if err != nil {
 		return toolError(err)
 	}
@@ -413,6 +415,38 @@ func operationDestructive(op *catalog.Operation) bool {
 
 func RegisterTools(cat *catalog.Catalog, opt Options) []string {
 	return ToolNames(cat, opt.Pins, opt.DirectPins, opt.Grouped)
+}
+
+// Grouped mode adds one tool per resource, never one tool per operation.
+func ToolNames(cat *catalog.Catalog, pins []string, directPins, grouped bool) []string {
+	names := []string{
+		capability.SearchName,
+		capability.DescribeName,
+		capability.InvokeName,
+	}
+	if directPins {
+		names = append(names, pins...)
+	}
+	if grouped {
+		names = append(names, groupedResources(cat)...)
+	}
+	return names
+}
+
+func groupedResources(cat *catalog.Catalog) []string {
+	if cat == nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, op := range cat.Operations {
+		if op.Group == "" || op.Exposure == catalog.ExposureDiscovery || seen[op.Group] {
+			continue
+		}
+		seen[op.Group] = true
+		out = append(out, op.Group)
+	}
+	return out
 }
 
 func ValidatePins(cat *catalog.Catalog, pins []string) error {

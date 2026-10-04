@@ -44,6 +44,14 @@ func Caller(ctx context.Context) string {
 	return v
 }
 
+// OrLocal is the caller name on the wire. Empty is local.
+func OrLocal(id string) string {
+	if id == "" {
+		return "local"
+	}
+	return id
+}
+
 type forceKey struct{}
 
 // WithForce tells a provider to skip a cached credential and obtain a new one.

@@ -16,7 +16,6 @@ import (
 	"github.com/aiveto/veto/auth"
 	"github.com/aiveto/veto/capability"
 	"github.com/aiveto/veto/execute"
-	"github.com/aiveto/veto/mcpserver"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -24,7 +23,7 @@ import (
 func TestCLISearchDescribeInvokeMatchMCP(t *testing.T) {
 	loop, err := testCapabilityLoop(t)
 	require.NoError(t, err)
-	srv := capabilityServer(loop)
+	srv := newServer(loop)
 
 	in, err := decodeSearch([]string{"retire order 123"})
 	require.NoError(t, err)
@@ -33,7 +32,7 @@ func TestCLISearchDescribeInvokeMatchMCP(t *testing.T) {
 	mcpSearch, err := srv.RunSearch(capability.SearchArgs{Query: "retire order 123"})
 	require.NoError(t, err)
 	assert.JSONEq(t, string(mcpSearch), string(searchRaw))
-	var hits []mcpserver.SearchHit
+	var hits []capability.SearchHit
 	require.NoError(t, json.Unmarshal(searchRaw, &hits))
 	require.NotEmpty(t, hits)
 	assert.Equal(t, "orders.delete", hits[0].ID)
@@ -68,13 +67,13 @@ func TestCLIInvokeDeleteWaits(t *testing.T) {
 	}))
 	defer ts.Close()
 	loop.Exec = execute.Client{BaseURL: ts.URL, HTTP: ts.Client()}
-	srv := capabilityServer(loop)
+	srv := newServer(loop)
 	in, err := decodeInvoke([]string{`{"operation_id":"orders.delete","params":{"id":"123"}}`})
 	require.NoError(t, err)
-	ctx := auth.WithCaller(context.Background(), callerName(""))
+	ctx := auth.WithCaller(context.Background(), auth.OrLocal(""))
 	raw, err := srv.RunInvoke(ctx, in)
 	require.NoError(t, err)
-	var res mcpserver.InvokeResult
+	var res capability.InvokeResult
 	require.NoError(t, json.Unmarshal(raw, &res))
 	assert.Equal(t, "confirmation_required", res.Status)
 	assert.Equal(t, "held until you approve", res.Why)
