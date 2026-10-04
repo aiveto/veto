@@ -2,6 +2,7 @@ package runtime_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -257,7 +258,7 @@ func TestTokenURLUnsetIsNotMissingAuth(t *testing.T) {
 		Params:       []catalog.Param{{Name: "id", In: "path", Required: true}},
 	}}}
 	cat.Finalize()
-	rt := runtime.Runtime{Catalog: cat, State: policy.NewState(), Exec: errExec{err: fmt.Errorf("token url is unset")}}
+	rt := runtime.Runtime{Catalog: cat, State: policy.NewState(), Exec: errExec{err: errors.New("token url is unset")}}
 	out, err := rt.Invoke(context.Background(), runtime.Request{
 		Operation: "orders.get",
 		Arguments: runtime.FromStrings(map[string]string{"id": "1"}),

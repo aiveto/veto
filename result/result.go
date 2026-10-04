@@ -48,12 +48,12 @@ func (e AuthError) Error() string {
 		if e.Name == "" {
 			return e.Detail
 		}
-		return fmt.Sprintf("%s %s", e.Name, e.Detail)
+		return e.Name + " " + e.Detail
 	}
 	if e.Name == "" {
 		return "credential is unset"
 	}
-	return fmt.Sprintf("%s is unset", e.Name)
+	return e.Name + " is unset"
 }
 
 func (e ParamError) Error() string {
