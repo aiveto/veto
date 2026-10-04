@@ -36,6 +36,9 @@ type (
 		Truncated   bool
 		Page        *result.Page
 		RetryAfter  string
+		Why         string
+		Caller      string
+		HTTP        bool
 	}
 
 	Outcome struct {
@@ -269,6 +272,9 @@ func (l *Loop) Invoke(ctx context.Context, operationID string, params map[string
 		Truncated:   out.Truncated,
 		Page:        out.Page,
 		RetryAfter:  out.RetryAfter,
+		Why:         out.Why,
+		Caller:      out.Caller,
+		HTTP:        out.HTTP,
 	}, err
 }
 

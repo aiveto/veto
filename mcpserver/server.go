@@ -36,6 +36,9 @@ type (
 		Error       string       `json:"error,omitempty"`
 		Truncated   bool         `json:"truncated,omitempty"`
 		Page        *result.Page `json:"page,omitempty"`
+		Why         string       `json:"why,omitempty"`
+		Caller      string       `json:"caller,omitempty"`
+		HTTP        bool         `json:"http"`
 	}
 
 	Server struct {
@@ -131,6 +134,9 @@ func (s *Server) Call(ctx context.Context, req runtime.Request) (InvokeResult, e
 		Error:       call.Error,
 		Truncated:   call.Truncated,
 		Page:        call.Page,
+		Why:         call.Why,
+		Caller:      call.Caller,
+		HTTP:        call.HTTP,
 	}, err
 }
 

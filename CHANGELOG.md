@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Invoke says why a call did not run (`held until you approve`, missing auth, bad body) and whether HTTP left. `caller` is who asked.
+
 ## v0.1.4 - 2026-10-03
 
 - A tagged release pushes `ghcr.io/aiveto/veto` and publishes `io.github.aiveto/veto` to the official MCP registry.

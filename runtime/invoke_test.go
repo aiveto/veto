@@ -87,6 +87,8 @@ func TestDeleteWaitsForApproval(t *testing.T) {
 	first, err := rt.Invoke(context.Background(), req)
 	require.NoError(t, err)
 	assert.Equal(t, "confirmation_required", first.Status)
+	assert.Equal(t, "held until you approve", first.Why)
+	assert.False(t, first.HTTP)
 	assert.Equal(t, int32(0), hits.Load())
 	req.Approval = first.ApprovalID
 	_, err = rt.Invoke(context.Background(), req)
@@ -98,6 +100,8 @@ func TestDeleteWaitsForApproval(t *testing.T) {
 	second, err := rt.Invoke(context.Background(), req)
 	require.NoError(t, err)
 	assert.Equal(t, "ok", second.Status)
+	assert.True(t, second.HTTP)
+	assert.Empty(t, second.Why)
 	assert.Equal(t, int32(1), hits.Load())
 }
 
@@ -205,9 +209,44 @@ func TestInvokeRejectsABodyOutsideTheSchemaBeforeHTTP(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Equal(t, "invalid_body", out.Code)
+	assert.Contains(t, out.Why, "/age")
+	assert.False(t, out.HTTP)
 	assert.Contains(t, err.Error(), "/age")
 	assert.NotContains(t, err.Error(), secret)
 	assert.NotContains(t, out.Error, secret)
+	assert.NotContains(t, out.Why, secret)
+	assert.Equal(t, int32(0), hits.Load())
+}
+
+func TestMissingAuthWhyDoesNotCallHTTP(t *testing.T) {
+	var hits atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+	}))
+	defer ts.Close()
+	cat := &catalog.Catalog{Operations: []catalog.Operation{{
+		ID:           "orders.get",
+		Method:       http.MethodGet,
+		PathTemplate: "/orders/{id}",
+		Params:       []catalog.Param{{Name: "id", In: "path", Required: true}},
+		Auth:         []catalog.Auth{{Name: "bearerAuth", Kind: "http"}},
+	}}}
+	cat.Finalize()
+	rt := runtime.Runtime{
+		Catalog: cat,
+		State:   policy.NewState(),
+		Exec:    execute.Client{BaseURL: ts.URL},
+	}
+	out, err := rt.Invoke(context.Background(), runtime.Request{
+		Operation: "orders.get",
+		Arguments: runtime.FromStrings(map[string]string{"id": "1"}),
+		Caller:    "ada",
+	})
+	require.ErrorContains(t, err, "bearerAuth is unset")
+	assert.Equal(t, "missing_auth", out.Code)
+	assert.Equal(t, "missing auth", out.Why)
+	assert.Equal(t, "ada", out.Caller)
+	assert.False(t, out.HTTP)
 	assert.Equal(t, int32(0), hits.Load())
 }
 
