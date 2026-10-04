@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.6 - 2026-10-04
+
 - Search returns `related_calls`. A pending id submitted as `approval_id` is `pending_approval` and does not run HTTP. `idempotency_key` is on invoke and on a pin. The agent loop copies the kernel page walk, body cap, and invoke gate. A context pack keeps the pending id after params are dropped. A generated client hides the runtime and exposes `Operation`, `SetPolicy`, and `Confirm`. A grouped tool lists the callable ids. The guide names pins, collisions, pages, SIGTERM, and `sent` versus `http`.
 - MCP construction rejects a colliding tool name before any tool is registered. A shared Valkey store claims once through the same State path as Memory and Files.
 - Runtime authorizes every pagination page. Exposure tags and paths are AND. Structured query integers stay digits on the HTTP request. A shared Memory store claims once. A Files claim is not deleted when a stale cache is refreshed. `veto serve --json` polls stdin so SIGTERM stops an idle process. Group and pin names cannot replace the three capabilities. A pin omits `operation_id`. Check drift compares every case expectation, and any lost confirmation. The guide names `sent` versus `http` and shared approval storage. ADR 029 supersedes the OR in ADR 022.
