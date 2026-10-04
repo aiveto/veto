@@ -104,7 +104,8 @@ func TestCapabilityHelpJSONIsTheMCPContract(t *testing.T) {
 	assert.Equal(t, mcpserver.SearchName, spec.Name)
 	assert.Equal(t, mcpserver.SearchCommand, spec.Command)
 	assert.Equal(t, mcpserver.SearchDescription, spec.Description)
-	var input, flags []string
+	input := make([]string, 0, len(spec.Input))
+	flags := make([]string, 0, len(spec.Flags))
 	queryRequired := false
 	for _, f := range spec.Input {
 		input = append(input, f.Name)
@@ -128,7 +129,7 @@ func TestCapabilityHelpJSONIsTheMCPContract(t *testing.T) {
 	require.True(t, got)
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &spec))
 	assert.Equal(t, mcpserver.InvokeName, spec.Name)
-	input = nil
+	input = make([]string, 0, len(spec.Input))
 	for _, f := range spec.Input {
 		input = append(input, f.Name)
 	}

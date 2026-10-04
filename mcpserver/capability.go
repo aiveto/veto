@@ -78,8 +78,8 @@ func CapabilityByCommand(name string) (Capability, bool) {
 
 func inputFields(sample any) []InputField {
 	t := reflect.TypeOf(sample)
-	var out []InputField
-	for i := 0; i < t.NumField(); i++ {
+	out := make([]InputField, 0, t.NumField())
+	for i := range t.NumField() {
 		f := t.Field(i)
 		name, typ, required := jsonField(f)
 		if name == "" || name == "-" {
@@ -102,17 +102,21 @@ func jsonField(f reflect.StructField) (name, typ string, required bool) {
 		name = f.Name
 	}
 	required = opt != "omitempty" && name != "-"
-	switch f.Type.Kind() {
-	case reflect.Map:
-		typ = "object"
-	case reflect.Slice:
-		typ = "array"
-	case reflect.Bool:
-		typ = "boolean"
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		typ = "integer"
-	default:
-		typ = "string"
-	}
+	typ = jsonType(f.Type.Kind())
 	return name, typ, required
+}
+
+func jsonType(k reflect.Kind) string {
+	switch {
+	case k == reflect.Map:
+		return "object"
+	case k == reflect.Slice:
+		return "array"
+	case k == reflect.Bool:
+		return "boolean"
+	case k >= reflect.Int && k <= reflect.Int64:
+		return "integer"
+	default:
+		return "string"
+	}
 }

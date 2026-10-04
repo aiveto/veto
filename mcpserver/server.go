@@ -130,7 +130,7 @@ func (s *Server) RunInvoke(ctx context.Context, args InvokeArgs) ([]byte, error)
 			return nil, err
 		}
 		if len(out.Errors) > 0 {
-			return b, fmt.Errorf("preview failed")
+			return b, errors.New("preview failed")
 		}
 		return b, nil
 	}

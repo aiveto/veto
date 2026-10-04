@@ -14,7 +14,7 @@ func TestCapabilitiesAreTheThreeTools(t *testing.T) {
 	assert.Equal(t, SearchCommand, caps[0].Command)
 	assert.Equal(t, DescribeName, caps[1].Name)
 	assert.Equal(t, InvokeName, caps[2].Name)
-	var names []string
+	names := make([]string, 0, len(caps[0].Input))
 	required := map[string]bool{}
 	for _, f := range caps[0].Input {
 		names = append(names, f.Name)
