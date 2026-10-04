@@ -70,7 +70,7 @@ type File struct {
 	JSON            string            `yaml:"json"`
 }
 
-// Expose keeps operations with a listed tag or under a listed path; both empty keeps every operation.
+// Expose keeps operations that pass every configured key. Tags and paths are OR within each list.
 type Expose struct {
 	Tags  []string `yaml:"tags"`
 	Paths []string `yaml:"paths"`

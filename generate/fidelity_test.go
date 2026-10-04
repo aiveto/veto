@@ -93,26 +93,26 @@ func TestGeneratedCatalogMatchesTheRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hidden := c.Calls.Catalog.ByID("orders.hidden")
+	hidden := c.Operation("orders.hidden")
 	if hidden == nil || hidden.Exposure != "discovery-only" {
 		t.Fatalf("hidden %+v", hidden)
 	}
-	secure := c.Calls.Catalog.ByID("orders.secure")
+	secure := c.Operation("orders.secure")
 	if secure == nil || len(secure.Auth) != 1 || secure.Auth[0].Name != "bearerAuth" || secure.Auth[0].Kind != "bearer" || secure.Auth[0].Header != "Authorization" {
 		t.Fatalf("auth %+v", secure)
 	}
 	if len(secure.Requirements) != 1 || len(secure.Requirements[0]) != 1 || secure.Requirements[0][0].Name != "bearerAuth" {
 		t.Fatalf("requirements %+v", secure.Requirements)
 	}
-	create := c.Calls.Catalog.ByID("orders.create")
+	create := c.Operation("orders.create")
 	if create == nil || create.Idempotency != "key" || create.Retry != "1" {
 		t.Fatalf("create %+v", create)
 	}
-	tagged := c.Calls.Catalog.ByID("orders.tagged")
+	tagged := c.Operation("orders.tagged")
 	if tagged == nil || tagged.Group != "orders" || tagged.Kind != "create" || len(tagged.Tags) != 1 || tagged.Tags[0] != "order" {
 		t.Fatalf("tagged %+v", tagged)
 	}
-	del := c.Calls.Catalog.ByID("orders.delete")
+	del := c.Operation("orders.delete")
 	if del == nil || !del.RequiresConfirmation || len(del.Permissions) != 1 || del.Permissions[0] != "orders.delete" {
 		t.Fatalf("delete %+v", del)
 	}
@@ -141,7 +141,7 @@ func TestGeneratedCatalogMatchesTheRuntime(t *testing.T) {
 		t.Fatalf("confirmation called upstream")
 	}
 
-	c.Calls.Policy = policy.Builtin{Allow: map[string]bool{}}
+	c.SetPolicy(policy.Builtin{Allow: map[string]bool{}})
 	got, err = c.OrdersDelete(context.Background(), "123", "")
 	if err != nil || got.Status != "denied" {
 		t.Fatalf("deny status %s err %v", got.Status, err)
@@ -150,7 +150,7 @@ func TestGeneratedCatalogMatchesTheRuntime(t *testing.T) {
 		t.Fatalf("denied permission called upstream")
 	}
 
-	c.Calls.Policy = policy.Builtin{}
+	c.SetPolicy(nil)
 	got, err = c.OrdersCreate(context.Background(), "")
 	if err != nil || got.Status != "ok" {
 		t.Fatalf("create status %s err %v", got.Status, err)

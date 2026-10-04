@@ -46,4 +46,9 @@ func TestDecodePinOmitsOperationID(t *testing.T) {
 	}
 	assert.NotContains(t, names, "operation_id")
 	assert.Contains(t, names, "params")
+	assert.Contains(t, names, "idempotency_key")
+	pin, err = DecodePin([]byte(`{"idempotency_key":"k1"}`))
+	require.NoError(t, err)
+	assert.Equal(t, "k1", pin.Invoke("orders.get").Idempotency)
+	assert.Equal(t, "k1", pin.Invoke("orders.get").Request().Idempotency)
 }

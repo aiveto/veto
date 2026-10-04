@@ -32,7 +32,7 @@ func TestGeneratedBodyParamReachesInvoke(t *testing.T) {
 	for _, src := range []string{string(sdk), string(cli), string(dispatch)} {
 		assert.NotContains(t, src, "_body")
 	}
-	assert.Contains(t, string(sdk), "Calls.Invoke")
+	assert.Contains(t, string(sdk), "rt.Invoke")
 	assert.Contains(t, string(sdk), `"body": body`)
 	assert.Contains(t, string(dispatch), `params["body"]`)
 

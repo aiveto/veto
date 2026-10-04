@@ -28,6 +28,9 @@ const (
 // ErrUnknownApproval is an id approve cannot find, or one that is already consumed or expired.
 var ErrUnknownApproval = errors.New("unknown approval")
 
+// ErrPendingApproval is a pending id submitted as if it were already approved.
+var ErrPendingApproval = errors.New("pending id does not run the call")
+
 type (
 	// State is the confirmation use case. Memory is the store. SetStore, SetNonceDir, and SetSigner attach adapters.
 	State struct {
@@ -224,6 +227,16 @@ func (s *State) ConsumeFor(ctx context.Context, caller, approvalID, opID string,
 		return false, err
 	}
 	if !ok || rec.Status != StatusApproved || rec.ApprovedID != approvalID {
+		held, found, gerr := store.Get(ctx, approvalID)
+		if gerr != nil {
+			return false, gerr
+		}
+		if found && held.Status == StatusPending {
+			if held.Caller != "" && held.Caller != caller {
+				return false, nil
+			}
+			return false, ErrPendingApproval
+		}
 		return false, nil
 	}
 	if rec.Caller != caller || rec.OperationID != opID || !maps.Equal(rec.Params, params) || expired(rec, now) {

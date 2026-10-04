@@ -299,7 +299,13 @@ func assembleLoop(src sources, baseURL string) (*agent.Loop, config.File, error)
 	loop.SetPolicy(srv.Calls.Policy)
 	loop.SetFloor(srv.Calls.Base)
 	loop.Notify = srv.Calls.Notify
-	loop.SetInvokeLimit(cfg.InvokeLimit)
+	loop.Pages = srv.Calls.Pages
+	loop.MaxBody = srv.Calls.MaxBody
+	if srv.Calls.Gate != nil {
+		loop.SetGate(srv.Calls.Gate)
+	} else {
+		loop.SetInvokeLimit(cfg.InvokeLimit)
+	}
 	flows, err := loadFlows(cfg)
 	if err != nil {
 		return nil, config.File{}, err

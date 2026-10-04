@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/aiveto/veto/auth"
 	"github.com/aiveto/veto/capability"
@@ -95,7 +96,7 @@ func register(server *mcp.Server, srv *capability.Server, opt Options) {
 			group := resource
 			mcp.AddTool(server, &mcp.Tool{
 				Name:        group,
-				Description: "Invoke an operation in " + group,
+				Description: groupedDescription(srv.Catalog, group),
 				Annotations: groupAnnotations(srv.Catalog, group),
 			}, func(ctx context.Context, req *mcp.CallToolRequest, _ capability.InvokeArgs) (*mcp.CallToolResult, any, error) {
 				args, err := decodeInvokeArgs(req)
@@ -397,6 +398,28 @@ func groupedResources(cat *catalog.Catalog) []string {
 		out = append(out, op.Group)
 	}
 	return out
+}
+
+func groupedDescription(cat *catalog.Catalog, group string) string {
+	ids := groupedOperationIDs(cat, group)
+	if len(ids) == 0 {
+		return "Invoke an operation in " + group
+	}
+	return "Invoke an operation in " + group + ". Set operation_id to " + strings.Join(ids, ", ") + "."
+}
+
+func groupedOperationIDs(cat *catalog.Catalog, group string) []string {
+	if cat == nil {
+		return nil
+	}
+	var ids []string
+	for _, op := range cat.Operations {
+		if op.Group != group || op.Exposure == catalog.ExposureDiscovery {
+			continue
+		}
+		ids = append(ids, op.ID)
+	}
+	return ids
 }
 
 func ValidatePins(cat *catalog.Catalog, pins []string) error {

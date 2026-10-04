@@ -64,7 +64,7 @@ func traceExporter(export string) (sdktrace.SpanExporter, error) {
 
 func Allowed(key string) bool {
 	switch key {
-	case "operation.id", "decision", "http.method", "http.status", "approval.id", "flow.name", "tools", ToolNameAttr, OperationIDAttr:
+	case "operation.id", "decision", "http.method", "http.status", "approval.id", "flow.name", "tools", "why", "sent", "http", ToolNameAttr, OperationIDAttr:
 		return true
 	default:
 		return false

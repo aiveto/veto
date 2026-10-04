@@ -99,6 +99,60 @@ func TestRecentTurnsStayInThePack(t *testing.T) {
 	assert.Contains(t, model.saw, "earlier turn about widgets")
 }
 
+func TestLoopFollowsPagesLikeTheKernel(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "spec.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(`openapi: 3.0.3
+info: {title: Orders, version: "1"}
+paths:
+  /orders:
+    get:
+      operationId: orders.list
+      parameters:
+        - name: cursor
+          in: query
+          schema: {type: string}
+      responses:
+        "200":
+          description: page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: {type: array, items: {type: object}}
+                  next: {type: string}
+          links:
+            next:
+              operationId: orders.list
+              parameters:
+                cursor: $response.body#/next
+`), 0o600))
+	cat, err := openapi.Load(context.Background(), path)
+	require.NoError(t, err)
+	var hits atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		if r.URL.Query().Get("cursor") == "b" {
+			_, _ = w.Write([]byte(`{"items":[{"id":"2"}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"items":[{"id":"1"}],"next":"b"}`))
+	}))
+	defer ts.Close()
+	loop, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
+	require.NoError(t, err)
+	one, err := loop.Invoke(context.Background(), "orders.list", nil, "")
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), hits.Load())
+	assert.JSONEq(t, `{"items":[{"id":"1"}],"next":"b"}`, one.Body)
+	loop.Pages = 5
+	hits.Store(0)
+	many, err := loop.Invoke(context.Background(), "orders.list", nil, "")
+	require.NoError(t, err)
+	assert.Equal(t, int32(2), hits.Load())
+	assert.JSONEq(t, `[{"id":"1"},{"id":"2"}]`, many.Body)
+}
+
 func TestLoopShowsStableHTTPCode(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)

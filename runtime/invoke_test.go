@@ -94,8 +94,10 @@ func TestDeleteWaitsForApproval(t *testing.T) {
 	assert.False(t, first.HTTP)
 	assert.Equal(t, int32(0), hits.Load())
 	req.Approval = first.ApprovalID
-	_, err = rt.Invoke(context.Background(), req)
-	require.ErrorIs(t, err, runtime.ErrInvalidApproval)
+	held, err := rt.Invoke(context.Background(), req)
+	require.ErrorIs(t, err, policy.ErrPendingApproval)
+	assert.Equal(t, runtime.CodePendingApproval, held.Code)
+	assert.Equal(t, "confirmation_required", held.Status)
 	assert.Equal(t, int32(0), hits.Load())
 	approved, err := rt.State.Approve(t.Context(), first.ApprovalID)
 	require.NoError(t, err)

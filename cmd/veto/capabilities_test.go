@@ -127,6 +127,8 @@ func TestCapabilityHelpJSONIsTheMCPContract(t *testing.T) {
 	}
 	assert.Contains(t, input, "operation_id")
 	assert.Contains(t, input, "params")
+	assert.Contains(t, input, "idempotency_key")
+	assert.Contains(t, spec.Description, "pending_approval")
 
 	buf.Reset()
 	got, err = jsonHelp(&buf, root, []string{"--help-json"})

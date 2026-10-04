@@ -49,7 +49,8 @@ func TestGeneratedCLIHelpAndConfirm(t *testing.T) {
 	assert.Contains(t, string(mod), "go 1.27.1")
 	sdk, err := os.ReadFile(filepath.Join(dir, "sdk", "client.go"))
 	require.NoError(t, err)
-	assert.Contains(t, string(sdk), "Calls.Invoke")
+	assert.Contains(t, string(sdk), "rt.Invoke")
+	assert.NotContains(t, string(sdk), "Calls runtime.Runtime")
 	assert.NotContains(t, string(sdk), "execute.Invoke")
 	assert.NotContains(t, string(sdk), "http.NewRequest")
 	assert.NotContains(t, string(sdk), "return agent.Call{}")
@@ -67,6 +68,11 @@ func TestGeneratedCLIHelpAndConfirm(t *testing.T) {
 	compile := exec.CommandContext(t.Context(), "go", "test", "./...")
 	compile.Dir = dir
 	out, err = compile.CombinedOutput()
+	require.NoError(t, err, string(out))
+
+	build := exec.CommandContext(t.Context(), "go", "build", "-o", "veto-gen", "./cli")
+	build.Dir = dir
+	out, err = build.CombinedOutput()
 	require.NoError(t, err, string(out))
 
 	help := exec.CommandContext(t.Context(), "go", "run", "./cli", "delete", "--help-json")

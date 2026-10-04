@@ -221,9 +221,9 @@ Cursor and Claude Desktop both take this server entry. Use a config path the `ve
 
 The env block is what `veto approve` in another shell must share, or set `approval_store` for Valkey or Redis. [veto-demo](https://github.com/aiveto/veto-demo) `make mcp` prints a complete block.
 
-`veto serve` listens on stdio. The registered tools are `capabilities_search`, `capabilities_describe`, and `capabilities_invoke`. `--pin orders.get` also registers that operation id. `--grouped` registers one tool per resource. Search returns `id`, the pack call line, related ids, and `confirmation` when the gate is on. Describe still returns the operation.
+`veto serve` listens on stdio. The registered tools are `capabilities_search`, `capabilities_describe`, and `capabilities_invoke`. `--pin orders.get` also registers that operation id; the pin schema omits `operation_id`. `--grouped` registers one tool per resource and lists the callable ids in that group's description. A group or pin name cannot replace the three capabilities. Search returns `id`, the pack call line, related ids, `related_calls`, and `confirmation` when the gate is on. Describe still returns the operation.
 
-`veto serve --json` serves JSON lines for skills and scripts. `veto --help-json` is the contract. Catalog flags stay on `serve`.
+`veto serve --json` serves JSON lines for skills and scripts. An idle `--json` process polls stdin so SIGTERM stops it. `veto --help-json` is the contract. Catalog flags stay on `serve`.
 
 ```bash
 veto --help-json
@@ -256,7 +256,7 @@ veto invoke --config veto.yaml '{"operation_id":"orders.delete","params":{"id":"
 }
 ```
 
-`operation_id` is the catalog id. `params` is an object. Path, query, and header values are strings, keyed by parameter name. `body` is the request body: a string is sent as written, and a JSON object is encoded as JSON and sent. A JSON body is checked against the request body schema before policy and HTTP. A mismatch returns `invalid_body` with the field path and the reason. The value is not echoed. `why` is `held until you approve` or `missing auth`. A bad body stays on `invalid_body` and the error. `sent` is true when the request reached the transport. `http` is true when a response was received. A lost response can leave `sent` true and `http` false; read both before retrying a mutation. `caller` is who asked. `approval_id` is empty on the first call. A `confirmation_required` result carries a pending id. That id does not run the call. Over stdio, a host that supports elicitation asks the person to accept or decline. Accept records the approval and runs the call. Decline leaves the pending id. Over `--http` that form needs `chat_approval: true` in `veto.yaml`, because the remote client is the one answering it. Otherwise the result carries the pending id, and `veto approve <id>` records the approval and prints an approved id. A later invoke with that approved id runs once.
+`operation_id` is the catalog id. `params` is an object. Path, query, and header values are strings, keyed by parameter name. `body` is the request body: a string is sent as written, and a JSON object is encoded as JSON and sent. A JSON body is checked against the request body schema before policy and HTTP. A mismatch returns `invalid_body` with the field path and the reason. The value is not echoed. `why` is `held until you approve` or `missing auth`. A bad body stays on `invalid_body` and the error. `sent` is true when the request reached the transport. `http` is true when a response was received. A lost response can leave `sent` true and `http` false; read both before retrying a mutation. `idempotency_key` is a stable retry key for that case. `caller` is who asked. `approval_id` is empty on the first call. A `confirmation_required` result carries a pending id. That id does not run the call. Submitting it as `approval_id` returns `pending_approval` and still does not call HTTP. Over stdio, a host that supports elicitation asks the person to accept or decline. Accept records the approval and runs the call. Decline leaves the pending id. Over `--http` that form needs `chat_approval: true` in `veto.yaml`, because the remote client is the one answering it. Otherwise the result carries the pending id, and `veto approve <id>` records the approval and prints an approved id. A later invoke with that approved id runs once.
 
 Approvals default to `policy.Memory` in this process. Serve and `veto approve --config veto.yaml` share `policy.Files` when `VETO_APPROVAL_NONCE_DIR` is set, or the default approval dir. More than one process sets `approval_store` in that file (or `VETO_APPROVAL_STORE`) to a Valkey or Redis URL. `Claim` is SET NX on the pending id. `State.SetStore` takes another `policy.Store`.
 
@@ -355,7 +355,7 @@ parameters:
 veto pack --config veto.yaml --message "who placed order 123"
 ```
 
-`--json` prints the same pack as JSON. The command builds a pack for that message: the rules, a one-line index, and the message. It does not attach a described operation or a pending confirmation. Those fields exist on the pack type and are filled during an agent turn. The raw spec stays out.
+`--json` prints the same pack as JSON. The command builds a pack for that message: the rules, a one-line index, and the message. It does not attach a described operation or a pending confirmation. Those fields exist on the pack type and are filled during an agent turn. A pending confirmation keeps its id after params are dropped to fit the budget. The raw spec stays out.
 
 ## Check in CI
 
@@ -472,7 +472,9 @@ Preview runs resolve, validate, and policy, then stops. It does not call upstrea
 veto generate --config veto.yaml --out ./client --module example.com/client
 ```
 
-The generated client calls through the same gate.
+The generated client calls through the same gate. `New` builds a catalog-faithful client with builtin policy. `SetPolicy` replaces that hook. `Confirm` records a yes. The runtime stays unexported.
+
+A page walk authorizes every derived request the same way as the first. `page: follow` in `veto.yaml` walks up to five pages. Unset stays one page.
 
 ## Limits
 

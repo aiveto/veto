@@ -36,7 +36,7 @@ go run ./examples/two-apis
 Someone asked who placed order 123.
 orders.get returned customerId 7.
 customers.get was called for 7 because the note said Order.customerId identifies customers.get.
-orders.delete sent no HTTP until approved.
+orders.delete did not call HTTP until approved.
 The trace left the secret out.
 ```
 
@@ -61,7 +61,7 @@ relations:
     to: customers.get
 ```
 
-Search returns the related operation. Describe returns the note, such as `Order.customerId identifies customers.get`. The Go Follow API walks that link. Invoke runs one operation. [Relations](docs/guide.md#relations).
+Search returns the related ids and `related_calls`. Describe returns the note, such as `Order.customerId identifies customers.get`. The Go Follow API walks that link. Invoke runs one operation. [Relations](docs/guide.md#relations).
 
 ## What the agent receives
 

@@ -77,7 +77,7 @@ func (b *Builder) Build(cat *catalog.Catalog, turns []Turn, described *catalog.O
 	return p
 }
 
-// The index is cut first. Related lines are dropped whole. A pending approval that does not fit is omitted.
+// The index is cut first. Related lines are dropped whole. A pending confirmation keeps its id after params are dropped.
 func (b *Builder) limit(p *Pack) {
 	p.Bytes = len(p.Serialize())
 	if p.Bytes <= b.MaxBytes {
@@ -97,11 +97,45 @@ func (b *Builder) limit(p *Pack) {
 	}
 	trimTurns(p, b.MaxBytes)
 	trimDetail(p, b.MaxBytes)
-	if len(p.Serialize()) > b.MaxBytes {
-		p.PendingConfirmation = nil
-	}
+	slimPending(p)
 	trimFloor(p, b.MaxBytes)
+	trimPending(p, b.MaxBytes)
 	p.Bytes = len(p.Serialize())
+}
+
+func slimPending(p *Pack) {
+	if p.PendingConfirmation == nil {
+		return
+	}
+	if p.PendingConfirmation.Params == nil && p.PendingConfirmation.Caller == "" {
+		return
+	}
+	kept := *p.PendingConfirmation
+	kept.Params = nil
+	kept.Caller = ""
+	p.PendingConfirmation = &kept
+}
+
+func trimPending(p *Pack, limit int) {
+	if p.PendingConfirmation == nil || len(p.Serialize()) <= limit {
+		return
+	}
+	kept := *p.PendingConfirmation
+	kept.Params = nil
+	kept.Caller = ""
+	p.PendingConfirmation = &kept
+	if len(p.Serialize()) <= limit {
+		return
+	}
+	overflow := len(p.Serialize()) - limit
+	kept.OperationID = prefixBytes(kept.OperationID, max(len(kept.OperationID)-overflow, 0))
+	p.PendingConfirmation = &kept
+	if len(p.Serialize()) <= limit {
+		return
+	}
+	overflow = len(p.Serialize()) - limit
+	kept.ID = prefixBytes(kept.ID, max(len(kept.ID)-overflow, 0))
+	p.PendingConfirmation = &kept
 }
 
 func shrinkIndex(p *Pack, limit int) {
@@ -211,7 +245,11 @@ func (p Pack) Serialize() string {
 		parts = append(parts, "related: "+rel)
 	}
 	if p.PendingConfirmation != nil {
-		parts = append(parts, "pending_confirmation: "+policy.ConfirmSentence(p.PendingConfirmation.OperationID, p.PendingConfirmation.Params))
+		line := "pending_confirmation: " + p.PendingConfirmation.ID
+		if p.PendingConfirmation.OperationID != "" || len(p.PendingConfirmation.Params) > 0 {
+			line += " " + policy.ConfirmSentence(p.PendingConfirmation.OperationID, p.PendingConfirmation.Params)
+		}
+		parts = append(parts, line)
 	}
 	return strings.Join(parts, "\n")
 }
