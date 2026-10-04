@@ -16,6 +16,9 @@ import (
 	"github.com/aiveto/veto/result"
 )
 
+// cacheSep cannot appear in a field, so "ab"+"c" and "a"+"bc" stay distinct.
+const cacheSep = "\x00"
+
 type (
 	Options struct {
 		Schemes        []Scheme
@@ -282,11 +285,7 @@ func (r *Resolver) materialScheme(ctx context.Context, a catalog.Auth, in creden
 	method := in.Method
 	key := cacheKey(s, need)
 	if extra, ok := sourceOf(s.Source).(cacheKeyed); ok {
-		suffix, err := extra.cacheExtra(ctx, r, s, method, endpoint)
-		if err != nil {
-			return Material{}, err
-		}
-		key += suffix
+		key = strings.Join([]string{key, extra.cacheSuffix(ctx, r, s, method, endpoint)}, cacheSep)
 	}
 	key = scopedKey(ctx, key)
 	if !force {
@@ -298,7 +297,7 @@ func (r *Resolver) materialScheme(ctx context.Context, a catalog.Auth, in creden
 	}
 	flightKey := key
 	if force {
-		flightKey += "\x00force"
+		flightKey = strings.Join([]string{key, "force"}, cacheSep)
 	}
 	return r.flight.Do(ctx, flightKey, func() (Material, error) {
 		if !force {
@@ -404,7 +403,7 @@ func placeToken(a catalog.Auth, headerOverride, token string, exp time.Time) Mat
 
 func scopedKey(ctx context.Context, key string) string {
 	if id := Caller(ctx); id != "" {
-		return key + "\x00" + id
+		return strings.Join([]string{key, id}, cacheSep)
 	}
 	return key
 }
@@ -412,7 +411,7 @@ func scopedKey(ctx context.Context, key string) string {
 func cacheKey(s Scheme, scopes []string) string {
 	cp := append([]string(nil), scopes...)
 	sort.Strings(cp)
-	id := strings.Join([]string{
+	return strings.Join([]string{
 		s.Source,
 		s.Name,
 		s.ClientID,
@@ -422,8 +421,9 @@ func cacheKey(s Scheme, scopes []string) string {
 		s.AuthToken,
 		s.UserToken,
 		s.Subject,
-	}, "\x00")
-	return strings.Join([]string{id, s.Audience, strings.Join(cp, " ")}, "\x00")
+		s.Audience,
+		strings.Join(cp, " "),
+	}, cacheSep)
 }
 
 func cloneMap(in map[string]string) map[string]string {

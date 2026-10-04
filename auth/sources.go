@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aiveto/veto/catalog"
@@ -19,7 +20,7 @@ type (
 	}
 
 	cacheKeyed interface {
-		cacheExtra(ctx context.Context, r *Resolver, s Scheme, method, endpoint string) (string, error)
+		cacheSuffix(ctx context.Context, r *Resolver, s Scheme, method, endpoint string) string
 	}
 
 	userHeaderSource interface {
@@ -189,8 +190,8 @@ func (commandSource) fetch(ctx context.Context, r *Resolver, s Scheme, _ catalog
 	return r.fetchCommand(ctx, s, in.operationID, in.method, in.endpoint)
 }
 
-func (commandSource) cacheExtra(ctx context.Context, _ *Resolver, _ Scheme, method, endpoint string) (string, error) {
-	return "\x00" + method + "\x00" + endpoint + "\x00" + UserToken(ctx), nil
+func (commandSource) cacheSuffix(ctx context.Context, _ *Resolver, _ Scheme, method, endpoint string) string {
+	return strings.Join([]string{method, endpoint, UserToken(ctx)}, cacheSep)
 }
 
 func (exchangeSource) ready(ctx context.Context, r *Resolver, s Scheme) bool {
@@ -230,10 +231,6 @@ func (exchangeSource) fetch(ctx context.Context, r *Resolver, s Scheme, a catalo
 	return r.fetchExchange(ctx, s, a, in.need)
 }
 
-func (exchangeSource) cacheExtra(ctx context.Context, r *Resolver, s Scheme, _, _ string) (string, error) {
-	subject := r.subjectToken(ctx, s)
-	if subject == "" {
-		return "", fmt.Errorf("%s subject token is unset", s.Name)
-	}
-	return "\x00" + subject, nil
+func (exchangeSource) cacheSuffix(ctx context.Context, r *Resolver, s Scheme, _, _ string) string {
+	return r.subjectToken(ctx, s)
 }
