@@ -16,6 +16,7 @@ import (
 	"github.com/aiveto/veto/result"
 	"github.com/aiveto/veto/runctx"
 	"github.com/aiveto/veto/runtime"
+	"github.com/aiveto/veto/semantics"
 )
 
 type (
@@ -41,7 +42,7 @@ type (
 
 	Runner struct {
 		Catalog   *catalog.Catalog
-		Semantics agent.Notes
+		Semantics semantics.Notes
 		Model     agent.Completer
 		Loop      *agent.Loop
 	}

@@ -13,6 +13,7 @@ import (
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/openapi"
+	"github.com/aiveto/veto/runtime"
 	"github.com/aiveto/veto/semantics"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -38,24 +39,24 @@ func TestInvokeDeleteRequiresApprovalBeforeHTTP(t *testing.T) {
 		Calls:     &calls,
 	}
 	ctx := context.Background()
-	first, err := srv.Invoke(ctx, "orders.delete", map[string]string{"id": "123"}, "")
+	first, err := call(srv, ctx, "orders.delete", map[string]string{"id": "123"}, "")
 	require.NoError(t, err)
 	assert.Equal(t, "confirmation_required", first.Status)
 	assert.Equal(t, "held until you approve", first.Why)
 	assert.False(t, first.HTTP)
 	assert.False(t, first.Sent)
 	assert.Equal(t, int32(0), hits.Load())
-	_, err = srv.Invoke(ctx, "orders.delete", map[string]string{"id": "123"}, first.ApprovalID)
+	_, err = call(srv, ctx, "orders.delete", map[string]string{"id": "123"}, first.ApprovalID)
 	require.Error(t, err)
 	assert.Equal(t, int32(0), hits.Load())
 	approved, err := loop.State.Approve(t.Context(), first.ApprovalID)
 	require.NoError(t, err)
 	assert.NotEqual(t, first.ApprovalID, approved)
-	second, err := srv.Invoke(ctx, "orders.delete", map[string]string{"id": "123"}, approved)
+	second, err := call(srv, ctx, "orders.delete", map[string]string{"id": "123"}, approved)
 	require.NoError(t, err)
 	assert.Equal(t, "ok", second.Status)
 	assert.Equal(t, int32(1), hits.Load())
-	_, err = srv.Invoke(ctx, "orders.delete", map[string]string{"id": "123"}, approved)
+	_, err = call(srv, ctx, "orders.delete", map[string]string{"id": "123"}, approved)
 	require.Error(t, err)
 	assert.Equal(t, int32(1), hits.Load())
 	raw, err := json.Marshal(first)
@@ -85,7 +86,7 @@ func TestInvokeDeleteRunsWhenConfirmationIsOff(t *testing.T) {
 	require.NoError(t, err)
 	calls := loop.Runtime()
 	srv := &capability.Server{Catalog: cat, Semantics: sem, Calls: &calls}
-	got, err := srv.Invoke(context.Background(), "orders.delete", map[string]string{"id": "123"}, "")
+	got, err := call(srv, context.Background(), "orders.delete", map[string]string{"id": "123"}, "")
 	require.NoError(t, err)
 	assert.Equal(t, "ok", got.Status)
 	assert.Equal(t, int32(1), hits.Load())
@@ -107,10 +108,10 @@ func TestInvokeJSONCarriesCodeAndRetryable(t *testing.T) {
 		Semantics: sem,
 		Calls:     &calls,
 	}
-	missing, err := srv.Invoke(context.Background(), "orders.get", nil, "")
+	missing, err := call(srv, context.Background(), "orders.get", nil, "")
 	require.Error(t, err)
 	assert.Equal(t, "missing_param", missing.Code)
-	got, err := srv.Invoke(context.Background(), "orders.get", map[string]string{"id": "9"}, "")
+	got, err := call(srv, context.Background(), "orders.get", map[string]string{"id": "9"}, "")
 	require.NoError(t, err)
 	raw, err := json.Marshal(got)
 	require.NoError(t, err)
@@ -148,7 +149,7 @@ func TestInvokeDiscoveryOnlyDoesNotCallHTTP(t *testing.T) {
 	require.NoError(t, err)
 	calls := loop.Runtime()
 	srv := &capability.Server{Catalog: cat, Semantics: sem, Calls: &calls}
-	got, err := srv.Invoke(context.Background(), "orders.get", map[string]string{"id": "1"}, "")
+	got, err := call(srv, context.Background(), "orders.get", map[string]string{"id": "1"}, "")
 	require.ErrorContains(t, err, "discovery-only")
 	assert.Equal(t, "not_callable", got.Code)
 	assert.Equal(t, int32(0), hits.Load())
@@ -160,4 +161,12 @@ func TestInvokeDiscoveryOnlyDoesNotCallHTTP(t *testing.T) {
 	_, err = loop.Invoke(context.Background(), "orders.delete", map[string]string{"id": "1"}, "")
 	require.ErrorContains(t, err, "discovery-only")
 	assert.Equal(t, int32(0), hits.Load())
+}
+
+func call(srv *capability.Server, ctx context.Context, operationID string, params map[string]string, approvalID string) (capability.InvokeResult, error) {
+	return srv.Call(ctx, runtime.Request{
+		Operation: operationID,
+		Arguments: runtime.FromStrings(params),
+		Approval:  approvalID,
+	})
 }

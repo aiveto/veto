@@ -116,7 +116,7 @@ func (rt *Runtime) invokeGate() *InvokeGate {
 	return rt.Gate
 }
 
-// Invoke runs one operation. MCP uses this directly. It does not run the agent loop.
+// Invoke runs one operation. It does not run the agent loop.
 func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 	if rt == nil {
 		return Result{Status: StatusError}, errors.New("runtime required")
