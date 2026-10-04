@@ -8,7 +8,7 @@ The model may request a call. Veto checks policy, requires approval for a destru
 
 Connect over MCP, speak JSON lines on `veto serve --json`, or embed the Go runtime. They share that runtime. Your services stay where they already run.
 
-<img src="docs/veto-runtime.png" width="1280" alt="Claude, Cursor, or ChatGPT talks to veto over MCP. A CLI or script uses search, describe, and invoke. Search and describe read the catalog. Only invoke runs policy, confirmation, and HTTP.">
+<img src="docs/veto-runtime.png" width="1280" alt="Claude, Cursor, or ChatGPT talks to veto over MCP. A CLI or script uses search, describe, and invoke. Search and describe read the catalog. Invoke goes to policy and confirmation, then HTTP.">
 
 ```bash
 brew install aiveto/veto/veto

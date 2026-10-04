@@ -450,6 +450,47 @@ func TestUnsignedApprovalIsOneUseAcrossProcesses(t *testing.T) {
 	assert.Equal(t, int32(1), wins.Load())
 }
 
+func TestSharedStoreConsumeOnce(t *testing.T) {
+	params := map[string]string{"id": "1"}
+	cases := []struct {
+		name string
+		new  func(*testing.T) Store
+	}{
+		{name: "memory", new: func(*testing.T) Store { return &Memory{} }},
+		{name: "files", new: func(t *testing.T) Store {
+			t.Helper()
+			return &Files{Dir: t.TempDir()}
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			for range 16 {
+				store := tc.new(t)
+				issued := NewState()
+				issued.SetStore(store)
+				pending, err := issued.RequestFor(t.Context(), "", "orders.delete", params)
+				require.NoError(t, err)
+				approved, err := issued.Approve(t.Context(), pending)
+				require.NoError(t, err)
+				var wins atomic.Int32
+				var wg sync.WaitGroup
+				for range 16 {
+					wg.Go(func() {
+						other := NewState()
+						other.SetStore(store)
+						ok, err := other.ConsumeFor(t.Context(), "", approved, "orders.delete", params)
+						if err == nil && ok {
+							wins.Add(1)
+						}
+					})
+				}
+				wg.Wait()
+				assert.Equal(t, int32(1), wins.Load())
+			}
+		})
+	}
+}
+
 func withSigner(t *testing.T, dir string, secret []byte, now func() time.Time) *State {
 	t.Helper()
 	s := NewState()

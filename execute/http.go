@@ -33,7 +33,6 @@ type Client struct {
 	RecordBody      bool
 	Auth            map[string]string
 	Creds           *auth.Resolver
-	FollowPages     int
 	FollowRedirects bool
 	MaxBody         int64
 	Fields          []string
@@ -42,14 +41,8 @@ type Client struct {
 }
 
 func (c Client) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, params map[string]string) (result.HTTPResult, error) {
-	project := c.projection(ctx)
-	follow := op != nil && c.FollowPages > 1 && len(op.Page) > 0
 	call := c
-	call.Project = project
-	// Page cursors live on the raw body. Project the merged body after the walk.
-	if follow && len(project.Fields) > 0 {
-		call.Project = runtime.Projection{}
-	}
+	call.Project = c.projection(ctx)
 	resp, view, body, sent, err := invokeResponse(ctx, call, op, params)
 	if err != nil {
 		out := received(resp)
@@ -61,34 +54,30 @@ func (c Client) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, par
 	}
 	code, retryable := classify(resp.StatusCode)
 	out := result.HTTPResult{Status: resp.StatusCode, Body: string(body), Code: code, Retryable: retryable, HTTP: true, Sent: true}
-	if follow {
-		merged, cut, err := followPages(ctx, call, op, params, string(body), c.FollowPages)
-		if err != nil {
-			return out, err
-		}
-		out.Body = merged
-		if cut {
-			out.Truncated = true
-		}
-	}
-	if follow && len(project.Fields) > 0 {
-		shaped, projected, err := shapeBody(resp.StatusCode, []byte(out.Body), false, Client{Project: project, MaxBody: c.MaxBody})
-		if err != nil {
-			return out, err
-		}
-		out.Body = string(shaped)
-		// The walk may already have stopped early. Field selection must not clear that.
-		if projected.Truncated {
-			out.Truncated = true
-		}
-		out.Page = projected.Page
-		return out, nil
-	}
 	if view.Applied {
 		out.Truncated = view.Truncated
 		out.Page = view.Page
 		return out, nil
 	}
+	return out, nil
+}
+
+// FinishPages shapes a collected page walk. Runtime authorizes each page before this runs.
+func (c Client) FinishPages(status int, body string, truncated bool, p runtime.Projection) (result.HTTPResult, error) {
+	code, retryable := classify(status)
+	out := result.HTTPResult{Status: status, Body: body, Code: code, Retryable: retryable, HTTP: true, Sent: true, Truncated: truncated}
+	if len(p.Fields) == 0 {
+		return out, nil
+	}
+	shaped, view, err := shapeBody(status, []byte(body), false, Client{Project: p, MaxBody: c.MaxBody})
+	if err != nil {
+		return out, err
+	}
+	out.Body = string(shaped)
+	if view.Truncated {
+		out.Truncated = true
+	}
+	out.Page = view.Page
 	return out, nil
 }
 

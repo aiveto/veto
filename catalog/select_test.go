@@ -27,6 +27,9 @@ func TestSelectionKeeps(t *testing.T) {
 		{name: "path prefix keeps", sel: catalog.Selection{Paths: []string{"/orders"}}, op: get, want: true},
 		{name: "path prefix stops at a segment", sel: catalog.Selection{Paths: []string{"/orders"}}, op: archive, want: false},
 		{name: "read only with a tag still drops a delete", sel: catalog.Selection{ReadOnly: true, Tags: []string{"orders"}}, op: del, want: false},
+		{name: "tag and path keep a match", sel: catalog.Selection{Tags: []string{"public"}, Paths: []string{"/public"}}, op: catalog.Operation{PathTemplate: "/public", Tags: []string{"public"}}, want: true},
+		{name: "matching tag does not bypass a path miss", sel: catalog.Selection{Tags: []string{"public"}, Paths: []string{"/public"}}, op: catalog.Operation{PathTemplate: "/admin", Tags: []string{"public"}}, want: false},
+		{name: "matching path does not bypass a tag miss", sel: catalog.Selection{Tags: []string{"public"}, Paths: []string{"/public"}}, op: catalog.Operation{PathTemplate: "/public", Tags: []string{"admin"}}, want: false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

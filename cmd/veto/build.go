@@ -322,13 +322,12 @@ func assembleKernel(src sources, baseURL string) (*capability.Server, config.Fil
 		pages = 5
 	}
 	exec := execute.Client{
-		BaseURL:     baseURL,
-		HTTP:        auth.WithEnvProxy(&http.Client{Timeout: cfg.Timeout}),
-		Auth:        authSecrets(cfg.Auth),
-		Creds:       authResolver(cfg),
-		FollowPages: pages,
-		Fields:      cfg.ResponseFields,
-		Limit:       cfg.ResponseLimit,
+		BaseURL: baseURL,
+		HTTP:    auth.WithEnvProxy(&http.Client{Timeout: cfg.Timeout}),
+		Auth:    authSecrets(cfg.Auth),
+		Creds:   authResolver(cfg),
+		Fields:  cfg.ResponseFields,
+		Limit:   cfg.ResponseLimit,
 	}
 	rt := runtime.Runtime{
 		Catalog: cat,
@@ -336,6 +335,7 @@ func assembleKernel(src sources, baseURL string) (*capability.Server, config.Fil
 		State:   policy.NewState(),
 		JSON:    cfg.JSONSet(),
 		Gate:    &runtime.InvokeGate{},
+		Pages:   pages,
 	}
 	rt.Gate.Per = cfg.InvokeLimit
 	if err := applyApprovalConfig(context.Background(), rt.State, cfg); err != nil {

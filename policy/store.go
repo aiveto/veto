@@ -41,6 +41,7 @@ type Memory struct {
 	mu       sync.Mutex
 	pending  map[string]Record
 	approved map[string]string
+	claimed  map[string]bool
 }
 
 func (m *Memory) Put(ctx context.Context, rec Record) error {
@@ -97,10 +98,23 @@ func (m *Memory) FindApproved(ctx context.Context, id string) (Record, bool, err
 	return rec, true, nil
 }
 
-func (m *Memory) Claim(ctx context.Context, _ string) (bool, error) {
+func (m *Memory) Claim(ctx context.Context, id string) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.claimed == nil {
+		m.claimed = map[string]bool{}
+	}
+	if id == "" || m.claimed[id] {
+		return false, nil
+	}
+	rec, ok := m.pending[id]
+	if !ok || rec.Status != StatusApproved {
+		return false, nil
+	}
+	m.claimed[id] = true
 	return true, nil
 }
 
@@ -115,6 +129,7 @@ func (m *Memory) Remove(ctx context.Context, rec Record) {
 
 func (m *Memory) remove(rec Record) {
 	delete(m.pending, rec.ID)
+	delete(m.claimed, rec.ID)
 	if rec.ApprovedID != "" {
 		delete(m.approved, rec.ApprovedID)
 	}

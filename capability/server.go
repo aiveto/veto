@@ -117,6 +117,20 @@ func (s *Server) RunDescribe(args DescribeArgs) ([]byte, error) {
 	return s.Describe(args.OperationID)
 }
 
+// Invoke binds a pinned tool to the shared invoke arguments.
+func (a PinArgs) Invoke(operationID string) InvokeArgs {
+	return InvokeArgs{
+		OperationID: operationID,
+		Params:      a.Params,
+		ApprovalID:  a.ApprovalID,
+		Token:       a.Token,
+		Preview:     a.Preview,
+		Fields:      a.Fields,
+		Offset:      a.Offset,
+		Limit:       a.Limit,
+	}
+}
+
 // Request is the runtime call for these arguments. Caller is set by the adapter.
 func (a InvokeArgs) Request() runtime.Request {
 	return runtime.Request{

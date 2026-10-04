@@ -32,3 +32,18 @@ func TestAllAreTheThreeTools(t *testing.T) {
 	require.Len(t, help.Capabilities, 3)
 	assert.Equal(t, SearchName, help.Capabilities[0].Name)
 }
+
+func TestDecodePinOmitsOperationID(t *testing.T) {
+	pin, err := DecodePin([]byte(`{"params":{"id":"7"}}`))
+	require.NoError(t, err)
+	assert.Equal(t, "7", pin.Params["id"])
+	got := pin.Invoke("orders.get")
+	assert.Equal(t, "orders.get", got.OperationID)
+	assert.Equal(t, "7", got.Params["id"])
+	names := make([]string, 0, len(inputFields(PinArgs{})))
+	for _, f := range inputFields(PinArgs{}) {
+		names = append(names, f.Name)
+	}
+	assert.NotContains(t, names, "operation_id")
+	assert.Contains(t, names, "params")
+}

@@ -24,6 +24,9 @@ type View struct {
 }
 
 func (c Client) projection(ctx context.Context) runtime.Projection {
+	if runtime.SkipProjection(ctx) {
+		return runtime.Projection{}
+	}
 	fields := c.Fields
 	limit := c.Limit
 	offset := 0

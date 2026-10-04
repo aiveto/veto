@@ -29,6 +29,11 @@ type Options struct {
 
 func RunStdio(ctx context.Context, srv *capability.Server, opt Options) error {
 	opt.ChatApproval = true
+	if srv != nil {
+		if err := ValidateRegistration(srv.Catalog, opt); err != nil {
+			return err
+		}
+	}
 	return newMCP(srv, opt).Run(ctx, &mcp.StdioTransport{})
 }
 
@@ -113,13 +118,12 @@ func register(server *mcp.Server, srv *capability.Server, opt Options) {
 				Name:        pinnedID,
 				Description: op.Description,
 				Annotations: operationAnnotations(op),
-			}, func(ctx context.Context, req *mcp.CallToolRequest, _ capability.InvokeArgs) (*mcp.CallToolResult, any, error) {
-				args, err := decodeInvokeArgs(req)
+			}, func(ctx context.Context, req *mcp.CallToolRequest, _ capability.PinArgs) (*mcp.CallToolResult, any, error) {
+				pin, err := decodePinArgs(req)
 				if err != nil {
 					return toolError(err)
 				}
-				args.OperationID = pinnedID
-				return invokeCall(ctx, req, srv, args, opt.ChatApproval)
+				return invokeCall(ctx, req, srv, pin.Invoke(pinnedID), opt.ChatApproval)
 			})
 		}
 	}
@@ -130,6 +134,13 @@ func decodeInvokeArgs(req *mcp.CallToolRequest) (capability.InvokeArgs, error) {
 		return capability.InvokeArgs{}, nil
 	}
 	return capability.DecodeInvoke(req.Params.Arguments)
+}
+
+func decodePinArgs(req *mcp.CallToolRequest) (capability.PinArgs, error) {
+	if req == nil || req.Params == nil {
+		return capability.PinArgs{}, nil
+	}
+	return capability.DecodePin(req.Params.Arguments)
 }
 
 func invokeCall(ctx context.Context, req *mcp.CallToolRequest, srv *capability.Server, args capability.InvokeArgs, chat bool) (*mcp.CallToolResult, any, error) {
@@ -385,7 +396,28 @@ func groupedResources(cat *catalog.Catalog) []string {
 }
 
 func ValidatePins(cat *catalog.Catalog, pins []string) error {
-	for _, p := range pins {
+	return ValidateRegistration(cat, Options{Pins: pins, DirectPins: len(pins) > 0})
+}
+
+// ValidateRegistration rejects unknown pins and colliding tool names.
+func ValidateRegistration(cat *catalog.Catalog, opt Options) error {
+	seen := map[string]string{
+		capability.SearchName:   "capability",
+		capability.DescribeName: "capability",
+		capability.InvokeName:   "capability",
+	}
+	if opt.Grouped {
+		for _, group := range groupedResources(cat) {
+			if prev, ok := seen[group]; ok {
+				return fmt.Errorf("group %q collides with %s", group, prev)
+			}
+			seen[group] = "group"
+		}
+	}
+	if !opt.DirectPins {
+		return nil
+	}
+	for _, p := range opt.Pins {
 		op := cat.ByID(p)
 		if op == nil {
 			return fmt.Errorf("unknown pin %q", p)
@@ -393,6 +425,10 @@ func ValidatePins(cat *catalog.Catalog, pins []string) error {
 		if op.Exposure == catalog.ExposureDiscovery {
 			return fmt.Errorf("pin %q is discovery-only", p)
 		}
+		if prev, ok := seen[p]; ok {
+			return fmt.Errorf("pin %q collides with %s", p, prev)
+		}
+		seen[p] = "pin"
 	}
 	return nil
 }

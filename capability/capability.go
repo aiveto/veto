@@ -40,6 +40,17 @@ type (
 		Limit       int      `json:"limit,omitempty" jsonschema:"page size when fields are set"`
 	}
 
+	// PinArgs is invoke for a pinned tool. The pin is the operation.
+	PinArgs struct {
+		Params     Params   `json:"params,omitempty" jsonschema:"parameters; strings, or a JSON object for body"`
+		ApprovalID string   `json:"approval_id,omitempty" jsonschema:"approved id from veto approve; a pending id does not run the call"`
+		Token      string   `json:"token,omitempty" jsonschema:"user token for this call when the scheme source is invoke"`
+		Preview    bool     `json:"preview,omitempty" jsonschema:"resolve, validate, and check policy, then stop before a token URL and before upstream HTTP"`
+		Fields     []string `json:"fields,omitempty" jsonschema:"response fields to return; omit them to keep the whole body"`
+		Offset     int      `json:"offset,omitempty" jsonschema:"page offset when fields are set"`
+		Limit      int      `json:"limit,omitempty" jsonschema:"page size when fields are set"`
+	}
+
 	// Line is one skill request. Exactly one of Search, Describe, or Invoke is set.
 	Line struct {
 		Search   *SearchArgs   `json:"search,omitempty"`
