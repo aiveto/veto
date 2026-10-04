@@ -48,14 +48,14 @@ func newDoctorCommand() *cobra.Command {
 }
 
 func runDoctor(cmd doctorCmd) {
-	loop, cfg, err := buildLoopBundle(cmd.contract, cmd.config, cmd.bundle, cmd.agent, cmd.relations, cmd.baseURL)
+	srv, cfg, err := buildServerBundle(cmd.contract, cmd.config, cmd.bundle, cmd.agent, cmd.relations, cmd.baseURL)
 	if err != nil {
 		releaseBundles()
 		fmt.Fprintf(os.Stderr, "doctor: %v\n", err)
 		exitMain(1)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.Timeout)
-	lines, fail := doctorReport(ctx, loop.Catalog, cfg, cmd.pin, cmd.ping)
+	lines, fail := doctorReport(ctx, srv.Catalog, cfg, cmd.pin, cmd.ping)
 	cancel()
 	if len(lines) == 0 {
 		fmt.Fprintln(os.Stderr, "ok")

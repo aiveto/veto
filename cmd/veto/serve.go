@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"syscall"
@@ -44,7 +45,7 @@ func newServeCommand() *cobra.Command {
 	c.Flags().StringVar(&cmd.relations, "relations", "", "Relations file. Overrides relations_file.")
 	c.Flags().BoolVar(&cmd.stdio, "stdio", true, "Listen on stdio for MCP.")
 	c.Flags().BoolVar(&cmd.http, "http", false, "Listen for MCP on Streamable HTTP. Requires the Veto-Caller header.")
-	c.Flags().BoolVar(&cmd.jsonLines, "json", false, "Read search, describe, and invoke as JSON lines on stdin. A skill uses this.")
+	c.Flags().BoolVar(&cmd.jsonLines, "json", false, "Serve JSON lines for skills and scripts.")
 	c.Flags().StringVar(&cmd.addr, "addr", mcpserver.DefaultAddr, "Listen address for --http.")
 	c.Flags().StringArrayVar(&cmd.pin, "pin", nil, "Register a direct MCP tool for this operation id.")
 	c.Flags().BoolVar(&cmd.directPins, "direct-pins", false, "Register pinned ids as tools. Implied by --pin.")
@@ -66,7 +67,7 @@ func runServe(cmd serveCmd, c *cobra.Command) {
 		fmt.Fprintf(os.Stderr, "serve: stdio, http, or json required\n")
 		exitMain(1)
 	}
-	loop, cfg, err := buildLoop(cmd.contract, cmd.config, cmd.agent, cmd.relations, cmd.baseURL)
+	srv, cfg, err := buildServer(cmd.contract, cmd.config, cmd.agent, cmd.relations, cmd.baseURL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "serve: %v\n", err)
 		exitMain(1)
@@ -89,16 +90,17 @@ func runServe(cmd serveCmd, c *cobra.Command) {
 		finish()
 		exitMain(1)
 	}
-	if err := mcpserver.ValidatePins(loop.Catalog, cmd.pin); err != nil {
+	if err := mcpserver.ValidatePins(srv.Catalog, cmd.pin); err != nil {
 		fmt.Fprintf(os.Stderr, "serve: %v\n", err)
 		fail()
 	}
 	ctx, stopSig := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopSig()
-	srv := newServer(loop)
 	opt := serveOptions(cmd)
 	if cmd.jsonLines {
-		if err := capability.RunJSON(ctx, srv, os.Stdin, os.Stdout); err != nil && !errors.Is(err, context.Canceled) {
+		stopRead := closeOnDone(ctx, os.Stdin)
+		defer stopRead()
+		if err := capability.RunJSON(ctx, srv, os.Stdin, os.Stdout); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, os.ErrClosed) {
 			fmt.Fprintf(os.Stderr, "serve: %v\n", err)
 			fail()
 		}
@@ -158,4 +160,16 @@ func stdioTraceConflict(stdio bool, export string) error {
 		return errors.New("trace_export stdout cannot share stdio")
 	}
 	return nil
+}
+
+func closeOnDone(ctx context.Context, c io.Closer) func() {
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = c.Close()
+		case <-done:
+		}
+	}()
+	return func() { close(done) }
 }

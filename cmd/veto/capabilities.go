@@ -106,11 +106,11 @@ func newServer(loop *agent.Loop) *capability.Server {
 }
 
 func openCapabilityServer(flags catalogFlags) (*capability.Server, error) {
-	loop, _, err := buildLoop(flags.contract, flags.config, flags.agent, flags.relations, flags.baseURL)
+	srv, _, err := buildServer(flags.contract, flags.config, flags.agent, flags.relations, flags.baseURL)
 	if err != nil {
 		return nil, err
 	}
-	return newServer(loop), nil
+	return srv, nil
 }
 
 func runCap(name string, flags catalogFlags, fn func(*capability.Server) ([]byte, error)) {

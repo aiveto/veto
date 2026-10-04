@@ -14,6 +14,7 @@ import (
 	"github.com/aiveto/veto/agentmeta"
 	"github.com/aiveto/veto/auth"
 	"github.com/aiveto/veto/bundle"
+	"github.com/aiveto/veto/capability"
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/config"
 	"github.com/aiveto/veto/execute"
@@ -22,6 +23,7 @@ import (
 	"github.com/aiveto/veto/opa"
 	"github.com/aiveto/veto/openapi"
 	"github.com/aiveto/veto/policy"
+	"github.com/aiveto/veto/runtime"
 	"github.com/aiveto/veto/semantics"
 )
 
@@ -284,53 +286,42 @@ func buildLoopBundle(contracts []string, configPath, bundlePath, agentPath, rela
 }
 
 func assembleLoop(src sources, baseURL string) (*agent.Loop, config.File, error) {
-	cfg := src.cfg
-	contracts := src.contracts
-	relationsPath := src.relations
-	agentPath := src.agent
-	cat, err := loadCatalog(contracts, relationsPath)
+	srv, cfg, err := assembleKernel(src, baseURL)
 	if err != nil {
 		return nil, config.File{}, err
 	}
-	if agentPath == "" {
-		agentPath = cfg.AgentFile
-	}
-	if err := applyAgent(cat, agentPath); err != nil {
+	loop, err := agent.New(srv.Catalog, srv.Semantics, srv.Calls.Exec)
+	if err != nil {
 		return nil, config.File{}, err
 	}
-	applyDeployment(cat, cfg)
-	if err := cat.SelectServer(cfg.Server); err != nil {
+	loop.JSON = srv.Calls.JSON
+	loop.State = srv.Calls.State
+	loop.SetPolicy(srv.Calls.Policy)
+	loop.SetFloor(srv.Calls.Base)
+	loop.Notify = srv.Calls.Notify
+	loop.SetInvokeLimit(cfg.InvokeLimit)
+	flows, err := loadFlows(cfg)
+	if err != nil {
 		return nil, config.File{}, err
 	}
-	var sem semantics.Notes = semantics.New(cat)
-	if cfg.SemanticsFile != "" {
-		data, err := os.ReadFile(cfg.SemanticsFile)
-		if err != nil {
-			return nil, config.File{}, fmt.Errorf("read semantics: %w", err)
-		}
-		over, err := semantics.ParseOverlay(data, sem)
-		if err != nil {
-			return nil, config.File{}, err
-		}
-		sem = over
+	loop.Flows = flows
+	if err := applyAgentProviders(loop, cfg); err != nil {
+		return nil, cfg, err
 	}
-	flows := map[string]*flow.Definition{}
-	if cfg.FlowFile != "" {
-		data, err := os.ReadFile(cfg.FlowFile)
-		if err != nil {
-			return nil, config.File{}, fmt.Errorf("read flow: %w", err)
-		}
-		def, err := flow.Parse(data)
-		if err != nil {
-			return nil, config.File{}, err
-		}
-		flows[def.Name] = def
+	return loop, cfg, nil
+}
+
+func assembleKernel(src sources, baseURL string) (*capability.Server, config.File, error) {
+	cfg := src.cfg
+	cat, sem, err := loadKernel(src)
+	if err != nil {
+		return nil, config.File{}, err
 	}
 	pages := 0
 	if cfg.Page == "follow" {
 		pages = 5
 	}
-	loop, err := agent.New(cat, sem, execute.Client{
+	exec := execute.Client{
 		BaseURL:     baseURL,
 		HTTP:        auth.WithEnvProxy(&http.Client{Timeout: cfg.Timeout}),
 		Auth:        authSecrets(cfg.Auth),
@@ -338,34 +329,74 @@ func assembleLoop(src sources, baseURL string) (*agent.Loop, config.File, error)
 		FollowPages: pages,
 		Fields:      cfg.ResponseFields,
 		Limit:       cfg.ResponseLimit,
-	})
-	if err != nil {
+	}
+	rt := runtime.Runtime{
+		Catalog: cat,
+		Exec:    exec,
+		State:   policy.NewState(),
+		JSON:    cfg.JSONSet(),
+		Gate:    &runtime.InvokeGate{},
+	}
+	rt.Gate.Per = cfg.InvokeLimit
+	if err := applyApprovalConfig(context.Background(), rt.State, cfg); err != nil {
 		return nil, config.File{}, err
 	}
-	loop.JSON = cfg.JSONSet()
-	if err := applyApprovalConfig(context.Background(), loop.State, cfg); err != nil {
+	if err := applyRuntimePolicy(&rt, cfg); err != nil {
 		return nil, config.File{}, err
 	}
-	loop.SetInvokeLimit(cfg.InvokeLimit)
-	loop.Flows = flows
-	if err := applyProviders(loop, cfg); err != nil {
-		return nil, cfg, err
-	}
-	return loop, cfg, nil
+	return &capability.Server{Catalog: cat, Semantics: sem, Calls: &rt}, cfg, nil
 }
 
-// applyProviders constructs the providers named in the config. The accepted values are the defaults.
-func applyProviders(loop *agent.Loop, cfg config.File) error {
-	switch cfg.Memory {
-	case "file":
-		log, err := memory.NewLog(cfg.MemoryFile)
-		if err != nil {
-			return err
-		}
-		loop.Memory = log
-	default:
-		loop.Memory = memory.New()
+func loadKernel(src sources) (*catalog.Catalog, semantics.Notes, error) {
+	cfg := src.cfg
+	agentPath := src.agent
+	cat, err := loadCatalog(src.contracts, src.relations)
+	if err != nil {
+		return nil, nil, err
 	}
+	if agentPath == "" {
+		agentPath = cfg.AgentFile
+	}
+	if err := applyAgent(cat, agentPath); err != nil {
+		return nil, nil, err
+	}
+	applyDeployment(cat, cfg)
+	if err := cat.SelectServer(cfg.Server); err != nil {
+		return nil, nil, err
+	}
+	var sem semantics.Notes = semantics.New(cat)
+	if cfg.SemanticsFile != "" {
+		data, err := os.ReadFile(cfg.SemanticsFile)
+		if err != nil {
+			return nil, nil, fmt.Errorf("read semantics: %w", err)
+		}
+		over, err := semantics.ParseOverlay(data, sem)
+		if err != nil {
+			return nil, nil, err
+		}
+		sem = over
+	}
+	return cat, sem, nil
+}
+
+func loadFlows(cfg config.File) (map[string]*flow.Definition, error) {
+	flows := map[string]*flow.Definition{}
+	if cfg.FlowFile == "" {
+		return flows, nil
+	}
+	data, err := os.ReadFile(cfg.FlowFile)
+	if err != nil {
+		return nil, fmt.Errorf("read flow: %w", err)
+	}
+	def, err := flow.Parse(data)
+	if err != nil {
+		return nil, err
+	}
+	flows[def.Name] = def
+	return flows, nil
+}
+
+func applyRuntimePolicy(rt *runtime.Runtime, cfg config.File) error {
 	base := policy.Builtin{Caller: auth.OrLocal(cfg.Caller), Allow: allowSet(cfg.Permissions)}
 	switch cfg.Policy {
 	case "opa":
@@ -377,18 +408,45 @@ func applyProviders(loop *agent.Loop, cfg config.File) error {
 		if cfg.Caller != "" {
 			eng.Principal = cfg.Caller
 		}
-		loop.SetPolicy(eng)
-		loop.SetFloor(base)
+		rt.Policy = eng
+		rt.Base = base
 	default:
-		loop.SetPolicy(base)
-		loop.SetFloor(base)
+		rt.Policy = base
+		rt.Base = base
 	}
 	if cfg.ApprovalWebhook.URL != "" || len(cfg.ApprovalWebhook.Command) > 0 {
 		hook, err := policy.NewWebhook(cfg.ApprovalWebhook.URL, append([]string(nil), cfg.ApprovalWebhook.Command...))
 		if err != nil {
 			return err
 		}
-		loop.Notify = hook
+		rt.Notify = hook
+	}
+	return nil
+}
+
+func buildServer(contracts []string, configPath, agentPath, relationsPath, baseURL string) (*capability.Server, config.File, error) {
+	return buildServerBundle(contracts, configPath, "", agentPath, relationsPath, baseURL)
+}
+
+func buildServerBundle(contracts []string, configPath, bundlePath, agentPath, relationsPath, baseURL string) (*capability.Server, config.File, error) {
+	src, err := resolveBundle(configPath, bundlePath, contracts, relationsPath, agentPath)
+	if err != nil {
+		return nil, config.File{}, err
+	}
+	return assembleKernel(src, baseURL)
+}
+
+// applyAgentProviders constructs model and memory. Search and invoke do not call this.
+func applyAgentProviders(loop *agent.Loop, cfg config.File) error {
+	switch cfg.Memory {
+	case "file":
+		log, err := memory.NewLog(cfg.MemoryFile)
+		if err != nil {
+			return err
+		}
+		loop.Memory = log
+	default:
+		loop.Memory = memory.New()
 	}
 	switch cfg.Model {
 	case "openai":

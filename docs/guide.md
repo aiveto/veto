@@ -30,6 +30,22 @@ veto check --config testdata/veto.yaml --case testdata/cases
 
 `testdata/veto.yaml` loads `orders.yaml` and `customers.yaml`. Doctor reports that `orders.delete` requires approval and exits zero. Check prints the joins and the case results.
 
+## Commands
+
+| Task | How |
+| --- | --- |
+| The catalog loads, and its operation count and joins are printed | [validate](#one-vetoyaml) |
+| Missing auth, a colliding operation id, or a parameter that cannot be sent | [doctor](#doctor) |
+| The request and the policy decision, before a token is fetched and before HTTP | [preview](#preview) |
+| Run a case | [eval](#check-in-ci) |
+| Fail when a joined operation disappears, confirmation or a permission is dropped, a new destructive operation appears, or a case expectation changes. `confirmation: false` is the record of a deployment-wide drop | [check --against](#check-in-ci) |
+| Print a saved trace | [replay --from](#replay) |
+| Run a message | [replay](#replay) |
+| Share contracts, relations, and cases apart from deployment credentials | [capability bundle](#capability-bundle) |
+| Call the same runtime from your own Go module | [generate](#generate) a client, a CLI, and an MCP dispatch package |
+
+Traces are OpenTelemetry. OTLP export is optional. The Go model and memory interfaces, and sequential flows, run in-process. They are not a durable workflow service.
+
 ## One veto.yaml
 
 ```bash
@@ -207,7 +223,7 @@ The env block is what `veto approve` in another shell must share, or set `approv
 
 `veto serve` listens on stdio. The registered tools are `capabilities_search`, `capabilities_describe`, and `capabilities_invoke`. `--pin orders.get` also registers that operation id. `--grouped` registers one tool per resource. Search returns `id`, the pack call line, related ids, and `confirmation` when the gate is on. Describe still returns the operation.
 
-A skill uses the same three on one process. `veto --help-json` is the contract. `veto serve --json` reads lines. Catalog flags stay on `serve`.
+`veto serve --json` serves JSON lines for skills and scripts. `veto --help-json` is the contract. Catalog flags stay on `serve`.
 
 ```bash
 veto --help-json

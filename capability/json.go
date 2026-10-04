@@ -27,9 +27,12 @@ func RunJSON(ctx context.Context, s *Server, r io.Reader, w io.Writer) error {
 		b, err := s.Handle(ctx, line)
 		if err != nil {
 			failed = err
-			b, encErr := s.Encode(map[string]string{"error": err.Error()})
-			if encErr != nil {
-				return encErr
+			if len(b) == 0 {
+				var encErr error
+				b, encErr = s.Encode(map[string]string{"error": err.Error()})
+				if encErr != nil {
+					return encErr
+				}
 			}
 			if err := writeLine(w, b); err != nil {
 				return err

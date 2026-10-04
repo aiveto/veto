@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	jsonv2 "encoding/json/v2"
+
 	"github.com/aiveto/veto/jsonopts"
 )
 
@@ -42,6 +44,8 @@ func wireValue(v any, opts jsonopts.Set) (string, error) {
 		return "", nil
 	case string:
 		return val, nil
+	case json.Number:
+		return val.String(), nil
 	case json.RawMessage:
 		return string(val), nil
 	default:
@@ -49,8 +53,8 @@ func wireValue(v any, opts jsonopts.Set) (string, error) {
 	}
 }
 
-func jsonText(v any, opts jsonopts.Set) (string, error) {
-	b, err := opts.Marshal(v)
+func jsonText(v any, _ jsonopts.Set) (string, error) {
+	b, err := jsonv2.Marshal(v, jsonv2.Deterministic(true))
 	if err != nil {
 		return "", err
 	}
