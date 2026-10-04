@@ -539,6 +539,7 @@ func collectUses(opID string, item *openapi3.PathItem, op *openapi3.Operation, u
 			}
 		}
 	}
+	slices.Sort(names)
 	for _, name := range names {
 		key := opID + "\x00" + name
 		if seen[key] {

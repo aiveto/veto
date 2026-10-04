@@ -1,5 +1,7 @@
 package catalog
 
+import "sort"
+
 const (
 	NodeResource  NodeKind = "resource"
 	NodeOperation NodeKind = "operation"
@@ -111,5 +113,6 @@ func (g Graph) Schemas(operationID string) []string {
 	if out == nil {
 		return []string{}
 	}
+	sort.Strings(out)
 	return out
 }

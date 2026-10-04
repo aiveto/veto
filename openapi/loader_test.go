@@ -38,6 +38,15 @@ func TestLoadRejectsIncompleteDocuments(t *testing.T) {
 	}
 }
 
+func TestLoadListsSchemasInStableOrder(t *testing.T) {
+	first, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
+	require.NoError(t, err)
+	second, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
+	require.NoError(t, err)
+	assert.Equal(t, first.Graph.Schemas("orders.get"), second.Graph.Schemas("orders.get"))
+	assert.Equal(t, first.Graph.Schemas("orders.delete"), second.Graph.Schemas("orders.delete"))
+}
+
 func TestLoadReadsAnHTTPContract(t *testing.T) {
 	var hits int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
