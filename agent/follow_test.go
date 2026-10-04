@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -138,8 +139,13 @@ func TestFollowPointerAndUnmappedLink(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			cat := *base
-			cat.Links = append([]catalog.OpLink{}, base.Links...)
+			cat := &catalog.Catalog{
+				Title:      base.Title,
+				Version:    base.Version,
+				Operations: slices.Clone(base.Operations),
+				Links:      slices.Clone(base.Links),
+				Uses:       slices.Clone(base.Uses),
+			}
 			if tc.expr != "" {
 				cat.Links = append(cat.Links, catalog.OpLink{
 					From:   "orders.get",
@@ -158,7 +164,7 @@ func TestFollowPointerAndUnmappedLink(t *testing.T) {
 				w.WriteHeader(http.StatusNoContent)
 			}))
 			defer ts.Close()
-			loop, err := agent.New(&cat, nil, execute.Client{BaseURL: ts.URL})
+			loop, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
 			require.NoError(t, err)
 			_, err = loop.Follow(context.Background(), "orders.get", map[string]string{"id": "1"}, "")
 			if tc.wantErr != "" {
