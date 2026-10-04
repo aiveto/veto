@@ -103,3 +103,37 @@ func TestCheckParamsRejectsUnserializable(t *testing.T) {
 	err := op.CheckParams(map[string]string{"id": "abc"})
 	assert.ErrorContains(t, err, "cannot be serialized")
 }
+
+func TestCheckParamsChecksQueryPathAndHeaderSchema(t *testing.T) {
+	op := &catalog.Operation{
+		ID: "orders.list",
+		Params: []catalog.Param{
+			{Name: "status", In: "query", Schema: `{"type":"string","enum":["open","closed"]}`},
+			{Name: "limit", In: "query", Schema: `{"type":"integer"}`},
+			{Name: "id", In: "path", Required: true, Style: "simple", Schema: `{"type":"string"}`},
+			{Name: "X-Trace", In: "header", Schema: `{"type":"boolean"}`},
+		},
+	}
+	assert.NoError(t, op.CheckParams(map[string]string{"status": "open", "limit": "5", "id": "1", "X-Trace": "true"}))
+	assert.NoError(t, op.CheckParams(map[string]string{"limit": "9007199254740993", "id": "1"}))
+
+	const secret = "s3cret-value"
+	err := op.CheckParams(map[string]string{"status": secret, "id": "1"})
+	bad, ok := errors.AsType[result.ParamError](err)
+	require.True(t, ok, err)
+	assert.Equal(t, "status", bad.Name)
+	assert.NotEmpty(t, bad.Reason)
+	assert.NotContains(t, err.Error(), secret)
+
+	err = op.CheckParams(map[string]string{"limit": "nope", "id": "1"})
+	bad, ok = errors.AsType[result.ParamError](err)
+	require.True(t, ok, err)
+	assert.Equal(t, "limit", bad.Name)
+	assert.Equal(t, "must be an integer", bad.Reason)
+
+	err = op.CheckParams(map[string]string{"id": "1", "X-Trace": "maybe"})
+	bad, ok = errors.AsType[result.ParamError](err)
+	require.True(t, ok, err)
+	assert.Equal(t, "X-Trace", bad.Name)
+	assert.Equal(t, "must be a boolean", bad.Reason)
+}

@@ -50,6 +50,36 @@ func (s *relationSuite) TestRejectsUnusedSchemaAndMissingTarget() {
 	s.Require().ErrorContains(err, "unknown operation")
 }
 
+func (s *relationSuite) TestJoinFromOtherOperationIsKept() {
+	err := catalog.ApplyRelations(s.cat, []catalog.Relation{{Schema: "Order", Field: "id", To: "orders.get"}})
+	s.Require().NoError(err)
+	s.Contains(s.cat.Graph.Related("orders.list"), "orders.get")
+	s.NotContains(s.cat.Graph.Related("orders.get"), "orders.get")
+}
+
+func (s *relationSuite) TestRelatedIdsAreUnique() {
+	s.Require().NoError(catalog.ApplyRelations(s.cat, []catalog.Relation{
+		{Schema: "Order", Field: "customerId", To: "customers.get"},
+		{Schema: "Order", Field: "warehouseId", To: "customers.get"},
+	}))
+	n := 0
+	for _, id := range s.cat.Graph.Related("orders.get") {
+		if id == "customers.get" {
+			n++
+		}
+	}
+	s.Equal(1, n)
+}
+
+func TestApplyRelationsRejectsOnlySelf(t *testing.T) {
+	cat := &catalog.Catalog{
+		Operations: []catalog.Operation{{ID: "orders.get", Name: "get"}},
+		Uses:       []catalog.SchemaUse{{OperationID: "orders.get", Name: "Order"}},
+	}
+	err := catalog.ApplyRelations(cat, []catalog.Relation{{Schema: "Order", Field: "id", To: "orders.get"}})
+	require.ErrorContains(t, err, "same operation")
+}
+
 func TestRelations(t *testing.T) {
 	suite.Run(t, new(relationSuite))
 }

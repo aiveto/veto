@@ -97,11 +97,16 @@ func ApplyRelations(cat *Catalog, rels []Relation) error {
 			return fmt.Errorf("relation schema %q is not used", r.Schema)
 		}
 		note := r.Schema + "." + r.Field
+		applied := 0
 		for _, from := range froms {
 			if from == r.To {
 				continue
 			}
 			cat.Links = append(cat.Links, OpLink{From: from, To: r.To, Note: note})
+			applied++
+		}
+		if applied == 0 {
+			return fmt.Errorf("relation %s.%s to %q is the same operation", r.Schema, r.Field, r.To)
 		}
 	}
 	cat.Finalize()

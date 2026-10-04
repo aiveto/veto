@@ -102,7 +102,7 @@ func TestStructuredQueryKeepsLargeIntegersOnTheWire(t *testing.T) {
 	defer ts.Close()
 	cat := loadSpec(t, queryExecSpec)
 	_, err := (execute.Client{BaseURL: ts.URL}).InvokeHTTPResult(context.Background(), cat.ByID("search.find"), map[string]string{
-		"ids":    `[` + id + `]`,
+		"ids":    `["` + id + `"]`,
 		"filter": `{"limit":` + id + `}`,
 	})
 	require.NoError(t, err)

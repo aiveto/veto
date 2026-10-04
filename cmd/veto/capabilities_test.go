@@ -138,6 +138,22 @@ func TestCLIInvokeTTYDeclineLeavesPending(t *testing.T) {
 	assert.Equal(t, int32(0), hits.Load())
 }
 
+func TestConfirmInvokeTTYNeedsStdinAndStdout(t *testing.T) {
+	invokeIsTTY = func() bool { return false }
+	t.Cleanup(func() { invokeIsTTY = detectInvokeTTY })
+	accepted, asked := confirmInvokeTTY("delete orders.delete id=123?")
+	assert.False(t, accepted)
+	assert.False(t, asked)
+}
+
+func TestIsCharDevice(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "plain")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = f.Close() })
+	assert.False(t, isCharDevice(f))
+	assert.False(t, isCharDevice(nil))
+}
+
 func TestCLIInvokeWithoutTTYLeavesPending(t *testing.T) {
 	loop, err := testCapabilityLoop(t)
 	require.NoError(t, err)

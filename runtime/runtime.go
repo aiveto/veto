@@ -25,6 +25,7 @@ const (
 	CodeMissingAuth            = "missing_auth"
 	CodeInvalidBody            = "invalid_body"
 	CodeMissingParam           = "missing_param"
+	CodeInvalidParam           = "invalid_param"
 	CodeNotCallable            = "not_callable"
 	CodeInvokeLimited          = "invoke_limited"
 	CodePendingApproval        = "pending_approval"
@@ -331,7 +332,10 @@ func errorResult(op, code string, err error) Result {
 }
 
 func paramCode(err error) string {
-	if _, ok := errors.AsType[result.ParamError](err); ok {
+	if e, ok := errors.AsType[result.ParamError](err); ok {
+		if e.Reason != "" {
+			return CodeInvalidParam
+		}
 		return CodeMissingParam
 	}
 	if _, ok := errors.AsType[result.BodyError](err); ok {

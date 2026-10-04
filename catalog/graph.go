@@ -86,11 +86,14 @@ func (g Graph) OperationsForResource(resource string) []string {
 }
 
 func (g Graph) Related(operationID string) []string {
+	seen := map[string]bool{}
 	var out []string
 	for _, e := range g.Edges {
-		if (e.Kind == EdgeLinks || e.Kind == EdgeRelates) && e.From == operationID {
-			out = append(out, e.To)
+		if (e.Kind != EdgeLinks && e.Kind != EdgeRelates) || e.From != operationID || seen[e.To] {
+			continue
 		}
+		seen[e.To] = true
+		out = append(out, e.To)
 	}
 	if out == nil {
 		return []string{}
