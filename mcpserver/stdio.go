@@ -29,18 +29,22 @@ type Options struct {
 
 func RunStdio(ctx context.Context, srv *capability.Server, opt Options) error {
 	opt.ChatApproval = true
-	if srv != nil {
-		if err := ValidateRegistration(srv.Catalog, opt); err != nil {
-			return err
-		}
+	server, err := newMCP(srv, opt)
+	if err != nil {
+		return err
 	}
-	return newMCP(srv, opt).Run(ctx, &mcp.StdioTransport{})
+	return server.Run(ctx, &mcp.StdioTransport{})
 }
 
-func newMCP(srv *capability.Server, opt Options) *mcp.Server {
+func newMCP(srv *capability.Server, opt Options) (*mcp.Server, error) {
+	if srv != nil {
+		if err := ValidateRegistration(srv.Catalog, opt); err != nil {
+			return nil, err
+		}
+	}
 	server := mcp.NewServer(&mcp.Implementation{Name: "veto", Version: Version}, nil)
 	register(server, srv, opt)
-	return server
+	return server, nil
 }
 
 func register(server *mcp.Server, srv *capability.Server, opt Options) {

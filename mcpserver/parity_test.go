@@ -253,7 +253,9 @@ func previewFailed(raw []byte) bool {
 func openMCP(t *testing.T, srv *capability.Server) *mcp.ClientSession {
 	t.Helper()
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
-	serverSession, err := newMCP(srv, Options{}).Connect(context.Background(), serverTransport, nil)
+	mcpServer, err := newMCP(srv, Options{})
+	require.NoError(t, err)
+	serverSession, err := mcpServer.Connect(context.Background(), serverTransport, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = serverSession.Close() })
 	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "dev"}, nil)

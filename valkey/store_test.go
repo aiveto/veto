@@ -1,6 +1,8 @@
 package valkey
 
 import (
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/aiveto/veto/policy"
@@ -39,6 +41,36 @@ func TestClaimIsOnceAcrossClients(t *testing.T) {
 	ok, err = b.Claim(t.Context(), rec.ID)
 	require.NoError(t, err)
 	assert.False(t, ok)
+}
+
+func TestSharedStateConsumeOnce(t *testing.T) {
+	params := map[string]string{"id": "1"}
+	for range 16 {
+		srv := miniredis.RunT(t)
+		store, err := Dial(t.Context(), "redis://"+srv.Addr())
+		require.NoError(t, err)
+		t.Cleanup(store.Close)
+		issued := policy.NewState()
+		issued.SetStore(store)
+		pending, err := issued.RequestFor(t.Context(), "", "orders.delete", params)
+		require.NoError(t, err)
+		approved, err := issued.Approve(t.Context(), pending)
+		require.NoError(t, err)
+		var wins atomic.Int32
+		var wg sync.WaitGroup
+		for range 16 {
+			wg.Go(func() {
+				other := policy.NewState()
+				other.SetStore(store)
+				ok, err := other.ConsumeFor(t.Context(), "", approved, "orders.delete", params)
+				if err == nil && ok {
+					wins.Add(1)
+				}
+			})
+		}
+		wg.Wait()
+		assert.Equal(t, int32(1), wins.Load())
+	}
 }
 
 func TestDialRejectsAnEmptyURL(t *testing.T) {

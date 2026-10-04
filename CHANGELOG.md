@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- MCP construction rejects a colliding tool name before any tool is registered. A shared Valkey store claims once through the same State path as Memory and Files.
 - Runtime authorizes every pagination page. Exposure tags and paths are AND. Structured query integers stay digits on the HTTP request. A shared Memory store claims once. A Files claim is not deleted when a stale cache is refreshed. `veto serve --json` polls stdin so SIGTERM stops an idle process. Group and pin names cannot replace the three capabilities. A pin omits `operation_id`. Check drift compares every case expectation, and any lost confirmation. The guide names `sent` versus `http` and shared approval storage. ADR 029 supersedes the OR in ADR 022.
 - MCP and JSON encode one invoke result. MCP only sets IsError and the confirmation form on that body.
 - Approval binds one deterministic JSON form for structured arguments. Large integers stay digits through MCP and JSON. A JSON failure keeps the structured result. Search, serve, preview, and doctor build the catalog without the agent model. `veto serve --json` closes stdin on SIGTERM. Search keeps one synonym snapshot.
