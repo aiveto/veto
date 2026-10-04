@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.5 - 2026-10-03
+
 - A loaded schema keeps its validation constraints. Malformed JSON is a body error.
 - A response that arrives and then fails still reports that HTTP left.
 - Search and synonym maps return caller-owned copies. A store Get names a missing record and a store error separately.
