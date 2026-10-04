@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The README says MCP, JSON lines, and the CLI are the same three capabilities.
 - The runtime figure keeps the invoke path off the catalog and the HTTP label off the line to your APIs.
 
 ## v0.1.6 - 2026-10-04
