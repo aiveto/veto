@@ -11,6 +11,7 @@ import (
 
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/flow"
+	"github.com/aiveto/veto/jsonopts"
 	"github.com/aiveto/veto/memory"
 	"github.com/aiveto/veto/policy"
 	"github.com/aiveto/veto/runctx"
@@ -77,6 +78,7 @@ type (
 		Flows     map[string]*flow.Definition
 		Packs     *runctx.Builder
 		gate      *runtime.InvokeGate
+		JSON      jsonopts.Set
 	}
 )
 
@@ -243,6 +245,7 @@ func (l *Loop) Runtime() runtime.Runtime {
 		Exec:    l.Exec,
 		Notify:  l.Notify,
 		Gate:    l.gate,
+		JSON:    l.JSON,
 	}
 }
 

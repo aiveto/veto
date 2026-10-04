@@ -117,6 +117,7 @@ func authResolver(cfg config.File) *auth.Resolver {
 		Dir:            tokenDir(cfg),
 		HTTP:           &http.Client{Timeout: cfg.Timeout},
 		CommandTimeout: cfg.Timeout,
+		JSON:           cfg.JSONSet(),
 	})
 }
 
@@ -348,6 +349,7 @@ func assembleLoop(src sources, baseURL string) (*agent.Loop, config.File, error)
 	if err != nil {
 		return nil, config.File{}, err
 	}
+	loop.JSON = cfg.JSONSet()
 	if err := applyApprovalConfig(context.Background(), loop.State, cfg); err != nil {
 		return nil, config.File{}, err
 	}

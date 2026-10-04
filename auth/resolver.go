@@ -13,6 +13,7 @@ import (
 
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/credentials"
+	"github.com/aiveto/veto/jsonopts"
 	"github.com/aiveto/veto/result"
 )
 
@@ -27,6 +28,7 @@ type (
 		Now            func() time.Time
 		Env            func(string) string
 		CommandTimeout time.Duration
+		JSON           jsonopts.Set
 	}
 
 	Material struct {
@@ -46,6 +48,7 @@ type (
 		now            func() time.Time
 		env            func(string) string
 		commandTimeout time.Duration
+		json           jsonopts.Set
 		cache          *tokenCache
 		flight         flight
 	}
@@ -83,6 +86,7 @@ func New(opt Options) *Resolver {
 		now:            now,
 		env:            env,
 		commandTimeout: opt.CommandTimeout,
+		json:           opt.JSON,
 		cache:          &tokenCache{m: map[string]cacheEntry{}},
 	}
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/aiveto/veto/auth"
 	"github.com/aiveto/veto/catalog"
+	"github.com/aiveto/veto/jsonopts"
 	"github.com/aiveto/veto/policy"
 	"github.com/aiveto/veto/result"
 	"github.com/aiveto/veto/telemetry"
@@ -100,6 +101,7 @@ type (
 		Exec     Executor
 		Notify   policy.Notifier
 		Gate     *InvokeGate
+		JSON     jsonopts.Set
 		gateOnce sync.Once
 		now      func() time.Time
 	}
@@ -144,7 +146,7 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 		return rt.record(ctx, errorResult(req.Operation, CodeNotCallable, err)), err
 	}
 
-	args, err := wire(req.Arguments)
+	args, err := wire(req.Arguments, rt.JSON)
 	if err != nil {
 		return rt.record(ctx, errorResult(op.ID, "", err)), err
 	}
@@ -249,7 +251,7 @@ func (rt *Runtime) Preview(ctx context.Context, req Request) (Preview, error) {
 	if op.Exposure == catalog.ExposureDiscovery {
 		out.Errors = append(out.Errors, fmt.Sprintf("operation %q is discovery-only", req.Operation))
 	}
-	args, err := wire(req.Arguments)
+	args, err := wire(req.Arguments, rt.JSON)
 	if err != nil {
 		out.Errors = append(out.Errors, err.Error())
 	} else if err := op.CheckParams(args); err != nil {

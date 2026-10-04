@@ -3,12 +3,12 @@ package mcpserver
 
 import (
 	"context"
-	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 
 	"github.com/aiveto/veto/agent"
 	"github.com/aiveto/veto/catalog"
+	"github.com/aiveto/veto/jsonopts"
 	"github.com/aiveto/veto/result"
 	"github.com/aiveto/veto/runctx"
 	"github.com/aiveto/veto/runtime"
@@ -97,7 +97,14 @@ func (s *Server) Describe(operationID string) ([]byte, error) {
 		"call":      runctx.OperationLine(s.Catalog, *op, note.Text()),
 		"relation":  note.Relation,
 	}
-	return jsonv2.Marshal(payload)
+	return s.encode(payload)
+}
+
+func (s *Server) encode(v any) ([]byte, error) {
+	if s != nil && s.Calls != nil {
+		return s.Calls.JSON.Marshal(v)
+	}
+	return (jsonopts.Set{}).Marshal(v)
 }
 
 // Invoke adapts string parameters at the MCP boundary and calls the shared runtime.

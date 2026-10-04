@@ -2,7 +2,6 @@ package mcpserver
 
 import (
 	"context"
-	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -73,7 +72,7 @@ func register(server *mcp.Server, srv *Server, opt Options) {
 			return toolError(err)
 		}
 		matches := srv.Search(args.Query, args.Offset, args.Limit)
-		b, err := jsonv2.Marshal(matches)
+		b, err := srv.encode(matches)
 		if err != nil {
 			return toolError(err)
 		}
@@ -147,13 +146,13 @@ func invokeCall(ctx context.Context, req *mcp.CallToolRequest, srv *Server, args
 			Arguments: args.Params,
 			Caller:    caller,
 		})
-		return previewToolResult(out, err)
+		return previewToolResult(srv, out, err)
 	}
 	answered := false
 	if reply, ok := elicitationReply(req); ok && chat {
 		answered = true
 		if reply == nil || reply.Action != "accept" {
-			return invokeToolResult(InvokeResult{
+			return invokeToolResult(srv, InvokeResult{
 				Status:      runtime.StatusConfirmationRequired,
 				ApprovalID:  requestState(req),
 				OperationID: args.OperationID,
@@ -183,7 +182,7 @@ func invokeCall(ctx context.Context, req *mcp.CallToolRequest, srv *Server, args
 		}
 		return elicitConfirmation(res, pending), nil, nil
 	}
-	return invokeToolResult(res, err)
+	return invokeToolResult(srv, res, err)
 }
 
 func clientCanElicit(req *mcp.CallToolRequest) bool {
@@ -257,11 +256,11 @@ func callerID(ctx context.Context, req *mcp.CallToolRequest) string {
 	return auth.Caller(ctx)
 }
 
-func previewToolResult(out runtime.Preview, callErr error) (*mcp.CallToolResult, any, error) {
+func previewToolResult(srv *Server, out runtime.Preview, callErr error) (*mcp.CallToolResult, any, error) {
 	if callErr != nil {
 		return toolError(callErr)
 	}
-	b, err := jsonv2.Marshal(out)
+	b, err := srv.encode(out)
 	if err != nil {
 		return toolError(err)
 	}
@@ -272,7 +271,7 @@ func previewToolResult(out runtime.Preview, callErr error) (*mcp.CallToolResult,
 	return result, nil, err
 }
 
-func invokeToolResult(res InvokeResult, callErr error) (*mcp.CallToolResult, any, error) {
+func invokeToolResult(srv *Server, res InvokeResult, callErr error) (*mcp.CallToolResult, any, error) {
 	if callErr != nil && res.Status == "" {
 		return toolError(callErr)
 	}
@@ -283,7 +282,7 @@ func invokeToolResult(res InvokeResult, callErr error) (*mcp.CallToolResult, any
 		}
 		res.Error = sanitizeCause(cause)
 	}
-	b, err := jsonv2.Marshal(res)
+	b, err := srv.encode(res)
 	if err != nil {
 		return toolError(err)
 	}
