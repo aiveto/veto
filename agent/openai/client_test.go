@@ -26,7 +26,7 @@ func TestOpenAIRequiresKeyAndPack(t *testing.T) {
 	m, err := openai.New("http://127.0.0.1", "test-key", "")
 	require.NoError(t, err)
 	_, err = m.Complete(context.Background(), agent.Request{UserMessage: "delete order 123"})
-	assert.ErrorContains(t, err, "context pack")
+	assert.ErrorIs(t, err, agent.ErrEmptyPack)
 }
 
 func TestOpenAIReadsThePack(t *testing.T) {

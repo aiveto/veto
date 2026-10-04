@@ -362,8 +362,6 @@ func assembleLoop(src sources, baseURL string) (*agent.Loop, config.File, error)
 // applyProviders constructs the providers named in the config. The accepted values are the defaults.
 func applyProviders(loop *agent.Loop, cfg config.File) error {
 	switch cfg.Memory {
-	case "local":
-		loop.Memory = memory.New()
 	case "file":
 		log, err := memory.NewLog(cfg.MemoryFile)
 		if err != nil {
@@ -371,13 +369,10 @@ func applyProviders(loop *agent.Loop, cfg config.File) error {
 		}
 		loop.Memory = log
 	default:
-		return fmt.Errorf("memory provider %q is not in this slice", cfg.Memory)
+		loop.Memory = memory.New()
 	}
 	base := policy.Builtin{Caller: callerName(cfg.Caller), Allow: allowSet(cfg.Permissions)}
 	switch cfg.Policy {
-	case "builtin":
-		loop.SetPolicy(base)
-		loop.SetFloor(base)
 	case "opa":
 		eng, err := opa.New(context.Background(), cfg.PolicyFile, cfg.PolicyBundle, base)
 		if err != nil {
@@ -390,7 +385,8 @@ func applyProviders(loop *agent.Loop, cfg config.File) error {
 		loop.SetPolicy(eng)
 		loop.SetFloor(base)
 	default:
-		return fmt.Errorf("unsupported policy provider %q", cfg.Policy)
+		loop.SetPolicy(base)
+		loop.SetFloor(base)
 	}
 	if cfg.ApprovalWebhook.URL != "" || len(cfg.ApprovalWebhook.Command) > 0 {
 		hook, err := policy.NewWebhook(cfg.ApprovalWebhook.URL, append([]string(nil), cfg.ApprovalWebhook.Command...))
@@ -400,8 +396,6 @@ func applyProviders(loop *agent.Loop, cfg config.File) error {
 		loop.Notify = hook
 	}
 	switch cfg.Model {
-	case "scripted":
-		loop.Model = agent.NewScripted()
 	case "openai":
 		live, err := openai.New(cfg.ModelBaseURL, os.Getenv("OPENAI_API_KEY"), cfg.ModelName)
 		if err != nil {
@@ -409,7 +403,7 @@ func applyProviders(loop *agent.Loop, cfg config.File) error {
 		}
 		loop.Model = live
 	default:
-		return fmt.Errorf("model provider %q is not in this slice", cfg.Model)
+		loop.Model = agent.NewScripted()
 	}
 	return nil
 }

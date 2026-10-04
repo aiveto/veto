@@ -37,6 +37,15 @@ type (
 		ttl     time.Duration
 		now     func() time.Time
 	}
+
+	// StoreOptions attaches a store, a files dir, and a signer. Dial opens a URL.
+	StoreOptions struct {
+		URL    string
+		Dir    string
+		Secret []byte
+		TTL    time.Duration
+		Dial   func(context.Context, string) (Store, error)
+	}
 )
 
 // NewState uses Memory.
@@ -51,6 +60,29 @@ func DefaultApprovalDir() (string, error) {
 		return "", fmt.Errorf("approval dir: %w", err)
 	}
 	return filepath.Join(root, "veto", "approvals"), nil
+}
+
+// Open points state at the store, files dir, and signer. Empty URL keeps Files or Memory.
+func (s *State) Open(ctx context.Context, opt StoreOptions) error {
+	if s == nil {
+		return errors.New("missing approval state")
+	}
+	if opt.URL != "" {
+		if opt.Dial == nil {
+			return errors.New("approval store dial is unset")
+		}
+		st, err := opt.Dial(ctx, opt.URL)
+		if err != nil {
+			return err
+		}
+		s.SetStore(st)
+	} else if opt.Dir != "" {
+		s.SetNonceDir(opt.Dir)
+	}
+	if len(opt.Secret) == 0 {
+		return nil
+	}
+	return s.SetSigner(opt.Secret, opt.TTL)
 }
 
 // SetStore replaces the confirmation store. Nil uses Memory.
@@ -216,7 +248,7 @@ func (s *State) Pending(ctx context.Context, id string) *PendingConfirmation {
 	if !ok || rec.Status != StatusPending {
 		return nil
 	}
-	return &PendingConfirmation{ID: rec.ID, OperationID: rec.OperationID, Params: cloneParams(rec.Params)}
+	return &PendingConfirmation{ID: rec.ID, OperationID: rec.OperationID, Params: cloneParams(rec.Params), Caller: rec.Caller}
 }
 
 func expired(rec Record, now time.Time) bool {

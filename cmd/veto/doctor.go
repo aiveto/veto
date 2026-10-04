@@ -82,12 +82,13 @@ func doctorReport(ctx context.Context, cat *catalog.Catalog, cfg config.File, pi
 		out = append(out, err.Error())
 		fail = true
 	}
-	authLines := authBlockers(cat, cfg.Auth, tokenDir(cfg))
+	creds := authResolver(cfg)
+	authLines := authBlockers(cat, creds)
 	if len(authLines) > 0 {
 		out = append(out, authLines...)
 		fail = true
 	}
-	found, bad := catalogFindings(cat, cfg.Auth, tokenDir(cfg))
+	found, bad := catalogFindings(cat, creds)
 	out = append(out, found...)
 	if line := confirmationNotice(cfg); line != "" {
 		out = append(out, line)
@@ -106,14 +107,14 @@ func doctorReport(ctx context.Context, cat *catalog.Catalog, cfg config.File, pi
 	return out, fail
 }
 
-func catalogFindings(cat *catalog.Catalog, names config.Sources, dir string) ([]string, bool) {
+func catalogFindings(cat *catalog.Catalog, creds *auth.Resolver) ([]string, bool) {
 	if cat == nil {
 		return nil, false
 	}
 	var out []string
 	fail := false
 	for _, op := range cat.Operations {
-		if line := missingAuth(op, names, dir); line != "" {
+		if line := missingAuth(op, creds); line != "" {
 			out = append(out, line)
 			fail = true
 		}
@@ -142,7 +143,7 @@ func catalogFindings(cat *catalog.Catalog, names config.Sources, dir string) ([]
 	return out, fail
 }
 
-func missingAuth(op catalog.Operation, names config.Sources, dir string) string {
+func missingAuth(op catalog.Operation, creds *auth.Resolver) string {
 	groups := op.Requirements
 	if len(groups) == 0 && len(op.Auth) > 0 {
 		groups = [][]catalog.Auth{op.Auth}
@@ -151,7 +152,7 @@ func missingAuth(op catalog.Operation, names config.Sources, dir string) string 
 		return ""
 	}
 	for _, group := range groups {
-		if groupReady(group, names, dir) {
+		if groupReady(group, creds) {
 			return ""
 		}
 	}
@@ -159,7 +160,7 @@ func missingAuth(op catalog.Operation, names config.Sources, dir string) string 
 	seen := map[string]bool{}
 	for _, group := range groups {
 		for _, a := range group {
-			if a.Name == "" || seen[a.Name] || schemeReady(a, names, dir) {
+			if a.Name == "" || seen[a.Name] || schemeReady(a, creds) {
 				continue
 			}
 			seen[a.Name] = true
@@ -173,30 +174,26 @@ func missingAuth(op catalog.Operation, names config.Sources, dir string) string 
 	return op.ID + ": missing auth " + strings.Join(missing, ", ")
 }
 
-func groupReady(group []catalog.Auth, names config.Sources, dir string) bool {
+func groupReady(group []catalog.Auth, creds *auth.Resolver) bool {
 	if len(group) == 0 {
 		return true
 	}
 	for _, a := range group {
-		if !schemeReady(a, names, dir) {
+		if !schemeReady(a, creds) {
 			return false
 		}
 	}
 	return true
 }
 
-func schemeReady(a catalog.Auth, names config.Sources, dir string) bool {
-	if src, ok := names[a.Name]; ok && len(sourceBlockers(a.Name, src, dir)) == 0 {
+func schemeReady(a catalog.Auth, creds *auth.Resolver) bool {
+	if creds != nil && creds.Has(a.Name) && len(creds.Blockers(a)) == 0 {
 		return true
 	}
 	if a.Kind == "unsupported" || (a.Kind == "apiKey" && a.Header == "" && a.Query == "") {
 		return false
 	}
-	src, ok := names[a.Name]
-	if !ok {
-		return false
-	}
-	return len(sourceBlockers(a.Name, src, dir)) == 0
+	return creds != nil && len(creds.Blockers(a)) == 0
 }
 
 func summaryLine(op catalog.Operation) string {
@@ -238,14 +235,14 @@ func writeOp(op catalog.Operation) bool {
 	}
 }
 
-func authBlockers(cat *catalog.Catalog, names config.Sources, dir string) []string {
+func authBlockers(cat *catalog.Catalog, creds *auth.Resolver) []string {
 	if cat == nil {
 		return nil
 	}
 	seen := map[string]bool{}
 	var out []string
 	for _, op := range cat.Operations {
-		if missingAuth(op, names, dir) == "" {
+		if missingAuth(op, creds) == "" {
 			continue
 		}
 		for _, a := range op.AuthSchemes() {
@@ -253,60 +250,14 @@ func authBlockers(cat *catalog.Catalog, names config.Sources, dir string) []stri
 				continue
 			}
 			seen[a.Name] = true
-			src, ok := names[a.Name]
-			if !ok {
+			if creds == nil {
 				out = append(out, fmt.Sprintf("auth scheme %s has no env var", a.Name))
 				continue
 			}
-			out = append(out, sourceBlockers(a.Name, src, dir)...)
+			out = append(out, creds.Blockers(a)...)
 		}
 	}
 	return out
-}
-
-func sourceBlockers(name string, src config.Source, dir string) []string {
-	switch src.Kind() {
-	case "env":
-		if src.Env == "" {
-			return []string{fmt.Sprintf("auth scheme %s has no env var", name)}
-		}
-		if os.Getenv(src.Env) != "" || auth.HasAccessToken(dir, name) {
-			return nil
-		}
-		return []string{src.Env + " is unset"}
-	case "client_credentials":
-		if src.ClientSecretEnv == "" {
-			return []string{fmt.Sprintf("auth scheme %s has no client secret env", name)}
-		}
-		if os.Getenv(src.ClientSecretEnv) == "" {
-			return []string{src.ClientSecretEnv + " is unset"}
-		}
-		return nil
-	case "login":
-		if !auth.HasRefreshToken(dir, name) && !auth.HasAccessToken(dir, name) {
-			return []string{fmt.Sprintf("auth scheme %s has no stored token", name)}
-		}
-		return nil
-	case "command":
-		if len(src.Command) == 0 {
-			return []string{fmt.Sprintf("auth scheme %s has no command", name)}
-		}
-		return nil
-	case "token_exchange":
-		if src.ClientSecretEnv == "" || os.Getenv(src.ClientSecretEnv) == "" {
-			envName := src.ClientSecretEnv
-			if envName == "" {
-				envName = "client secret"
-			}
-			return []string{envName + " is unset"}
-		}
-		if src.Subject != "" && src.Subject != "invoke" && !auth.HasAccessToken(dir, src.Subject) {
-			return []string{fmt.Sprintf("auth scheme %s has no stored token", src.Subject)}
-		}
-		return nil
-	default:
-		return nil
-	}
 }
 
 func pingServers(ctx context.Context, client *http.Client, cat *catalog.Catalog) []string {

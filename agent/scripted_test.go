@@ -10,13 +10,18 @@ import (
 	"github.com/aiveto/veto/agent"
 )
 
+func TestScriptedRequiresAPack(t *testing.T) {
+	_, err := agent.NewScripted().Complete(context.Background(), agent.Request{UserMessage: "delete order 123"})
+	assert.ErrorIs(t, err, agent.ErrEmptyPack)
+}
+
 func TestScriptedRequiresTheMessageInThePack(t *testing.T) {
 	cases := []struct {
 		name string
 		pack string
 		want string
 	}{
-		{name: "omitted", want: ""},
+		{name: "absent", pack: "rules: search then describe then invoke", want: ""},
 		{name: "present", pack: "user: delete order 123", want: "orders.delete"},
 	}
 	for _, tc := range cases {

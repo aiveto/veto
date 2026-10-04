@@ -141,7 +141,7 @@ func withUserTokens(cfg Client, group []catalog.Auth) []catalog.Auth {
 	for i, a := range out {
 		header := a.UserHeader
 		if cfg.Creds != nil {
-			if s, ok := cfg.Creds.Configured(a.Name); ok && s.Source == "login" && s.UserHeader != "" {
+			if s, ok := cfg.Creds.Configured(a.Name); ok && s.UserHeader != "" && cfg.Creds.SuppliesUserHeader(a.Name, s.UserHeader) {
 				header = s.UserHeader
 			}
 		}
@@ -195,11 +195,7 @@ func loginCanSupply(cfg Client, name, header string) bool {
 	if cfg.Creds == nil || header == "" {
 		return false
 	}
-	s, ok := cfg.Creds.Configured(name)
-	if !ok || s.Source != "login" {
-		return false
-	}
-	return s.UserHeader == "" || s.UserHeader == header
+	return cfg.Creds.SuppliesUserHeader(name, header)
 }
 
 func ownCredential(cfg Client, a catalog.Auth) bool {

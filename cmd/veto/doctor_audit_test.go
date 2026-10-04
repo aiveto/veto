@@ -5,14 +5,15 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/aiveto/veto/auth"
 	"github.com/aiveto/veto/catalog"
-	"github.com/aiveto/veto/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestEmptySecurityAlternativeIsReady(t *testing.T) {
-	assert.True(t, groupReady(nil, nil, ""))
+	creds := auth.New(auth.Options{Dir: t.TempDir()})
+	assert.True(t, groupReady(nil, creds))
 	op := catalog.Operation{
 		ID: "ping",
 		Requirements: [][]catalog.Auth{
@@ -20,8 +21,8 @@ func TestEmptySecurityAlternativeIsReady(t *testing.T) {
 			{{Name: "bearerAuth", Kind: "bearer", Header: "Authorization"}},
 		},
 	}
-	assert.Empty(t, missingAuth(op, nil, t.TempDir()))
-	blocked := authBlockers(&catalog.Catalog{Operations: []catalog.Operation{op}}, config.Sources{}, t.TempDir())
+	assert.Empty(t, missingAuth(op, creds))
+	blocked := authBlockers(&catalog.Catalog{Operations: []catalog.Operation{op}}, creds)
 	assert.Empty(t, blocked)
 }
 

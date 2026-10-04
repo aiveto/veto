@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/flow"
@@ -18,6 +19,8 @@ import (
 	"github.com/aiveto/veto/telemetry"
 	"github.com/google/uuid"
 )
+
+var ErrEmptyPack = errors.New("empty context pack")
 
 type (
 	// Executor performs the HTTP call. The loop does not build the request.
@@ -149,7 +152,11 @@ func (l *Loop) Run(ctx context.Context, userText string) (Outcome, error) {
 	turns = append(turns, runctx.Turn{Role: "user", Content: userText})
 	pack := l.Packs.Build(l.Catalog, turns, nil, l.Semantics, nil)
 	span.SetAttributes(telemetry.Attr("tools", pack.Index))
-	resp, err := l.Model.Complete(ctx, Request{UserMessage: userText, Context: pack.Serialize()})
+	req := Request{UserMessage: userText, Context: pack.Serialize()}
+	if err := emptyPack(req); err != nil {
+		return Outcome{}, fmt.Errorf("model: %w", err)
+	}
+	resp, err := l.Model.Complete(ctx, req)
 	if err != nil {
 		return Outcome{}, fmt.Errorf("model: %w", err)
 	}
@@ -182,6 +189,7 @@ func (l *Loop) Run(ctx context.Context, userText string) (Outcome, error) {
 				ID:          call.ApprovalID,
 				OperationID: call.OperationID,
 				Params:      copyParams(resp.Params),
+				Caller:      call.Caller,
 			}
 		}
 		var sentence map[string]string
@@ -323,4 +331,11 @@ func copyParams(in map[string]string) map[string]string {
 		return nil
 	}
 	return maps.Clone(in)
+}
+
+func emptyPack(req Request) error {
+	if strings.TrimSpace(req.Context) == "" {
+		return ErrEmptyPack
+	}
+	return nil
 }

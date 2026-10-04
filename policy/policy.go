@@ -33,6 +33,7 @@ type (
 		ID          string            `json:"ID"`
 		OperationID string            `json:"OperationID"`
 		Params      map[string]string `json:"Params"`
+		Caller      string            `json:"Caller,omitempty"`
 	}
 
 	// Input is the call under policy. Caller is the caller or tenant.
@@ -152,8 +153,12 @@ func ConfirmSentence(operationID string, params map[string]string) string {
 }
 
 // ConfirmAsk is the confirmation form. The call does not run until accept.
-func ConfirmAsk(operationID string, params map[string]string) string {
-	return ConfirmSentence(operationID, params) + ". The call does not run until you accept."
+func ConfirmAsk(caller, operationID string, params map[string]string) string {
+	sentence := ConfirmSentence(operationID, params)
+	if caller != "" {
+		sentence = caller + ": " + sentence
+	}
+	return sentence + ". The call does not run until you accept."
 }
 
 // Check runs hook. Nil hook is Builtin.

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -74,17 +73,9 @@ func applyApprovalConfig(ctx context.Context, s *policy.State, cfg config.File) 
 }
 
 func applyApproval(ctx context.Context, s *policy.State, ttl time.Duration, storeURL string) error {
-	if s == nil {
-		return errors.New("missing approval state")
-	}
-	if storeURL != "" {
-		st, err := valkey.Dial(ctx, storeURL)
-		if err != nil {
-			return err
-		}
-		s.SetStore(st)
-	} else {
-		dir := os.Getenv("VETO_APPROVAL_NONCE_DIR")
+	dir := ""
+	if storeURL == "" {
+		dir = os.Getenv("VETO_APPROVAL_NONCE_DIR")
 		if dir == "" && os.Getenv("VETO_APPROVAL_SECRET") == "" {
 			var err error
 			dir, err = policy.DefaultApprovalDir()
@@ -92,12 +83,14 @@ func applyApproval(ctx context.Context, s *policy.State, ttl time.Duration, stor
 				return err
 			}
 		}
-		if dir != "" {
-			s.SetNonceDir(dir)
-		}
 	}
-	if secret := os.Getenv("VETO_APPROVAL_SECRET"); secret != "" {
-		return s.SetSigner([]byte(secret), ttl)
-	}
-	return nil
+	return s.Open(ctx, policy.StoreOptions{
+		URL:    storeURL,
+		Dir:    dir,
+		Secret: []byte(os.Getenv("VETO_APPROVAL_SECRET")),
+		TTL:    ttl,
+		Dial: func(ctx context.Context, url string) (policy.Store, error) {
+			return valkey.Dial(ctx, url)
+		},
+	})
 }

@@ -231,14 +231,16 @@ func acceptElicitation(ctx context.Context, srv *Server, req *mcp.CallToolReques
 func elicitConfirmation(res InvokeResult, pending *policy.PendingConfirmation) *mcp.CallToolResult {
 	op := res.OperationID
 	var params map[string]string
+	var caller string
 	if pending != nil {
 		op = pending.OperationID
 		params = pending.Params
+		caller = pending.Caller
 	}
 	return &mcp.CallToolResult{
 		InputRequests: mcp.InputRequestMap{
 			"confirm": &mcp.ElicitParams{
-				Message: policy.ConfirmAsk(op, params),
+				Message: policy.ConfirmAsk(caller, op, params),
 			},
 		},
 		RequestState: res.ApprovalID,

@@ -11,6 +11,11 @@ import (
 	"github.com/aiveto/veto/policy"
 )
 
+func TestConfirmAskNamesCallerOperationAndParams(t *testing.T) {
+	assert.Equal(t, "confirm orders.delete id=123. The call does not run until you accept.", policy.ConfirmAsk("", "orders.delete", map[string]string{"id": "123"}))
+	assert.Equal(t, "ada: confirm orders.delete id=123. The call does not run until you accept.", policy.ConfirmAsk("ada", "orders.delete", map[string]string{"id": "123"}))
+}
+
 func TestPermissionAndConfirmation(t *testing.T) {
 	op := &catalog.Operation{
 		ID:                   "orders.delete",
