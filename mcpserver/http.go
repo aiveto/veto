@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/aiveto/veto/capability"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -29,7 +30,7 @@ type Identity struct {
 }
 
 // Handler is the Streamable HTTP MCP endpoint. A request without a known caller credential is rejected first.
-func Handler(srv *Server, opt Options, ids []Identity) (http.Handler, error) {
+func Handler(srv *capability.Server, opt Options, ids []Identity) (http.Handler, error) {
 	if err := checkIdentities(ids); err != nil {
 		return nil, err
 	}

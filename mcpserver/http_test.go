@@ -16,6 +16,7 @@ import (
 
 	"github.com/aiveto/veto/agent"
 	"github.com/aiveto/veto/auth"
+	"github.com/aiveto/veto/capability"
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/mcpserver"
@@ -33,7 +34,7 @@ func TestHealthDoesNotNeedACaller(t *testing.T) {
 	cat := &catalog.Catalog{}
 	cat.Finalize()
 	calls := runtime.Runtime{Catalog: cat}
-	handler, err := mcpserver.Handler(&mcpserver.Server{Catalog: cat, Calls: &calls}, mcpserver.Options{}, []mcpserver.Identity{
+	handler, err := mcpserver.Handler(&capability.Server{Catalog: cat, Calls: &calls}, mcpserver.Options{}, []mcpserver.Identity{
 		{ID: "ada", Token: secret},
 	})
 	require.NoError(t, err)
@@ -92,7 +93,7 @@ func TestHTTPTwoCallersDoNotShareApprovalsOrTokens(t *testing.T) {
 	loop.State.SetNonceDir(t.TempDir())
 	require.NoError(t, loop.State.SetSigner([]byte("approval-secret"), 0))
 	calls := loop.Runtime()
-	handler, err := mcpserver.Handler(&mcpserver.Server{
+	handler, err := mcpserver.Handler(&capability.Server{
 		Catalog: cat, Semantics: sem, Calls: &calls,
 	}, mcpserver.Options{}, []mcpserver.Identity{
 		{ID: "ada", Token: adaSecret},
@@ -279,7 +280,7 @@ func TestHTTPChatApproval(t *testing.T) {
 			loop, err := agent.New(cat, sem, execute.Client{BaseURL: upstream.URL})
 			require.NoError(t, err)
 			calls := loop.Runtime()
-			handler, err := mcpserver.Handler(&mcpserver.Server{Catalog: cat, Semantics: sem, Calls: &calls}, mcpserver.Options{ChatApproval: tc.chat}, []mcpserver.Identity{
+			handler, err := mcpserver.Handler(&capability.Server{Catalog: cat, Semantics: sem, Calls: &calls}, mcpserver.Options{ChatApproval: tc.chat}, []mcpserver.Identity{
 				{ID: "ada", Token: "secret"},
 			})
 			require.NoError(t, err)
@@ -374,9 +375,9 @@ func callTool(t *testing.T, session *mcp.ClientSession, args map[string]any) str
 	return text.Text
 }
 
-func decodeInvoke(t *testing.T, text string) mcpserver.InvokeResult {
+func decodeInvoke(t *testing.T, text string) capability.InvokeResult {
 	t.Helper()
-	var out mcpserver.InvokeResult
+	var out capability.InvokeResult
 	require.NoError(t, json.Unmarshal([]byte(text), &out))
 	return out
 }

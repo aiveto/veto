@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Search, describe, and invoke live in `capability`. MCP and `veto serve --json` are adapters. A skill speaks JSON lines on one process. `veto search`, `describe`, and `invoke` are a shorthand. `--help-json` is that contract.
+- Search, describe, and invoke live in `capability`. Server lives there. MCP and `veto serve --json` call it. A skill speaks JSON lines on one process. `veto search`, `describe`, and `invoke` are a shorthand. `--help-json` is that contract.
 - The README figure is a PNG. MCP is one inbound. A CLI or skill is the other. Both reach search, describe, and invoke.
 
 ## v0.1.5 - 2026-10-03

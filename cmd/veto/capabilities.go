@@ -11,7 +11,6 @@ import (
 	"github.com/aiveto/veto/agent"
 	"github.com/aiveto/veto/auth"
 	"github.com/aiveto/veto/capability"
-	"github.com/aiveto/veto/mcpserver"
 	"github.com/spf13/cobra"
 )
 
@@ -31,7 +30,7 @@ func newSearchCommand() *cobra.Command {
 		Short: capability.SearchDescription,
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(_ *cobra.Command, args []string) {
-			runCap("search", flags, func(srv *mcpserver.Server) ([]byte, error) {
+			runCap("search", flags, func(srv *capability.Server) ([]byte, error) {
 				in, err := decodeSearch(args)
 				if err != nil {
 					return nil, err
@@ -51,7 +50,7 @@ func newDescribeCommand() *cobra.Command {
 		Short: capability.DescribeDescription,
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(_ *cobra.Command, args []string) {
-			runCap("describe", flags, func(srv *mcpserver.Server) ([]byte, error) {
+			runCap("describe", flags, func(srv *capability.Server) ([]byte, error) {
 				in, err := decodeDescribe(args)
 				if err != nil {
 					return nil, err
@@ -71,12 +70,12 @@ func newInvokeCommand() *cobra.Command {
 		Short: "Invoke an operation through policy and HTTP.",
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(_ *cobra.Command, args []string) {
-			runCap("invoke", flags, func(srv *mcpserver.Server) ([]byte, error) {
+			runCap("invoke", flags, func(srv *capability.Server) ([]byte, error) {
 				in, err := decodeInvoke(args)
 				if err != nil {
 					return nil, err
 				}
-				ctx := auth.WithCaller(context.Background(), callerName(flags.caller))
+				ctx := auth.WithCaller(context.Background(), auth.OrLocal(flags.caller))
 				return srv.RunInvoke(ctx, in)
 			})
 		},
@@ -94,27 +93,27 @@ func addCatalogFlags(c *cobra.Command, flags *catalogFlags) {
 	c.Flags().StringVar(&flags.baseURL, "base-url", "", "Override the server URL on every operation.")
 }
 
-func capabilityServer(loop *agent.Loop) *mcpserver.Server {
+func newServer(loop *agent.Loop) *capability.Server {
 	if loop == nil {
-		return &mcpserver.Server{}
+		return &capability.Server{}
 	}
 	calls := loop.Runtime()
-	return &mcpserver.Server{
+	return &capability.Server{
 		Catalog:   loop.Catalog,
 		Semantics: loop.Semantics,
 		Calls:     &calls,
 	}
 }
 
-func openCapabilityServer(flags catalogFlags) (*mcpserver.Server, error) {
+func openCapabilityServer(flags catalogFlags) (*capability.Server, error) {
 	loop, _, err := buildLoop(flags.contract, flags.config, flags.agent, flags.relations, flags.baseURL)
 	if err != nil {
 		return nil, err
 	}
-	return capabilityServer(loop), nil
+	return newServer(loop), nil
 }
 
-func runCap(name string, flags catalogFlags, fn func(*mcpserver.Server) ([]byte, error)) {
+func runCap(name string, flags catalogFlags, fn func(*capability.Server) ([]byte, error)) {
 	srv, err := openCapabilityServer(flags)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", name, err)

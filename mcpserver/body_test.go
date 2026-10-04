@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/aiveto/veto/agent"
+	"github.com/aiveto/veto/capability"
 	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/openapi"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -46,7 +47,7 @@ func TestInvokeSendsObjectOrStringBody(t *testing.T) {
 			ctx := context.Background()
 			server := mcp.NewServer(&mcp.Implementation{Name: "veto", Version: "0.1.0"}, nil)
 			calls := loop.Runtime()
-			register(server, &Server{Catalog: cat, Calls: &calls}, Options{})
+			register(server, &capability.Server{Catalog: cat, Calls: &calls}, Options{})
 			serverTransport, clientTransport := mcp.NewInMemoryTransports()
 			_, err = server.Connect(ctx, serverTransport, nil)
 			require.NoError(t, err)
@@ -85,7 +86,7 @@ func TestInvokeRejectsABodyOutsideTheSchema(t *testing.T) {
 	ctx := context.Background()
 	server := mcp.NewServer(&mcp.Implementation{Name: "veto", Version: "0.1.0"}, nil)
 	calls := loop.Runtime()
-	register(server, &Server{Catalog: cat, Calls: &calls}, Options{})
+	register(server, &capability.Server{Catalog: cat, Calls: &calls}, Options{})
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
 	_, err = server.Connect(ctx, serverTransport, nil)
 	require.NoError(t, err)

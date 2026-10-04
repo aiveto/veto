@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/aiveto/veto/agent"
+	"github.com/aiveto/veto/capability"
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/mcpserver"
@@ -170,7 +171,7 @@ func checkSurface(cat *catalog.Catalog, sem *semantics.Derived) (string, error) 
 }
 
 func describe(cat *catalog.Catalog, sem *semantics.Derived) (string, error) {
-	raw, err := (&mcpserver.Server{Catalog: cat, Semantics: sem}).Describe("orders.get")
+	raw, err := (&capability.Server{Catalog: cat, Semantics: sem}).Describe("orders.get")
 	if err != nil {
 		return "", err
 	}

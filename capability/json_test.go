@@ -1,4 +1,4 @@
-package mcpserver_test
+package capability_test
 
 import (
 	"bytes"
@@ -9,9 +9,9 @@ import (
 	"testing"
 
 	"github.com/aiveto/veto/agent"
+	"github.com/aiveto/veto/capability"
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/execute"
-	"github.com/aiveto/veto/mcpserver"
 	"github.com/aiveto/veto/openapi"
 	"github.com/aiveto/veto/semantics"
 	"github.com/stretchr/testify/assert"
@@ -34,25 +34,25 @@ func TestJSONSessionSearchDescribeInvoke(t *testing.T) {
 	loop, err := agent.New(cat, sem, execute.Client{})
 	require.NoError(t, err)
 	calls := loop.Runtime()
-	srv := &mcpserver.Server{Catalog: cat, Semantics: sem, Calls: &calls}
+	srv := &capability.Server{Catalog: cat, Semantics: sem, Calls: &calls}
 
 	in := strings.NewReader(`{"search":{"query":"retire order 123"}}
 {"describe":{"operation_id":"orders.get"}}
 {"invoke":{"operation_id":"orders.delete","params":{"id":"123"}},"caller":"ada"}
 `)
 	var out bytes.Buffer
-	require.NoError(t, srv.RunJSON(context.Background(), in, &out))
+	require.NoError(t, capability.RunJSON(context.Background(), srv, in, &out))
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
 	require.Len(t, lines, 3)
 
-	var hits []mcpserver.SearchHit
+	var hits []capability.SearchHit
 	require.NoError(t, json.Unmarshal([]byte(lines[0]), &hits))
 	require.NotEmpty(t, hits)
 	assert.Equal(t, "orders.delete", hits[0].ID)
 
 	assert.Contains(t, lines[1], "Order.customerId identifies customers.get")
 
-	var res mcpserver.InvokeResult
+	var res capability.InvokeResult
 	require.NoError(t, json.Unmarshal([]byte(lines[2]), &res))
 	assert.Equal(t, "confirmation_required", res.Status)
 	assert.Equal(t, "held until you approve", res.Why)
@@ -61,9 +61,9 @@ func TestJSONSessionSearchDescribeInvoke(t *testing.T) {
 }
 
 func TestJSONSessionRejectsTwoCapabilities(t *testing.T) {
-	srv := &mcpserver.Server{}
+	srv := &capability.Server{}
 	var out bytes.Buffer
-	err := srv.RunJSON(context.Background(), strings.NewReader(`{"search":{"query":"x"},"describe":{"operation_id":"orders.get"}}`+"\n"), &out)
+	err := capability.RunJSON(context.Background(), srv, strings.NewReader(`{"search":{"query":"x"},"describe":{"operation_id":"orders.get"}}`+"\n"), &out)
 	require.Error(t, err)
 	assert.Contains(t, out.String(), "exactly one of search, describe, invoke")
 }

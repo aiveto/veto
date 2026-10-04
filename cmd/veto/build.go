@@ -37,13 +37,6 @@ var (
 	openBundles []*bundle.Loaded
 )
 
-func callerName(name string) string {
-	if name == "" {
-		return "local"
-	}
-	return name
-}
-
 func allowSet(list []string) map[string]bool {
 	if list == nil {
 		return nil
@@ -373,7 +366,7 @@ func applyProviders(loop *agent.Loop, cfg config.File) error {
 	default:
 		loop.Memory = memory.New()
 	}
-	base := policy.Builtin{Caller: callerName(cfg.Caller), Allow: allowSet(cfg.Permissions)}
+	base := policy.Builtin{Caller: auth.OrLocal(cfg.Caller), Allow: allowSet(cfg.Permissions)}
 	switch cfg.Policy {
 	case "opa":
 		eng, err := opa.New(context.Background(), cfg.PolicyFile, cfg.PolicyBundle, base)

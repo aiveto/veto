@@ -1,4 +1,4 @@
-// Package capability is the three operations MCP and a skill share.
+// Package capability is search, describe, and invoke. MCP and JSON call Server.
 package capability
 
 import (

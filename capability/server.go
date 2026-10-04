@@ -1,12 +1,10 @@
-// Package mcpserver serves search, describe, and invoke over one catalog.
-package mcpserver
+package capability
 
 import (
 	"context"
 	"errors"
 	"fmt"
 
-	"github.com/aiveto/veto/agent"
 	"github.com/aiveto/veto/auth"
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/jsonopts"
@@ -43,9 +41,14 @@ type (
 		Sent        bool         `json:"sent,omitempty"`
 	}
 
+	Notes interface {
+		Note(operationID string) semantics.Note
+		AllSynonyms() map[string][]string
+	}
+
 	Server struct {
 		Catalog   *catalog.Catalog
-		Semantics agent.Notes
+		Semantics Notes
 		Calls     *runtime.Runtime
 	}
 )
@@ -109,7 +112,7 @@ func (s *Server) RunDescribe(args DescribeArgs) ([]byte, error) {
 	return s.Describe(args.OperationID)
 }
 
-// RunInvoke is invoke without MCP elicitation. CLI and a skill use it. The host form stays in invokeCall.
+// RunInvoke is invoke without MCP elicitation. CLI and a skill use it. The host form stays in the MCP adapter.
 func (s *Server) RunInvoke(ctx context.Context, args InvokeArgs) ([]byte, error) {
 	ctx = auth.WithUserToken(ctx, args.Token)
 	req := runtime.Request{
@@ -144,17 +147,13 @@ func (s *Server) RunInvoke(ctx context.Context, args InvokeArgs) ([]byte, error)
 
 // Encode writes the same JSON MCP returns for search, describe, and invoke.
 func (s *Server) Encode(v any) ([]byte, error) {
-	return s.encode(v)
-}
-
-func (s *Server) encode(v any) ([]byte, error) {
 	if s != nil && s.Calls != nil {
 		return s.Calls.JSON.Marshal(v)
 	}
 	return (jsonopts.Set{}).Marshal(v)
 }
 
-// Invoke adapts string parameters at the MCP boundary and calls the shared runtime.
+// Invoke adapts string parameters at the boundary and calls the shared runtime.
 func (s *Server) Invoke(ctx context.Context, operationID string, params map[string]string, approvalID string) (InvokeResult, error) {
 	return s.Call(ctx, runtime.Request{
 		Operation: operationID,
@@ -177,41 +176,31 @@ func (s *Server) Call(ctx context.Context, req runtime.Request) (InvokeResult, e
 		return InvokeResult{Status: runtime.StatusError, Error: "runtime required"}, errors.New("runtime required")
 	}
 	call, err := s.Calls.Invoke(ctx, req)
-	return invokeResultOf(call), err
+	return InvokeResult(call), err
 }
 
-func invokeResultOf(call runtime.Result) InvokeResult {
-	return InvokeResult(call)
-}
-
-// Grouped mode adds one tool per resource, never one tool per operation.
-func ToolNames(cat *catalog.Catalog, pins []string, directPins, grouped bool) []string {
-	names := []string{
-		SearchName,
-		DescribeName,
-		InvokeName,
+// Handle runs exactly one of search, describe, or invoke on a line.
+func (s *Server) Handle(ctx context.Context, line Line) ([]byte, error) {
+	n := 0
+	if line.Search != nil {
+		n++
 	}
-	if directPins {
-		names = append(names, pins...)
+	if line.Describe != nil {
+		n++
 	}
-	if grouped {
-		names = append(names, groupedResources(cat)...)
+	if line.Invoke != nil {
+		n++
 	}
-	return names
-}
-
-func groupedResources(cat *catalog.Catalog) []string {
-	if cat == nil {
-		return nil
+	if n != 1 {
+		return nil, errors.New("exactly one of search, describe, invoke")
 	}
-	seen := map[string]bool{}
-	var out []string
-	for _, op := range cat.Operations {
-		if op.Group == "" || op.Exposure == catalog.ExposureDiscovery || seen[op.Group] {
-			continue
-		}
-		seen[op.Group] = true
-		out = append(out, op.Group)
+	switch {
+	case line.Search != nil:
+		return s.RunSearch(*line.Search)
+	case line.Describe != nil:
+		return s.RunDescribe(*line.Describe)
+	default:
+		ctx = auth.WithCaller(ctx, auth.OrLocal(line.Caller))
+		return s.RunInvoke(ctx, *line.Invoke)
 	}
-	return out
 }
