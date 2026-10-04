@@ -165,3 +165,15 @@ func testCapabilityLoop(t *testing.T) (*agent.Loop, error) {
 	loop, _, err := buildLoop(nil, path, "", "", "")
 	return loop, err
 }
+
+func TestSearchStartsWithoutAModelKey(t *testing.T) {
+	orders, err := filepath.Abs("../../testdata/orders.yaml")
+	require.NoError(t, err)
+	path := filepath.Join(t.TempDir(), "veto.yaml")
+	require.NoError(t, os.WriteFile(path, fmt.Appendf(nil, "contracts:\n  - %s\nmodel: openai\n", orders), 0o600))
+	t.Setenv("OPENAI_API_KEY", "")
+	srv, _, err := buildServer(nil, path, "", "", "")
+	require.NoError(t, err)
+	hits := srv.Search("order", 0, 8)
+	require.NotEmpty(t, hits)
+}

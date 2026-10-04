@@ -3,6 +3,7 @@ package capability_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"testing"
 
@@ -97,4 +98,18 @@ func hitByID(t *testing.T, hits []capability.SearchHit, id string) capability.Se
 	}
 	t.Fatalf("missing %s", id)
 	return capability.SearchHit{}
+}
+
+func TestSearchDoesNotCloneSynonymsOnEveryCall(t *testing.T) {
+	ops := make([]catalog.Operation, 0, 256)
+	for i := range 256 {
+		ops = append(ops, catalog.Operation{ID: fmt.Sprintf("orders.op%d", i), Name: "order", Description: "retire delete"})
+	}
+	cat := &catalog.Catalog{Operations: ops}
+	cat.Finalize()
+	sem := semantics.New(cat)
+	srv := &capability.Server{Catalog: cat, Semantics: sem}
+	srv.Search("retire", 0, 8)
+	allocs := testing.AllocsPerRun(20, func() { srv.Search("retire", 0, 8) })
+	assert.Less(t, allocs, 200.0)
 }

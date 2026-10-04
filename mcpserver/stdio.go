@@ -6,9 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
-	"regexp"
-	"strings"
 
 	"github.com/aiveto/veto/auth"
 	"github.com/aiveto/veto/capability"
@@ -76,7 +73,11 @@ func register(server *mcp.Server, srv *capability.Server, opt Options) {
 		Name:        capability.InvokeName,
 		Description: capability.InvokeDescription,
 		Annotations: invokeAnnotations(true),
-	}, func(ctx context.Context, req *mcp.CallToolRequest, args capability.InvokeArgs) (*mcp.CallToolResult, any, error) {
+	}, func(ctx context.Context, req *mcp.CallToolRequest, _ capability.InvokeArgs) (*mcp.CallToolResult, any, error) {
+		args, err := decodeInvokeArgs(req)
+		if err != nil {
+			return toolError(err)
+		}
 		return invokeCall(ctx, req, srv, args, opt.ChatApproval)
 	})
 
@@ -87,7 +88,11 @@ func register(server *mcp.Server, srv *capability.Server, opt Options) {
 				Name:        group,
 				Description: "Invoke an operation in " + group,
 				Annotations: groupAnnotations(srv.Catalog, group),
-			}, func(ctx context.Context, req *mcp.CallToolRequest, args capability.InvokeArgs) (*mcp.CallToolResult, any, error) {
+			}, func(ctx context.Context, req *mcp.CallToolRequest, _ capability.InvokeArgs) (*mcp.CallToolResult, any, error) {
+				args, err := decodeInvokeArgs(req)
+				if err != nil {
+					return toolError(err)
+				}
 				op := srv.Catalog.ByID(args.OperationID)
 				if op == nil || op.Group != group {
 					return toolError(fmt.Errorf("operation %q is not in group %s", args.OperationID, group))
@@ -108,7 +113,11 @@ func register(server *mcp.Server, srv *capability.Server, opt Options) {
 				Name:        pinnedID,
 				Description: op.Description,
 				Annotations: operationAnnotations(op),
-			}, func(ctx context.Context, req *mcp.CallToolRequest, args capability.InvokeArgs) (*mcp.CallToolResult, any, error) {
+			}, func(ctx context.Context, req *mcp.CallToolRequest, _ capability.InvokeArgs) (*mcp.CallToolResult, any, error) {
+				args, err := decodeInvokeArgs(req)
+				if err != nil {
+					return toolError(err)
+				}
 				args.OperationID = pinnedID
 				return invokeCall(ctx, req, srv, args, opt.ChatApproval)
 			})
@@ -116,12 +125,19 @@ func register(server *mcp.Server, srv *capability.Server, opt Options) {
 	}
 }
 
+func decodeInvokeArgs(req *mcp.CallToolRequest) (capability.InvokeArgs, error) {
+	if req == nil || req.Params == nil {
+		return capability.InvokeArgs{}, nil
+	}
+	return capability.DecodeInvoke(req.Params.Arguments)
+}
+
 func invokeCall(ctx context.Context, req *mcp.CallToolRequest, srv *capability.Server, args capability.InvokeArgs, chat bool) (*mcp.CallToolResult, any, error) {
 	caller := callerID(ctx, req)
 	if args.Preview {
 		out, err := srv.Preview(ctx, runtime.Request{
 			Operation: args.OperationID,
-			Arguments: args.Params,
+			Arguments: map[string]any(args.Params),
 			Caller:    caller,
 		})
 		return previewToolResult(srv, out, err)
@@ -146,7 +162,7 @@ func invokeCall(ctx context.Context, req *mcp.CallToolRequest, srv *capability.S
 	ctx = auth.WithCaller(ctx, caller)
 	res, err := srv.Call(ctx, runtime.Request{
 		Operation: args.OperationID,
-		Arguments: args.Params,
+		Arguments: map[string]any(args.Params),
 		Approval:  args.ApprovalID,
 		Caller:    caller,
 		Fields:    args.Fields,
@@ -258,7 +274,7 @@ func invokeToolResult(srv *capability.Server, res capability.InvokeResult, callE
 		if cause == "" && callErr != nil {
 			cause = callErr.Error()
 		}
-		res.Error = sanitizeCause(cause)
+		res.Error = capability.Sanitize(cause)
 	}
 	b, err := srv.Encode(res)
 	if err != nil {
@@ -269,63 +285,6 @@ func invokeToolResult(srv *capability.Server, res capability.InvokeResult, callE
 		result.IsError = res.Status != "" && res.Status != runtime.StatusOK && res.Status != runtime.StatusConfirmationRequired
 	}
 	return result, nil, err
-}
-
-var (
-	authHeader   = regexp.MustCompile(`(?i)\b(authorization|veto-caller)\s*:\s*(?:bearer|basic)?\s*\S+`)
-	authScheme   = regexp.MustCompile(`(?i)\b(bearer|basic)\s+\S+`)
-	httpURL      = regexp.MustCompile(`https?://[^\s"'<>]+`)
-	userinfo     = regexp.MustCompile(`(?i)(https?://)[^/\s@"']+@`)
-	secretAssign = regexp.MustCompile(`(?i)\b(access_token|refresh_token|client_secret|api[_-]?key|password|authorization|secret|token)=([^\s&"',;]+)`)
-)
-
-func sanitizeCause(msg string) string {
-	if msg == "" {
-		return ""
-	}
-	msg = authHeader.ReplaceAllString(msg, "$1: REDACTED")
-	msg = authScheme.ReplaceAllString(msg, "$1 REDACTED")
-	msg = httpURL.ReplaceAllStringFunc(msg, redactURL)
-	msg = userinfo.ReplaceAllString(msg, "${1}REDACTED@")
-	return secretAssign.ReplaceAllString(msg, "$1=REDACTED")
-}
-
-func redactURL(raw string) string {
-	end := len(raw)
-	for end > 0 && strings.ContainsRune(".,);", rune(raw[end-1])) {
-		end--
-	}
-	core, tail := raw[:end], raw[end:]
-	u, err := url.Parse(core)
-	if err != nil || u.Host == "" {
-		return raw
-	}
-	changed := false
-	if u.User != nil {
-		u.User = url.User("REDACTED")
-		changed = true
-	}
-	q := u.Query()
-	for k := range q {
-		if sensitiveQuery(k) {
-			q.Set(k, "REDACTED")
-			changed = true
-		}
-	}
-	if !changed {
-		return raw
-	}
-	u.RawQuery = q.Encode()
-	return u.String() + tail
-}
-
-func sensitiveQuery(name string) bool {
-	switch strings.ToLower(strings.ReplaceAll(name, "-", "_")) {
-	case "access_token", "api_key", "apikey", "authorization", "client_secret", "password", "refresh_token", "secret", "token":
-		return true
-	default:
-		return false
-	}
 }
 
 func textResult(s string) (*mcp.CallToolResult, any, error) {

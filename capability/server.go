@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/aiveto/veto/auth"
 	"github.com/aiveto/veto/catalog"
@@ -45,20 +46,29 @@ type (
 		Catalog   *catalog.Catalog
 		Semantics semantics.Notes
 		Calls     *runtime.Runtime
+		synOnce   sync.Once
+		syns      map[string][]string
 	}
 )
 
+func (s *Server) searchSyns() map[string][]string {
+	if s == nil {
+		return nil
+	}
+	s.synOnce.Do(func() {
+		if s.Semantics != nil {
+			s.syns = s.Semantics.AllSynonyms()
+		}
+	})
+	return s.syns
+}
+
 func (s *Server) Search(query string, offset, limit int) []SearchHit {
-	var (
-		cat  *catalog.Catalog
-		syns map[string][]string
-	)
+	var cat *catalog.Catalog
 	if s != nil {
 		cat = s.Catalog
-		if s.Semantics != nil {
-			syns = s.Semantics.AllSynonyms()
-		}
 	}
+	syns := s.searchSyns()
 	matches := catalog.SearchPage(cat, query, syns, offset, limit)
 	if len(matches) == 0 {
 		return nil
@@ -112,7 +122,7 @@ func (s *Server) RunInvoke(ctx context.Context, args InvokeArgs) ([]byte, error)
 	ctx = auth.WithUserToken(ctx, args.Token)
 	req := runtime.Request{
 		Operation: args.OperationID,
-		Arguments: args.Params,
+		Arguments: map[string]any(args.Params),
 		Approval:  args.ApprovalID,
 		Fields:    args.Fields,
 		Offset:    args.Offset,
@@ -133,11 +143,26 @@ func (s *Server) RunInvoke(ctx context.Context, args InvokeArgs) ([]byte, error)
 		return b, nil
 	}
 	res, err := s.Call(ctx, req)
+	normalize(&res, err)
 	b, encErr := s.Encode(res)
 	if encErr != nil {
 		return b, encErr
 	}
 	return b, err
+}
+
+func normalize(res *InvokeResult, callErr error) {
+	if res == nil {
+		return
+	}
+	if res.Status != runtime.StatusError {
+		return
+	}
+	cause := res.Error
+	if cause == "" && callErr != nil {
+		cause = callErr.Error()
+	}
+	res.Error = Sanitize(cause)
 }
 
 // Encode writes the same JSON MCP returns for search, describe, and invoke.

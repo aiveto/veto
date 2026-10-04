@@ -46,7 +46,7 @@ func runPreview(cmd previewCmd) {
 		fmt.Fprintf(os.Stderr, "preview: operation required\n")
 		exitMain(1)
 	}
-	loop, _, err := buildLoop(cmd.contract, cmd.config, cmd.agent, cmd.relations, cmd.baseURL)
+	srv, _, err := buildServer(cmd.contract, cmd.config, cmd.agent, cmd.relations, cmd.baseURL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "preview: %v\n", err)
 		exitMain(1)
@@ -56,8 +56,7 @@ func runPreview(cmd previewCmd) {
 		fmt.Fprintf(os.Stderr, "preview: %v\n", err)
 		exitMain(1)
 	}
-	rt := loop.Runtime()
-	out, err := rt.Preview(context.Background(), runtime.Request{
+	out, err := srv.Preview(context.Background(), runtime.Request{
 		Operation: cmd.operation,
 		Arguments: args,
 		Caller:    cmd.caller,
