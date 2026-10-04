@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The README figure shows search, describe, and invoke on the catalog, semantics, relations, and the brief. Destructive calls can be configured for approval.
+
 ## v0.1.5 - 2026-10-03
 
 - A loaded schema keeps its validation constraints. Malformed JSON is a body error.

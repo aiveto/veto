@@ -6,7 +6,9 @@ The model may request a call. Veto checks policy, requires approval for a destru
 
 **The model proposes. Veto decides. Your API executes.**
 
-Connect an MCP client, or embed the Go runtime. MCP, the CLI, eval, and a generated Go client share that runtime. The client calls the catalog through search, describe, and invoke. A hundred endpoints do not become a hundred tools. Your services stay where they already run.
+Connect an MCP client, or embed the Go runtime. MCP, the CLI, eval, and a generated Go client share that runtime. Your services stay where they already run.
+
+<img src="docs/veto-runtime.svg" width="736" alt="Claude, Cursor, or ChatGPT talks to veto over MCP. Search, describe, and invoke sit on catalog, semantics, relations, and a short brief that is not the OpenAPI file. Destructive calls can be configured for approval. Then HTTP reaches your APIs.">
 
 ```bash
 brew install aiveto/veto/veto
