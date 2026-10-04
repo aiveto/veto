@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- MCP and JSON encode one invoke result. MCP only sets IsError and the confirmation form on that body.
 - Approval binds one deterministic JSON form for structured arguments. Large integers stay digits through MCP and JSON. A JSON failure keeps the structured result. Search, serve, preview, and doctor build the catalog without the agent model. `veto serve --json` closes stdin on SIGTERM. Search keeps one synonym snapshot.
 - Search, describe, and invoke live in `capability`. Server lives there. MCP and `veto serve --json` call it. `--json` serves JSON lines for skills and scripts. `veto search`, `describe`, and `invoke` are a shorthand. `--help-json` is that contract. `semantics.Notes` is the note and synonym map. The agent and Server use it.
 - The README figure sends only invoke through policy and HTTP. Deletes require approval by default.

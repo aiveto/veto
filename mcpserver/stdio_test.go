@@ -65,7 +65,12 @@ func TestMissingParamStaysStructuredOnTheToolResult(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			tool, _, err := invokeToolResult(nil, tc.res, tc.err)
+			res, b, encErr := (*capability.Server)(nil).EncodeResult(tc.res, tc.err)
+			require.NotEmpty(t, b)
+			if tc.err == nil {
+				require.NoError(t, encErr)
+			}
+			tool, _, err := invokeToolResult(res, b, encErr)
 			require.NoError(t, err)
 			assert.Equal(t, tc.isError, tool.IsError)
 			if tc.text == "" {
@@ -82,8 +87,10 @@ func TestMissingParamStaysStructuredOnTheToolResult(t *testing.T) {
 func TestInvokeErrorReturnsTheSanitizedCause(t *testing.T) {
 	const secret = "super-secret"
 	cause := `Get "https://user:` + secret + `@api.example/orders?api_key=` + secret + `": dial tcp: connection refused Authorization: Bearer ` + secret
-	tool, _, err := invokeToolResult(nil, capability.InvokeResult{Status: "error", OperationID: "orders.get"}, errors.New(cause))
-	require.NoError(t, err)
+	res, b, err := (*capability.Server)(nil).EncodeResult(capability.InvokeResult{Status: "error", OperationID: "orders.get"}, errors.New(cause))
+	require.Error(t, err)
+	tool, _, wrapErr := invokeToolResult(res, b, err)
+	require.NoError(t, wrapErr)
 	require.NotNil(t, tool)
 	assert.True(t, tool.IsError)
 	require.NotEmpty(t, tool.Content)
@@ -93,8 +100,10 @@ func TestInvokeErrorReturnsTheSanitizedCause(t *testing.T) {
 	assert.Contains(t, text.Text, `"error"`)
 	assert.NotContains(t, text.Text, secret)
 
-	stored, _, err := invokeToolResult(nil, capability.InvokeResult{Status: "error", Error: "api_key=" + secret}, nil)
+	res, b, err = (*capability.Server)(nil).EncodeResult(capability.InvokeResult{Status: "error", Error: "api_key=" + secret}, nil)
 	require.NoError(t, err)
+	stored, _, wrapErr := invokeToolResult(res, b, err)
+	require.NoError(t, wrapErr)
 	require.NotEmpty(t, stored.Content)
 	storedText, ok := stored.Content[0].(*mcp.TextContent)
 	require.True(t, ok)

@@ -117,38 +117,60 @@ func (s *Server) RunDescribe(args DescribeArgs) ([]byte, error) {
 	return s.Describe(args.OperationID)
 }
 
-// RunInvoke is invoke without MCP elicitation. CLI and a skill use it. The host form stays in the MCP adapter.
+// Request is the runtime call for these arguments. Caller is set by the adapter.
+func (a InvokeArgs) Request() runtime.Request {
+	return runtime.Request{
+		Operation: a.OperationID,
+		Arguments: map[string]any(a.Params),
+		Approval:  a.ApprovalID,
+		Fields:    a.Fields,
+		Offset:    a.Offset,
+		Limit:     a.Limit,
+	}
+}
+
+// RunInvoke encodes one invoke. MCP wraps IsError and elicitation around EncodeInvoke.
 func (s *Server) RunInvoke(ctx context.Context, args InvokeArgs) ([]byte, error) {
 	ctx = auth.WithUserToken(ctx, args.Token)
-	req := runtime.Request{
-		Operation: args.OperationID,
-		Arguments: map[string]any(args.Params),
-		Approval:  args.ApprovalID,
-		Fields:    args.Fields,
-		Offset:    args.Offset,
-		Limit:     args.Limit,
-	}
+	req := args.Request()
 	if args.Preview {
-		out, err := s.Preview(ctx, req)
-		if err != nil {
-			return nil, err
-		}
-		b, err := s.Encode(out)
-		if err != nil {
-			return nil, err
-		}
-		if len(out.Errors) > 0 {
-			return b, errors.New("preview failed")
-		}
-		return b, nil
+		_, b, err := s.EncodePreview(ctx, req)
+		return b, err
 	}
+	_, b, err := s.EncodeInvoke(ctx, req)
+	return b, err
+}
+
+// EncodeInvoke runs Call, redacts, and encodes. Adapters share this body.
+func (s *Server) EncodeInvoke(ctx context.Context, req runtime.Request) (InvokeResult, []byte, error) {
 	res, err := s.Call(ctx, req)
-	normalize(&res, err)
+	return s.EncodeResult(res, err)
+}
+
+// EncodePreview runs Preview and encodes. A failed preview still returns the body.
+func (s *Server) EncodePreview(ctx context.Context, req runtime.Request) (runtime.Preview, []byte, error) {
+	out, err := s.Preview(ctx, req)
+	if err != nil {
+		return out, nil, err
+	}
+	b, encErr := s.Encode(out)
+	if encErr != nil {
+		return out, b, encErr
+	}
+	if len(out.Errors) > 0 {
+		return out, b, errors.New("preview failed")
+	}
+	return out, b, nil
+}
+
+// EncodeResult redacts and encodes one invoke result.
+func (s *Server) EncodeResult(res InvokeResult, callErr error) (InvokeResult, []byte, error) {
+	normalize(&res, callErr)
 	b, encErr := s.Encode(res)
 	if encErr != nil {
-		return b, encErr
+		return res, b, encErr
 	}
-	return b, err
+	return res, b, callErr
 }
 
 func normalize(res *InvokeResult, callErr error) {
