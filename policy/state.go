@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aiveto/veto/jsonopts"
 	"github.com/google/uuid"
 )
 
@@ -38,7 +37,6 @@ type (
 		tokens  signer
 		ttl     time.Duration
 		now     func() time.Time
-		json    jsonopts.Set
 	}
 
 	// StoreOptions attaches a store, a files dir, and a signer. Dial opens a URL.
@@ -47,7 +45,6 @@ type (
 		Dir    string
 		Secret []byte
 		TTL    time.Duration
-		JSON   jsonopts.Set
 		Dial   func(context.Context, string) (Store, error)
 	}
 )
@@ -71,7 +68,6 @@ func (s *State) Open(ctx context.Context, opt StoreOptions) error {
 	if s == nil {
 		return errors.New("missing approval state")
 	}
-	s.json = opt.JSON
 	if opt.URL != "" {
 		if opt.Dial == nil {
 			return errors.New("approval store dial is unset")
@@ -82,7 +78,7 @@ func (s *State) Open(ctx context.Context, opt StoreOptions) error {
 		}
 		s.SetStore(st)
 	} else if opt.Dir != "" {
-		s.SetStore(&Files{Dir: opt.Dir, JSON: opt.JSON})
+		s.SetStore(&Files{Dir: opt.Dir})
 	}
 	if len(opt.Secret) == 0 {
 		return nil
@@ -130,7 +126,7 @@ func (s *State) SetSigner(secret []byte, ttl time.Duration) error {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return fmt.Errorf("approval nonce dir: %w", err)
 		}
-		s.records = &Files{Dir: dir, JSON: s.json}
+		s.records = &Files{Dir: dir}
 	}
 	s.tokens = hmacSigner{secret: append([]byte(nil), secret...)}
 	s.ttl = ttl

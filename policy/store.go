@@ -10,8 +10,9 @@ import (
 	"strings"
 	"sync"
 
+	jsonv2 "encoding/json/v2"
+
 	"github.com/aiveto/veto/internal/atomicfile"
-	"github.com/aiveto/veto/jsonopts"
 )
 
 // Store persists confirmation records. Memory is the default. Files is one machine.
@@ -122,8 +123,7 @@ func (m *Memory) remove(rec Record) {
 // Files keeps records as JSON under Dir/confirmations.
 type Files struct {
 	Memory
-	Dir  string
-	JSON jsonopts.Set
+	Dir string
 }
 
 func (f *Files) Put(ctx context.Context, rec Record) error {
@@ -230,7 +230,7 @@ func (f *Files) write(rec Record) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("approval dir: %w", err)
 	}
-	body, err := f.JSON.Marshal(rec)
+	body, err := jsonv2.Marshal(rec)
 	if err != nil {
 		return fmt.Errorf("approval: %w", err)
 	}
@@ -264,7 +264,7 @@ func (f *Files) read(id string) (Record, error) {
 		return Record{}, err
 	}
 	var rec Record
-	if err := f.JSON.Unmarshal(body, &rec); err != nil {
+	if err := jsonv2.Unmarshal(body, &rec); err != nil {
 		return Record{}, fmt.Errorf("approval: %w", err)
 	}
 	if rec.ID != id {

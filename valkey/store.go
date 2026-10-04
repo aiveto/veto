@@ -8,7 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aiveto/veto/jsonopts"
+	jsonv2 "encoding/json/v2"
+
 	"github.com/aiveto/veto/policy"
 	"github.com/valkey-io/valkey-go"
 )
@@ -22,8 +23,7 @@ const (
 
 // Store keeps confirmation records in Valkey or Redis. Claim is SET NX.
 type Store struct {
-	c    valkey.Client
-	JSON jsonopts.Set
+	c valkey.Client
 }
 
 // Dial opens a RESP server. url is a redis://, valkey://, or host:port.
@@ -52,7 +52,7 @@ func Dial(ctx context.Context, url string) (*Store, error) {
 }
 
 func (s *Store) Put(ctx context.Context, rec policy.Record) error {
-	body, err := s.JSON.Marshal(rec)
+	body, err := jsonv2.Marshal(rec)
 	if err != nil {
 		return fmt.Errorf("approval: %w", err)
 	}
@@ -132,7 +132,7 @@ func (s *Store) load(ctx context.Context, key string) (policy.Record, bool, erro
 		return policy.Record{}, false, fmt.Errorf("approval store: %w", err)
 	}
 	var rec policy.Record
-	if err := s.JSON.Unmarshal(raw, &rec); err != nil {
+	if err := jsonv2.Unmarshal(raw, &rec); err != nil {
 		return policy.Record{}, false, fmt.Errorf("approval store: %w", err)
 	}
 	if rec.ID == "" {

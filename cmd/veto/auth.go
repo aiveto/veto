@@ -11,7 +11,6 @@ import (
 
 	"github.com/aiveto/veto/auth"
 	"github.com/aiveto/veto/config"
-	"github.com/aiveto/veto/jsonopts"
 	"github.com/spf13/cobra"
 )
 
@@ -67,7 +66,7 @@ func newAuthSetCommand() *cobra.Command {
 }
 
 func runAuthLogin(cmd authLoginCmd) {
-	scheme, dir, json, err := configuredScheme(cmd.config, cmd.scheme)
+	scheme, dir, err := configuredScheme(cmd.config, cmd.scheme)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "auth login: %v\n", err)
 		exitMain(1)
@@ -77,7 +76,6 @@ func runAuthLogin(cmd authLoginCmd) {
 		Scheme: scheme,
 		Dir:    dir,
 		Device: cmd.device || !auth.HasBrowser(),
-		JSON:   json,
 	})
 	cancel()
 	if err != nil {
@@ -114,23 +112,23 @@ func runAuthSet(cmd authSetCmd) {
 	}
 }
 
-func configuredScheme(configPath, name string) (auth.Scheme, string, jsonopts.Set, error) {
+func configuredScheme(configPath, name string) (auth.Scheme, string, error) {
 	if configPath == "" {
-		return auth.Scheme{}, "", jsonopts.Set{}, errors.New("config required")
+		return auth.Scheme{}, "", errors.New("config required")
 	}
 	if name == "" {
-		return auth.Scheme{}, "", jsonopts.Set{}, errors.New("scheme required")
+		return auth.Scheme{}, "", errors.New("scheme required")
 	}
 	cfg, err := loadAuthConfig(configPath)
 	if err != nil {
-		return auth.Scheme{}, "", jsonopts.Set{}, err
+		return auth.Scheme{}, "", err
 	}
 	src, ok := cfg.Auth[name]
 	if !ok {
-		return auth.Scheme{}, "", jsonopts.Set{}, fmt.Errorf("auth scheme %s is unset", name)
+		return auth.Scheme{}, "", fmt.Errorf("auth scheme %s is unset", name)
 	}
 	if src.Kind() != "login" {
-		return auth.Scheme{}, "", jsonopts.Set{}, fmt.Errorf("auth scheme %s is not login", name)
+		return auth.Scheme{}, "", fmt.Errorf("auth scheme %s is not login", name)
 	}
 	return auth.Scheme{
 		Name:                   name,
@@ -148,7 +146,7 @@ func configuredScheme(configPath, name string) (auth.Scheme, string, jsonopts.Se
 		AuthToken:              src.AuthToken,
 		UserToken:              src.UserToken,
 		UserHeader:             src.UserHeader,
-	}, tokenDir(cfg), cfg.JSONSet(), nil
+	}, tokenDir(cfg), nil
 }
 
 func loadAuthConfig(path string) (config.File, error) {

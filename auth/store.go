@@ -8,8 +8,9 @@ import (
 	"strings"
 	"time"
 
+	jsonv2 "encoding/json/v2"
+
 	"github.com/aiveto/veto/internal/atomicfile"
-	"github.com/aiveto/veto/jsonopts"
 )
 
 type storedToken struct {
@@ -35,7 +36,7 @@ func DefaultTokenDir() string {
 	return filepath.Join(home, ".veto", "tokens")
 }
 
-func writeToken(dir, scheme string, tok storedToken, json jsonopts.Set) error {
+func writeToken(dir, scheme string, tok storedToken) error {
 	path, err := tokenPath(dir, scheme)
 	if err != nil {
 		return err
@@ -43,7 +44,7 @@ func writeToken(dir, scheme string, tok storedToken, json jsonopts.Set) error {
 	if err := ensureDir(dir); err != nil {
 		return err
 	}
-	raw, err := json.Marshal(tok)
+	raw, err := jsonv2.Marshal(tok)
 	if err != nil {
 		return fmt.Errorf("store token: %w", err)
 	}
@@ -55,17 +56,17 @@ func writeToken(dir, scheme string, tok storedToken, json jsonopts.Set) error {
 
 // HasAccessToken reports a pasted or minted access token on disk.
 func HasAccessToken(dir, scheme string) bool {
-	tok, err := readToken(dir, scheme, jsonopts.Set{})
+	tok, err := readToken(dir, scheme)
 	return err == nil && tok.AccessToken != ""
 }
 
 // HasRefreshToken reports a stored refresh token.
 func HasRefreshToken(dir, scheme string) bool {
-	tok, err := readToken(dir, scheme, jsonopts.Set{})
+	tok, err := readToken(dir, scheme)
 	return err == nil && tok.RefreshToken != ""
 }
 
-func readToken(dir, scheme string, json jsonopts.Set) (storedToken, error) {
+func readToken(dir, scheme string) (storedToken, error) {
 	path, err := tokenPath(dir, scheme)
 	if err != nil {
 		return storedToken{}, err
@@ -75,7 +76,7 @@ func readToken(dir, scheme string, json jsonopts.Set) (storedToken, error) {
 		return storedToken{}, err
 	}
 	var tok storedToken
-	if err := json.Unmarshal(raw, &tok); err != nil {
+	if err := jsonv2.Unmarshal(raw, &tok); err != nil {
 		return storedToken{}, fmt.Errorf("read token: %w", err)
 	}
 	return tok, nil

@@ -66,7 +66,7 @@ func (envSource) ready(_ context.Context, r *Resolver, s Scheme) bool {
 	if s.Env != "" && r.env(s.Env) != "" {
 		return true
 	}
-	tok, err := readToken(r.dir, s.Name, r.json)
+	tok, err := readToken(r.dir, s.Name)
 	return err == nil && tok.AccessToken != ""
 }
 
@@ -91,7 +91,7 @@ func (envSource) fetch(_ context.Context, r *Resolver, s Scheme, a catalog.Auth,
 }
 
 func (loginSource) ready(_ context.Context, r *Resolver, s Scheme) bool {
-	tok, err := readToken(r.dir, s.Name, r.json)
+	tok, err := readToken(r.dir, s.Name)
 	if err != nil {
 		return false
 	}

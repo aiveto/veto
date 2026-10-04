@@ -10,7 +10,7 @@ import (
 )
 
 func (r *Resolver) fetchLogin(ctx context.Context, s Scheme, a catalog.Auth, need []string, force bool) (Material, error) {
-	stored, err := readToken(r.dir, s.Name, r.json)
+	stored, err := readToken(r.dir, s.Name)
 	if err != nil || (stored.RefreshToken == "" && tokenField(stored, authFieldName(s)) == "") {
 		return Material{}, fmt.Errorf("%s has no stored token", a.Name)
 	}
@@ -63,7 +63,7 @@ func (r *Resolver) fetchLogin(ctx context.Context, s Scheme, a catalog.Auth, nee
 	}
 	exp := expiryFrom(r.now(), tok.ExpiresIn)
 	next := absorb(stored, tok, s, scopes, exp, tokenURL, clientID)
-	if err := writeToken(r.dir, s.Name, next, r.json); err != nil {
+	if err := writeToken(r.dir, s.Name, next); err != nil {
 		return Material{}, err
 	}
 	return r.placeLogin(s, a, next, next.ExpiresAt)

@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/aiveto/veto/internal/yamlfile"
-	"github.com/aiveto/veto/jsonopts"
 	"gopkg.in/yaml.v3"
 )
 
@@ -25,7 +24,6 @@ var (
 	semanticsProviders  = []string{"derived", "file"}
 	policyProviders     = []string{"builtin", "opa"}
 	authSourceProviders = []string{"env", "invoke", "login", "client_credentials", "command", "token_exchange"}
-	jsonProviders       = []string{"v2", "v1"}
 )
 
 type File struct {
@@ -67,7 +65,6 @@ type File struct {
 	Expose          Expose            `yaml:"expose"`
 	Permissions     []string          `yaml:"permissions"`
 	MemoryFile      string            `yaml:"memory_file"`
-	JSON            string            `yaml:"json"`
 }
 
 // Expose keeps operations with a listed tag or under a listed path; both empty keeps every operation.
@@ -93,7 +90,6 @@ func Defaults() File {
 		Memory:    "local",
 		Semantics: "derived",
 		Policy:    "builtin",
-		JSON:      "v2",
 		Timeout:   30 * time.Second,
 	}
 }
@@ -178,9 +174,6 @@ func (f *File) applyDefaults() {
 	if f.Policy == "" {
 		f.Policy = d.Policy
 	}
-	if f.JSON == "" {
-		f.JSON = d.JSON
-	}
 	if f.Timeout <= 0 {
 		f.Timeout = d.Timeout
 	}
@@ -235,9 +228,6 @@ func (f *File) validate() error {
 	}
 	if f.ApprovalTTL < 0 {
 		return errors.New("approval_ttl is negative")
-	}
-	if err := unknownProvider("json", f.JSON, jsonProviders); err != nil {
-		return err
 	}
 	if f.ApprovalStore != "" && (strings.Contains(f.ApprovalStore, "://") || strings.ContainsAny(f.ApprovalStore, "/:\\")) {
 		return errors.New("approval_store is an environment variable name")
@@ -570,9 +560,4 @@ func resolvePath(dir, name string) string {
 // An unset key redacts.
 func (f *File) Redact() bool {
 	return f.ReplayRedact == nil || *f.ReplayRedact
-}
-
-// JSONSet is v2 when json is unset or v2.
-func (f *File) JSONSet() jsonopts.Set {
-	return jsonopts.Set{V1: f.JSON == "v1"}
 }

@@ -51,7 +51,7 @@ func (r *Resolver) subjectToken(ctx context.Context, s Scheme) string {
 	if s.Subject == "" {
 		return ""
 	}
-	stored, err := readToken(r.dir, s.Subject, r.json)
+	stored, err := readToken(r.dir, s.Subject)
 	if err != nil {
 		return ""
 	}
@@ -67,7 +67,7 @@ func (r *Resolver) subjectToken(ctx context.Context, s Scheme) string {
 		if _, err := r.fetchLogin(ctx, login, catalog.Auth{Name: s.Subject}, nil, true); err != nil {
 			return ""
 		}
-		stored, err = readToken(r.dir, s.Subject, r.json)
+		stored, err = readToken(r.dir, s.Subject)
 		if err != nil {
 			return ""
 		}
