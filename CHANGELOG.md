@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The runtime figure keeps the invoke path off the catalog and the HTTP label off the line to your APIs.
+
 ## v0.1.6 - 2026-10-04
 
 - Search returns `related_calls`. A pending id submitted as `approval_id` is `pending_approval` and does not run HTTP. `idempotency_key` is on invoke and on a pin. The agent loop copies the kernel page walk, body cap, and invoke gate. A context pack keeps the pending id after params are dropped. A generated client hides the runtime and exposes `Operation`, `SetPolicy`, and `Confirm`. A grouped tool lists the callable ids. The guide names pins, collisions, pages, SIGTERM, and `sent` versus `http`.
