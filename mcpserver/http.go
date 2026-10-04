@@ -34,12 +34,10 @@ func Handler(srv *capability.Server, opt Options, ids []Identity) (http.Handler,
 	if err := checkIdentities(ids); err != nil {
 		return nil, err
 	}
-	if srv != nil {
-		if err := ValidateRegistration(srv.Catalog, opt); err != nil {
-			return nil, err
-		}
+	server, err := newMCP(srv, opt)
+	if err != nil {
+		return nil, err
 	}
-	server := newMCP(srv, opt)
 	inner := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
 		return server
 	}, nil)

@@ -3,6 +3,7 @@ package mcpserver_test
 import (
 	"testing"
 
+	"github.com/aiveto/veto/capability"
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/mcpserver"
 	"github.com/stretchr/testify/assert"
@@ -46,6 +47,17 @@ func TestGroupedNameCannotReplaceACapability(t *testing.T) {
 	err := mcpserver.ValidateRegistration(cat, mcpserver.Options{Grouped: true})
 	require.ErrorContains(t, err, "collides")
 	require.ErrorContains(t, err, "capabilities_search")
+}
+
+func TestHandlerRejectsAGroupedCapabilityName(t *testing.T) {
+	cat := &catalog.Catalog{Operations: []catalog.Operation{
+		{ID: "search.list", Group: "capabilities_search"},
+	}}
+	cat.Finalize()
+	_, err := mcpserver.Handler(&capability.Server{Catalog: cat}, mcpserver.Options{Grouped: true}, []mcpserver.Identity{
+		{ID: "ada", Token: "secret"},
+	})
+	require.ErrorContains(t, err, "collides")
 }
 
 func TestPinNameCannotReplaceACapability(t *testing.T) {
