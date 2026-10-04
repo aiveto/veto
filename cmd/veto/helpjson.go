@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/aiveto/veto/capability"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -30,8 +31,17 @@ func jsonHelp(w io.Writer, root *cobra.Command, args []string) (bool, error) {
 	if !wantsHelpJSON(args) {
 		return false, nil
 	}
-	doc := describeCommand(targetCommand(root, args))
-	if err := writeIndentedJSON(w, doc); err != nil {
+	cmd := targetCommand(root, args)
+	doc := describeCommand(cmd)
+	var err error
+	if spec, ok := capability.ByCommand(doc.Command); ok {
+		err = writeIndentedJSON(w, spec)
+	} else if cmd == root {
+		err = writeIndentedJSON(w, capability.HelpJSON())
+	} else {
+		err = writeIndentedJSON(w, doc)
+	}
+	if err != nil {
 		return true, err
 	}
 	return true, nil

@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- The README figure is a PNG. Search, describe, and invoke sit on catalog, semantics, relations, and the brief. Destructive calls can be configured for approval.
+- Search, describe, and invoke live in `capability`. MCP and `veto serve --json` are adapters. A skill speaks JSON lines on one process. `veto search`, `describe`, and `invoke` are a shorthand. `--help-json` is that contract.
+- The README figure is a PNG. MCP is one inbound. A CLI or skill is the other. Both reach search, describe, and invoke.
 
 ## v0.1.5 - 2026-10-03
 

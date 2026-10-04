@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="800" height="1180" viewBox="0 0 800 1180" role="img" aria-labelledby="veto-runtime-title">
-  <title id="veto-runtime-title">Claude, Cursor, or ChatGPT talks to veto over MCP. Search, describe, and invoke sit on catalog, semantics, relations, and a short brief that is not the OpenAPI file. Destructive calls can be configured for approval. Then HTTP reaches your APIs.</title>
+  <title id="veto-runtime-title">Claude, Cursor, or ChatGPT talks to veto over MCP. A CLI or skill uses search, describe, and invoke. Those three sit on catalog, semantics, relations, and a short brief that is not the OpenAPI file. Destructive calls can be configured for approval. Then HTTP reaches your APIs.</title>
   <defs>
     <marker id="veto-runtime-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#1A1916"/>
@@ -7,12 +7,18 @@
   </defs>
   <rect width="800" height="1180" fill="#F4F1EA"/>
   <g font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" fill="#1A1916">
-    <rect x="220" y="28" width="360" height="88" rx="10" fill="#FFFFFF" stroke="#1A1916" stroke-width="1.75"/>
-    <text x="400" y="64" text-anchor="middle" font-size="26" font-weight="650">Agent</text>
-    <text x="400" y="94" text-anchor="middle" font-size="17" fill="#5C5854">Claude, Cursor, ChatGPT</text>
+    <rect x="52" y="24" width="328" height="88" rx="10" fill="#FFFFFF" stroke="#1A1916" stroke-width="1.75"/>
+    <text x="216" y="60" text-anchor="middle" font-size="24" font-weight="650">Agent</text>
+    <text x="216" y="90" text-anchor="middle" font-size="16" fill="#5C5854">Claude, Cursor, ChatGPT</text>
 
-    <line x1="400" y1="116" x2="400" y2="156" stroke="#1A1916" stroke-width="1.75" marker-end="url(#veto-runtime-arrow)"/>
-    <text x="416" y="144" font-size="16" fill="#5C5854">MCP</text>
+    <rect x="420" y="24" width="328" height="88" rx="10" fill="#FFFFFF" stroke="#1A1916" stroke-width="1.75"/>
+    <text x="584" y="60" text-anchor="middle" font-size="22" font-weight="650">CLI / skill</text>
+    <text x="584" y="90" text-anchor="middle" font-size="15" fill="#5C5854">search, describe, invoke</text>
+
+    <line x1="216" y1="112" x2="216" y2="164" stroke="#1A1916" stroke-width="1.75" marker-end="url(#veto-runtime-arrow)"/>
+    <line x1="584" y1="112" x2="584" y2="164" stroke="#1A1916" stroke-width="1.75" marker-end="url(#veto-runtime-arrow)"/>
+    <text x="228" y="144" font-size="16" fill="#5C5854">MCP</text>
+    <text x="548" y="144" text-anchor="end" font-size="16" fill="#5C5854">CLI</text>
 
     <rect x="28" y="164" width="744" height="820" rx="14" fill="#E8E2D6" stroke="#1A1916" stroke-width="1.75"/>
     <text x="400" y="206" text-anchor="middle" font-size="26" font-weight="650">veto</text>

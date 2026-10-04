@@ -42,7 +42,8 @@ bundle/      Contracts, relations, and check cases. Deployment stays outside
 opa/         Rego policy. The builtin permission floor still runs
 result/      HTTP result and parameter errors
 runtime/     Invoke sequence for the CLI, MCP, and generated clients
-mcpserver/   capabilities_search, capabilities_describe, capabilities_invoke, pins
+capability/  search, describe, invoke. MCP and serve --json share this
+mcpserver/   MCP adapter. pins. JSON lines for a skill
 eval/        Cases on the agent loop. No network LLM
 telemetry/   OpenTelemetry spans. Stdout export is optional
 replay/      Read those spans. User text is omitted unless asked
