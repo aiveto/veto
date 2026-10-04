@@ -53,7 +53,7 @@ func SurfaceRegressions(base, next map[string]OpFact, confirmationChanged map[st
 		if !ok {
 			continue
 		}
-		if fact.Destructive && fact.Confirmation && !cur.Confirmation && !confirmationChanged[id] && !confirmationOff {
+		if fact.Confirmation && !cur.Confirmation && !confirmationChanged[id] && !confirmationOff {
 			out = append(out, "operation "+id+" lost confirmation")
 		}
 		if fact.Callable != nil && !*fact.Callable && cur.Callable != nil && *cur.Callable {

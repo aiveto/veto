@@ -102,6 +102,8 @@ type (
 		Notify   policy.Notifier
 		Gate     *InvokeGate
 		JSON     jsonopts.Set
+		Pages    int
+		MaxBody  int64
 		gateOnce sync.Once
 		now      func() time.Time
 	}
@@ -206,20 +208,33 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 		return rt.record(ctx, errorResult(req.Operation, "", err)), err
 	}
 	ctx = WithIdempotency(ctx, req.Idempotency)
+	var proj Projection
 	if len(req.Fields) > 0 || req.Limit > 0 || req.Offset > 0 {
-		ctx = WithProjection(ctx, Projection{
-			Fields: req.Fields,
-			Offset: req.Offset,
-			Limit:  req.Limit,
-		})
+		proj = Projection{Fields: req.Fields, Offset: req.Offset, Limit: req.Limit}
+		ctx = WithProjection(ctx, proj)
 	}
-	call, err := rt.Exec.InvokeHTTPResult(ctx, op, args)
+	follow := rt.Pages > 1 && len(op.Page) > 0
+	execCtx := ctx
+	if follow {
+		execCtx = WithoutProjection(ctx)
+	}
+	call, err := rt.Exec.InvokeHTTPResult(execCtx, op, args)
 	if err != nil {
 		res := errorResult(req.Operation, "", err)
 		res.HTTP = call.HTTP
 		res.HTTPStatus = call.Status
 		res.Sent = call.Sent || call.HTTP
 		return rt.record(ctx, res), err
+	}
+	if follow {
+		call, err = rt.collectPages(execCtx, op, args, call, proj)
+		if err != nil {
+			res := errorResult(req.Operation, "", err)
+			res.HTTP = call.HTTP
+			res.HTTPStatus = call.Status
+			res.Sent = call.Sent || call.HTTP
+			return rt.record(ctx, res), err
+		}
 	}
 	status := call.Code
 	if status == "" {

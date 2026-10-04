@@ -6,6 +6,7 @@ import (
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/mcpserver"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMCPToolListIsCapabilitiesPlusPins(t *testing.T) {
@@ -35,4 +36,24 @@ func TestGroupedAddsOneToolPerResource(t *testing.T) {
 	assert.Equal(t, []string{"capabilities_search", "capabilities_describe", "capabilities_invoke", "orders"}, names)
 	err := mcpserver.ValidatePins(cat, []string{"orders.delete"})
 	assert.ErrorContains(t, err, "discovery-only")
+}
+
+func TestGroupedNameCannotReplaceACapability(t *testing.T) {
+	cat := &catalog.Catalog{Operations: []catalog.Operation{
+		{ID: "search.list", Group: "capabilities_search"},
+	}}
+	cat.Finalize()
+	err := mcpserver.ValidateRegistration(cat, mcpserver.Options{Grouped: true})
+	require.ErrorContains(t, err, "collides")
+	require.ErrorContains(t, err, "capabilities_search")
+}
+
+func TestPinNameCannotReplaceACapability(t *testing.T) {
+	cat := &catalog.Catalog{Operations: []catalog.Operation{
+		{ID: "capabilities_invoke", PathTemplate: "/invoke"},
+	}}
+	cat.Finalize()
+	err := mcpserver.ValidateRegistration(cat, mcpserver.Options{Pins: []string{"capabilities_invoke"}, DirectPins: true})
+	require.ErrorContains(t, err, "collides")
+	require.ErrorContains(t, err, "capabilities_invoke")
 }

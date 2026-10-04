@@ -92,6 +92,24 @@ func TestQueryStyleAndExplodeReachTheWire(t *testing.T) {
 	assert.NotContains(t, raw, "%5B%22red%22")
 }
 
+func TestStructuredQueryKeepsLargeIntegersOnTheWire(t *testing.T) {
+	const id = "9007199254740993"
+	var raw string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw = r.URL.RawQuery
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+	cat := loadSpec(t, queryExecSpec)
+	_, err := (execute.Client{BaseURL: ts.URL}).InvokeHTTPResult(context.Background(), cat.ByID("search.find"), map[string]string{
+		"ids":    `[` + id + `]`,
+		"filter": `{"limit":` + id + `}`,
+	})
+	require.NoError(t, err)
+	assert.Contains(t, raw, id)
+	assert.NotContains(t, raw, "9007199254740992")
+}
+
 const pathExecSpec = `openapi: 3.0.3
 info: {title: t, version: "1"}
 paths:

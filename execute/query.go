@@ -77,8 +77,10 @@ func writeDelimited(q url.Values, p catalog.Param, value any, sep, raw string) {
 }
 
 func decodeStructured(raw string) (any, bool) {
+	dec := json.NewDecoder(strings.NewReader(raw))
+	dec.UseNumber()
 	var value any
-	if err := jsonv2.Unmarshal([]byte(raw), &value); err != nil {
+	if err := dec.Decode(&value); err != nil {
 		return nil, false
 	}
 	switch value.(type) {

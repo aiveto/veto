@@ -90,17 +90,16 @@ func runServe(cmd serveCmd, c *cobra.Command) {
 		finish()
 		exitMain(1)
 	}
-	if err := mcpserver.ValidatePins(srv.Catalog, cmd.pin); err != nil {
+	opt := serveOptions(cmd)
+	if err := mcpserver.ValidateRegistration(srv.Catalog, opt); err != nil {
 		fmt.Fprintf(os.Stderr, "serve: %v\n", err)
 		fail()
 	}
 	ctx, stopSig := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopSig()
-	opt := serveOptions(cmd)
 	if cmd.jsonLines {
-		stopRead := closeOnDone(ctx, os.Stdin)
-		defer stopRead()
-		if err := capability.RunJSON(ctx, srv, os.Stdin, os.Stdout); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, os.ErrClosed) {
+		in := jsonInput(ctx, os.Stdin)
+		if err := capability.RunJSON(ctx, srv, in, os.Stdout); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, os.ErrClosed) && !errors.Is(err, io.EOF) {
 			fmt.Fprintf(os.Stderr, "serve: %v\n", err)
 			fail()
 		}

@@ -36,3 +36,12 @@ func DecodeInvoke(raw []byte) (InvokeArgs, error) {
 	}
 	return args, json.Unmarshal(raw, &args)
 }
+
+// DecodePin reads a pinned tool's arguments. The pin is the operation.
+func DecodePin(raw []byte) (PinArgs, error) {
+	var args PinArgs
+	if len(raw) == 0 {
+		return args, nil
+	}
+	return args, json.Unmarshal(raw, &args)
+}

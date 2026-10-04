@@ -1,0 +1,291 @@
+package runtime_test
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync/atomic"
+	"testing"
+
+	"github.com/aiveto/veto/catalog"
+	"github.com/aiveto/veto/execute"
+	"github.com/aiveto/veto/openapi"
+	"github.com/aiveto/veto/policy"
+	"github.com/aiveto/veto/runtime"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestPageFollowCollectsAndDefaultStaysOne(t *testing.T) {
+	var hits atomic.Int32
+	op, ts := pageServer(t, func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		if r.URL.Query().Get("cursor") == "b" {
+			_, _ = w.Write([]byte(`{"items":[{"id":"2"}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"items":[{"id":"1"}],"next":"b"}`))
+	})
+	defer ts.Close()
+
+	single := runtime.Runtime{Catalog: pageCatalog(t, op), Exec: execute.Client{BaseURL: ts.URL}, Policy: policy.Builtin{}}
+	one, err := single.Invoke(context.Background(), runtime.Request{Operation: "orders.list"})
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), hits.Load())
+	assert.JSONEq(t, `{"items":[{"id":"1"}],"next":"b"}`, one.Body)
+
+	hits.Store(0)
+	rt := runtime.Runtime{Catalog: pageCatalog(t, op), Exec: execute.Client{BaseURL: ts.URL}, Policy: policy.Builtin{}, Pages: 5}
+	many, err := rt.Invoke(context.Background(), runtime.Request{Operation: "orders.list"})
+	require.NoError(t, err)
+	assert.Equal(t, int32(2), hits.Load())
+	assert.JSONEq(t, `[{"id":"1"},{"id":"2"}]`, many.Body)
+	assert.False(t, many.Truncated)
+}
+
+func TestPageFollowStillWalksWhenFieldsAreSet(t *testing.T) {
+	var hits atomic.Int32
+	op, ts := pageServer(t, func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		if r.URL.Query().Get("cursor") == "b" {
+			_, _ = w.Write([]byte(`{"items":[{"id":"2","name":"bee"}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"items":[{"id":"1","name":"aye"}],"next":"b"}`))
+	})
+	defer ts.Close()
+	rt := runtime.Runtime{Catalog: pageCatalog(t, op), Exec: execute.Client{BaseURL: ts.URL}, Policy: policy.Builtin{}, Pages: 5}
+	got, err := rt.Invoke(context.Background(), runtime.Request{Operation: "orders.list", Fields: []string{"id"}})
+	require.NoError(t, err)
+	assert.Equal(t, int32(2), hits.Load())
+	assert.JSONEq(t, `[{"id":"1"},{"id":"2"}]`, got.Body)
+	assert.False(t, got.Truncated)
+	assert.NotContains(t, got.Body, "name")
+	assert.NotContains(t, got.Body, "next")
+}
+
+func TestPageFollowDoesNotHideALaterFailure(t *testing.T) {
+	op, ts := pageServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("cursor") == "b" {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":"down"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"items":[{"id":"1"}],"next":"b"}`))
+	})
+	defer ts.Close()
+	rt := runtime.Runtime{Catalog: pageCatalog(t, op), Exec: execute.Client{BaseURL: ts.URL}, Policy: policy.Builtin{}, Pages: 5}
+	_, err := rt.Invoke(context.Background(), runtime.Request{Operation: "orders.list"})
+	require.ErrorContains(t, err, "http 503")
+}
+
+func TestPageFollowStopsAtTheByteBudget(t *testing.T) {
+	pad := strings.Repeat("x", 200)
+	op, ts := pageServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("cursor") == "b" {
+			_, _ = w.Write([]byte(`{"items":[{"id":"` + pad + `b"}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"items":[{"id":"` + pad + `a"}],"next":"b"}`))
+	})
+	defer ts.Close()
+	rt := runtime.Runtime{Catalog: pageCatalog(t, op), Exec: execute.Client{BaseURL: ts.URL}, Policy: policy.Builtin{}, Pages: 5, MaxBody: 260}
+	got, err := rt.Invoke(context.Background(), runtime.Request{Operation: "orders.list"})
+	require.NoError(t, err)
+	assert.True(t, got.Truncated)
+	assert.Contains(t, got.Body, pad+"a")
+	assert.NotContains(t, got.Body, pad+"b")
+}
+
+func TestPageFollowKeepsTruncationAfterProjection(t *testing.T) {
+	pad := strings.Repeat("x", 200)
+	op, ts := pageServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("cursor") == "b" {
+			_, _ = w.Write([]byte(`{"items":[{"id":"` + pad + `b","name":"bee"}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"items":[{"id":"` + pad + `a","name":"aye"}],"next":"b"}`))
+	})
+	defer ts.Close()
+	rt := runtime.Runtime{Catalog: pageCatalog(t, op), Exec: execute.Client{BaseURL: ts.URL, MaxBody: 260}, Policy: policy.Builtin{}, Pages: 5, MaxBody: 260}
+	got, err := rt.Invoke(context.Background(), runtime.Request{Operation: "orders.list", Fields: []string{"id"}})
+	require.NoError(t, err)
+	assert.True(t, got.Truncated)
+	assert.Contains(t, got.Body, pad+"a")
+	assert.NotContains(t, got.Body, pad+"b")
+	assert.NotContains(t, got.Body, "name")
+}
+
+func TestPageFollowMarksACapThatLeavesALaterPage(t *testing.T) {
+	var hits atomic.Int32
+	op, ts := pageServer(t, func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		switch r.URL.Query().Get("cursor") {
+		case "c":
+			_, _ = w.Write([]byte(`{"items":[{"id":"3","name":"cee"}]}`))
+		case "b":
+			_, _ = w.Write([]byte(`{"items":[{"id":"2","name":"bee"}],"next":"c"}`))
+		default:
+			_, _ = w.Write([]byte(`{"items":[{"id":"1","name":"aye"}],"next":"b"}`))
+		}
+	})
+	defer ts.Close()
+	rt := runtime.Runtime{Catalog: pageCatalog(t, op), Exec: execute.Client{BaseURL: ts.URL}, Policy: policy.Builtin{}, Pages: 2}
+	got, err := rt.Invoke(context.Background(), runtime.Request{Operation: "orders.list", Fields: []string{"id"}})
+	require.NoError(t, err)
+	assert.Equal(t, int32(2), hits.Load())
+	assert.True(t, got.Truncated)
+	assert.JSONEq(t, `[{"id":"1"},{"id":"2"}]`, got.Body)
+	assert.NotContains(t, got.Body, "name")
+}
+
+func TestPageFollowAuthorizesEachDerivedRequest(t *testing.T) {
+	var paths []string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		if strings.HasSuffix(r.URL.Path, "/private") {
+			_, _ = w.Write([]byte(`{"items":[{"id":"secret"}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"items":[{"id":"ok"}],"next":"private"}`))
+	}))
+	defer ts.Close()
+	path := filepath.Join(t.TempDir(), "spec.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(strings.ReplaceAll(pageIDSpec, "http://127.0.0.1:9", ts.URL)), 0o600))
+	cat, err := openapi.Load(context.Background(), path)
+	require.NoError(t, err)
+	hook := policy.Wrap(nil, func(ctx context.Context, _ *catalog.Operation) (policy.Decision, bool, error) {
+		if policy.InputFrom(ctx).Params["id"] == "private" {
+			return policy.DecisionDeny, true, nil
+		}
+		return policy.DecisionAllow, true, nil
+	})
+	rt := runtime.Runtime{Catalog: cat, Exec: execute.Client{BaseURL: ts.URL}, Policy: hook, Pages: 5}
+	got, err := rt.Invoke(context.Background(), runtime.Request{Operation: "items.get", Arguments: map[string]any{"id": "public"}})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"/items/public"}, paths)
+	assert.True(t, got.Truncated)
+	assert.Contains(t, got.Body, `"ok"`)
+	assert.NotContains(t, got.Body, "secret")
+}
+
+func TestPageFollowStopsWhenALaterPageNeedsConfirmation(t *testing.T) {
+	var paths []string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		if strings.HasSuffix(r.URL.Path, "/private") {
+			_, _ = w.Write([]byte(`{"items":[{"id":"secret"}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"items":[{"id":"ok"}],"next":"private"}`))
+	}))
+	defer ts.Close()
+	path := filepath.Join(t.TempDir(), "spec.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(strings.ReplaceAll(pageIDSpec, "http://127.0.0.1:9", ts.URL)), 0o600))
+	cat, err := openapi.Load(context.Background(), path)
+	require.NoError(t, err)
+	hook := policy.Wrap(nil, func(ctx context.Context, _ *catalog.Operation) (policy.Decision, bool, error) {
+		if policy.InputFrom(ctx).Params["id"] == "private" {
+			return policy.DecisionConfirmationNeeded, true, nil
+		}
+		return policy.DecisionAllow, true, nil
+	})
+	rt := runtime.Runtime{Catalog: cat, Exec: execute.Client{BaseURL: ts.URL}, Policy: hook, Pages: 5}
+	got, err := rt.Invoke(context.Background(), runtime.Request{Operation: "items.get", Arguments: map[string]any{"id": "public"}})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"/items/public"}, paths)
+	assert.True(t, got.Truncated)
+	assert.NotContains(t, got.Body, "secret")
+}
+
+func pageServer(t *testing.T, h http.HandlerFunc) (*catalog.Operation, *httptest.Server) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "spec.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(pageSpec), 0o600))
+	cat, err := openapi.Load(context.Background(), path)
+	require.NoError(t, err)
+	return cat.ByID("orders.list"), httptest.NewServer(h)
+}
+
+func pageCatalog(t *testing.T, op *catalog.Operation) *catalog.Catalog {
+	t.Helper()
+	cat := &catalog.Catalog{Operations: []catalog.Operation{*op}}
+	cat.Finalize()
+	return cat
+}
+
+const pageSpec = `openapi: 3.0.3
+info:
+  title: Orders
+  version: "1"
+servers:
+  - url: http://127.0.0.1:9
+paths:
+  /orders:
+    get:
+      operationId: orders.list
+      parameters:
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                  next:
+                    type: string
+          links:
+            next:
+              operationId: orders.list
+              parameters:
+                cursor: $response.body#/next
+`
+
+const pageIDSpec = `openapi: 3.0.3
+info:
+  title: Items
+  version: "1"
+servers:
+  - url: http://127.0.0.1:9
+paths:
+  /items/{id}:
+    get:
+      operationId: items.get
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                  next:
+                    type: string
+          links:
+            next:
+              operationId: items.get
+              parameters:
+                id: $response.body#/next
+`

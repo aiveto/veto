@@ -20,8 +20,9 @@ type (
 		Limit  int
 	}
 
-	idempotencyKey struct{}
-	projectionKey  struct{}
+	idempotencyKey    struct{}
+	projectionKey     struct{}
+	skipProjectionKey struct{}
 )
 
 // WithIdempotency carries the invoke's idempotency key to the Executor.
@@ -47,4 +48,15 @@ func WithProjection(ctx context.Context, p Projection) context.Context {
 func ProjectionFrom(ctx context.Context) (Projection, bool) {
 	p, ok := ctx.Value(projectionKey{}).(Projection)
 	return p, ok
+}
+
+// WithoutProjection keeps the raw page body so a later walk can read cursors.
+func WithoutProjection(ctx context.Context) context.Context {
+	return context.WithValue(ctx, skipProjectionKey{}, true)
+}
+
+// SkipProjection reports that the executor should not shape this response.
+func SkipProjection(ctx context.Context) bool {
+	skip, _ := ctx.Value(skipProjectionKey{}).(bool)
+	return skip
 }

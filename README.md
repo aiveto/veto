@@ -8,7 +8,7 @@ The model may request a call. Veto checks policy, requires approval for a destru
 
 Connect over MCP, speak JSON lines on `veto serve --json`, or embed the Go runtime. They share that runtime. Your services stay where they already run.
 
-<img src="docs/veto-runtime.png" width="1280" alt="Claude, Cursor, or ChatGPT talks to veto over MCP. A CLI or script uses search, describe, and invoke. Search and describe read the catalog. Only invoke runs policy, confirmation, and HTTP.">
+<img src="docs/veto-runtime.png" width="1280" alt="Claude, Cursor, or ChatGPT talks to veto over MCP. A CLI or script uses search, describe, and invoke. Search and describe read the catalog. Invoke goes to policy and confirmation, then HTTP.">
 
 ```bash
 brew install aiveto/veto/veto
@@ -81,7 +81,7 @@ veto init orders.yaml customers.yaml
 
 Credentials come from the environment, OAuth, a caller-supplied token, token exchange, a command that returns headers, or a Go provider that signs the request. The agent does not perform that login. [Authentication](docs/guide.md#auth).
 
-Commands for validate, doctor, preview, eval, check, and replay are in the [setup guide](docs/guide.md#check).
+Commands for validate, doctor, preview, eval, check, and replay are in the [setup guide](docs/guide.md#check-in-ci).
 
 ```bash
 veto validate --config testdata/veto.yaml

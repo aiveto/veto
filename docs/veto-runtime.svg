@@ -37,7 +37,6 @@
 
     <line x1="164" y1="308" x2="164" y2="344" stroke="#1A1916" stroke-width="1.75" marker-end="url(#veto-runtime-arrow)"/>
     <line x1="400" y1="308" x2="400" y2="344" stroke="#1A1916" stroke-width="1.75" marker-end="url(#veto-runtime-arrow)"/>
-    <line x1="636" y1="308" x2="636" y2="344" stroke="#1A1916" stroke-width="1.75" marker-end="url(#veto-runtime-arrow)"/>
 
     <rect x="52" y="344" width="696" height="200" rx="10" fill="#D3EEF0" stroke="#1A1916" stroke-width="1.75"/>
     <rect x="72" y="364" width="208" height="160" rx="8" fill="#FFFFFF" stroke="#1A1916" stroke-width="1.25"/>
@@ -52,7 +51,9 @@
     <text x="624" y="430" text-anchor="middle" font-size="20" font-weight="650">relations</text>
     <text x="624" y="462" text-anchor="middle" font-size="15" fill="#5C5854">field to operation</text>
 
-    <line x1="636" y1="544" x2="636" y2="580" stroke="#1A1916" stroke-width="1.75" marker-end="url(#veto-runtime-arrow)"/>
+    <line x1="748" y1="256" x2="770" y2="256" stroke="#1A1916" stroke-width="1.75"/>
+    <line x1="770" y1="256" x2="770" y2="624" stroke="#1A1916" stroke-width="1.75"/>
+    <line x1="770" y1="624" x2="748" y2="624" stroke="#1A1916" stroke-width="1.75" marker-end="url(#veto-runtime-arrow)"/>
     <rect x="500" y="580" width="248" height="88" rx="8" fill="#F4D4C4" stroke="#1A1916" stroke-width="1.75"/>
     <text x="624" y="616" text-anchor="middle" font-size="18" font-weight="650">Policy + confirmation</text>
     <text x="624" y="644" text-anchor="middle" font-size="14" fill="#5C5854">Deletes require approval by default</text>

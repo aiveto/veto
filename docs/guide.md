@@ -256,7 +256,7 @@ veto invoke --config veto.yaml '{"operation_id":"orders.delete","params":{"id":"
 }
 ```
 
-`operation_id` is the catalog id. `params` is an object. Path, query, and header values are strings, keyed by parameter name. `body` is the request body: a string is sent as written, and a JSON object is encoded as JSON and sent. A JSON body is checked against the request body schema before policy and HTTP. A mismatch returns `invalid_body` with the field path and the reason. The value is not echoed. `why` is `held until you approve` or `missing auth`. A bad body stays on `invalid_body` and the error. `http` is true only when upstream HTTP left. `caller` is who asked. `approval_id` is empty on the first call. A `confirmation_required` result carries a pending id. That id does not run the call. Over stdio, a host that supports elicitation asks the person to accept or decline. Accept records the approval and runs the call. Decline leaves the pending id. Over `--http` that form needs `chat_approval: true` in `veto.yaml`, because the remote client is the one answering it. Otherwise the result carries the pending id, and `veto approve <id>` records the approval and prints an approved id. A later invoke with that approved id runs once.
+`operation_id` is the catalog id. `params` is an object. Path, query, and header values are strings, keyed by parameter name. `body` is the request body: a string is sent as written, and a JSON object is encoded as JSON and sent. A JSON body is checked against the request body schema before policy and HTTP. A mismatch returns `invalid_body` with the field path and the reason. The value is not echoed. `why` is `held until you approve` or `missing auth`. A bad body stays on `invalid_body` and the error. `sent` is true when the request reached the transport. `http` is true when a response was received. A lost response can leave `sent` true and `http` false; read both before retrying a mutation. `caller` is who asked. `approval_id` is empty on the first call. A `confirmation_required` result carries a pending id. That id does not run the call. Over stdio, a host that supports elicitation asks the person to accept or decline. Accept records the approval and runs the call. Decline leaves the pending id. Over `--http` that form needs `chat_approval: true` in `veto.yaml`, because the remote client is the one answering it. Otherwise the result carries the pending id, and `veto approve <id>` records the approval and prints an approved id. A later invoke with that approved id runs once.
 
 Approvals default to `policy.Memory` in this process. Serve and `veto approve --config veto.yaml` share `policy.Files` when `VETO_APPROVAL_NONCE_DIR` is set, or the default approval dir. More than one process sets `approval_store` in that file (or `VETO_APPROVAL_STORE`) to a Valkey or Redis URL. `Claim` is SET NX on the pending id. `State.SetStore` takes another `policy.Store`.
 
@@ -355,11 +355,11 @@ parameters:
 veto pack --config veto.yaml --message "who placed order 123"
 ```
 
-`--json` prints the same pack as JSON. The pack holds the rules, a one-line index, the message, the operation just described, and a pending confirmation. It does not contain the raw spec.
+`--json` prints the same pack as JSON. The command builds a pack for that message: the rules, a one-line index, and the message. It does not attach a described operation or a pending confirmation. Those fields exist on the pack type and are filled during an agent turn. The raw spec stays out.
 
 ## Check in CI
 
-`veto check` loads the catalog, prints joins, and runs the case files. `--case` names the case file or directory. When it is omitted, check uses the `cases` list from the bundle. `--against` is a git ref or a snapshot JSON file. The check fails when a joined operation disappears, confirmation is dropped without an `agent.yaml` change or `confirmation: false`, a new destructive operation appears, a discovery-only operation becomes callable, a required permission is removed, or an eval expectation changes. `confirmation: false` prints `confirmation is off` and does not also report each operation as lost confirmation.
+`veto check` loads the catalog, prints joins, and runs the case files. `--case` names the case file or directory. When it is omitted, check uses the `cases` list from the bundle. `--against` is a git ref or a snapshot JSON file. The check fails when a joined operation disappears, confirmation is dropped without an `agent.yaml` change or `confirmation: false`, a new destructive operation appears, a discovery-only operation becomes callable, a required permission is removed, or an eval expectation changes. Drift compares `operation`, `confirmation_required`, `no_http`, `pack_contains`, `pack_excludes`, and `related`. `confirmation: false` prints `confirmation is off` and does not also report each operation as lost confirmation.
 
 `--against` reads files from that git ref, so the checkout needs the history.
 
@@ -478,7 +478,7 @@ The generated client calls through the same gate.
 
 `veto serve` defaults to stdio. `--http` is one process at `127.0.0.1:7433`.
 
-`VETO_APPROVAL_SECRET` signs the yes. Consume-once is the store: Files on one machine, Valkey or Redis when `approval_store` is set. Two processes that share the signing secret and not the store can both accept a yes until expiry.
+`VETO_APPROVAL_SECRET` signs the yes. Consume-once is the store: Files on one machine, Valkey or Redis when `approval_store` is set. Sharing the signing secret is not enough. Consume looks up the approved record in the store, then claims it. Two processes that do not share that store cannot accept the same approval. Replicas need the shared store for lookup and for consume-once.
 
 Token files are local. `token_dir` and `VETO_TOKEN_DIR` name that directory. They are not a remote session store.
 
