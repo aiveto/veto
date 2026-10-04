@@ -91,8 +91,7 @@ func ByCommand(name string) (Capability, bool) {
 func inputFields(sample any) []InputField {
 	t := reflect.TypeOf(sample)
 	out := make([]InputField, 0, t.NumField())
-	for i := range t.NumField() {
-		f := t.Field(i)
+	for f := range t.Fields() {
 		name, typ, required := jsonField(f)
 		if name == "" || name == "-" {
 			continue
