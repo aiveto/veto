@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Search scores prepared catalog text. Semantics bakes synonyms when it is constructed.
+- An HTTP client that already honors the proxy environment is reused. The executor keeps the shaped body instead of reading it again.
+- Parameter types and JSON body schemas are prepared with the catalog.
+- The first concurrent ByID or Invoke prepares the index and limiter once.
 - Invoke says why a call did not run when it was held or missing auth, and whether HTTP left. `caller` is who asked.
 - `veto eval` uses the scripted model even when `veto.yaml` names openai.
 - The confirmation form names the caller, the operation, and the parameters.

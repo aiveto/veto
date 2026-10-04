@@ -6,6 +6,9 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
+
+	"github.com/getkin/kin-openapi/openapi3"
 )
 
 const (
@@ -59,6 +62,8 @@ type (
 		Default     string `json:"Default"`
 		Style       string `json:"Style"`
 		Explode     bool   `json:"Explode"`
+		typ         string
+		body        *openapi3.Schema
 	}
 
 	Operation struct {
@@ -109,6 +114,8 @@ type (
 		Uses       []SchemaUse
 		Graph      Graph
 		byID       map[string]*Operation
+		search     []searchText
+		mu         sync.Mutex
 	}
 )
 
@@ -141,9 +148,10 @@ func (op Operation) BodyParam() (Param, bool) {
 }
 
 func (c *Catalog) ByID(id string) *Operation {
-	if c.byID == nil {
-		c.index()
+	if c == nil {
+		return nil
 	}
+	c.ensureIndex()
 	return c.byID[id]
 }
 
@@ -158,11 +166,28 @@ func (c *Catalog) IndexLine() string {
 	return string(b)
 }
 
+func (c *Catalog) ensureIndex() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.byID != nil && c.search != nil {
+		return
+	}
+	c.buildIndex()
+}
+
 func (c *Catalog) index() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.buildIndex()
+}
+
+func (c *Catalog) buildIndex() {
 	c.byID = make(map[string]*Operation, len(c.Operations))
 	for i := range c.Operations {
 		c.byID[c.Operations[i].ID] = &c.Operations[i]
+		prepareParams(c.Operations[i].Params)
 	}
+	c.prepareSearch()
 }
 
 func (c *Catalog) SelectServer(name string) error {
@@ -201,8 +226,8 @@ func (c *Catalog) ClearConfirmation() {
 
 func (c *Catalog) Finalize() {
 	slices.SortFunc(c.Operations, func(a, b Operation) int { return strings.Compare(a.ID, b.ID) })
-	c.index()
 	c.Graph = BuildGraph(c.Operations, c.Links, c.Uses)
+	c.index()
 }
 
 func (c *Catalog) Joins() []string {

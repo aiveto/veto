@@ -32,18 +32,17 @@ func followPages(ctx context.Context, cfg Client, op *catalog.Operation, params 
 		}
 		seen[sig] = true
 		maps.Copy(current, next)
-		resp, err := InvokeResponse(ctx, cfg, op, current)
+		resp, _, raw, err := invokeResponse(ctx, cfg, op, current)
 		if err != nil {
 			return "", false, err
+		}
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
 		}
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			_, _ = readBody(resp, cfg.MaxBody)
 			return "", false, fmt.Errorf("follow page: http %d", resp.StatusCode)
 		}
-		body, err = readBody(resp, cfg.MaxBody)
-		if err != nil {
-			return "", false, err
-		}
+		body = string(raw)
 		more, ok := pageItems(body)
 		if !ok {
 			return "", false, errors.New("follow page: response is not a page")

@@ -33,6 +33,14 @@ func TestCustomTransportHonorsHTTPSProxy(t *testing.T) {
 	assert.Equal(t, "http://127.0.0.1:9", got.String())
 }
 
+func TestWithEnvProxyReusesTheClient(t *testing.T) {
+	plain := &http.Client{}
+	assert.Same(t, plain, auth.WithEnvProxy(plain))
+
+	ready := &http.Client{Transport: &http.Transport{Proxy: http.ProxyFromEnvironment}}
+	assert.Same(t, ready, auth.WithEnvProxy(ready))
+}
+
 func TestRoundTripperWithoutProxyStillRuns(t *testing.T) {
 	var called bool
 	next := roundTripFunc(func(r *http.Request) (*http.Response, error) {

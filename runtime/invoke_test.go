@@ -272,12 +272,21 @@ func TestTokenURLUnsetIsNotMissingAuth(t *testing.T) {
 }
 
 func TestConcurrentFirstInvokeSharesTheGate(t *testing.T) {
+	testConcurrentFirstInvoke(t, &runtime.InvokeGate{})
+}
+
+func TestConcurrentFirstInvokeCreatesOneGate(t *testing.T) {
+	testConcurrentFirstInvoke(t, nil)
+}
+
+func testConcurrentFirstInvoke(t *testing.T, gate *runtime.InvokeGate) {
+	t.Helper()
 	cat := &catalog.Catalog{Operations: []catalog.Operation{{
 		ID: "orders.get", Method: http.MethodGet, PathTemplate: "/orders/{id}",
 		Params: []catalog.Param{{Name: "id", In: "path", Required: true}},
 	}}}
 	cat.Finalize()
-	rt := &runtime.Runtime{Catalog: cat, State: policy.NewState(), Exec: allowExec{}, Gate: &runtime.InvokeGate{}}
+	rt := &runtime.Runtime{Catalog: cat, State: policy.NewState(), Exec: allowExec{}, Gate: gate}
 	const n = 32
 	var ready sync.WaitGroup
 	ready.Add(n)

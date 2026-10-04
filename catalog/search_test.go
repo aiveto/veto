@@ -2,11 +2,12 @@ package catalog_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
-	"testing"
-
 	"os"
+	"sync"
+	"testing"
 
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/openapi"
@@ -196,4 +197,59 @@ func TestSearchFollowsDeclaredRelation(t *testing.T) {
 		assert.True(t, ok)
 	}
 	assert.True(t, found)
+}
+
+func TestConcurrentSearchAndByID(t *testing.T) {
+	cat := &catalog.Catalog{Operations: []catalog.Operation{
+		{ID: "item.get", Name: "Get item", Description: "fetch one"},
+		{ID: "item.list", Name: "List items", Description: "list"},
+	}}
+	const n = 32
+	var start sync.WaitGroup
+	start.Add(n)
+	goOn := make(chan struct{})
+	var wg sync.WaitGroup
+	errCh := make(chan error, n)
+	for range n {
+		wg.Go(func() {
+			start.Done()
+			<-goOn
+			if catalog.Search(cat, "item.get", nil) == nil {
+				errCh <- errors.New("empty search")
+				return
+			}
+			if cat.ByID("item.get") == nil {
+				errCh <- errors.New("missing id")
+			}
+		})
+	}
+	start.Wait()
+	close(goOn)
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		require.NoError(t, err)
+	}
+	assert.Equal(t, "item.get", cat.ByID("item.get").ID)
+}
+
+func BenchmarkSearch(b *testing.B) {
+	ops := make([]catalog.Operation, 1000)
+	uses := make([]catalog.SchemaUse, 1000)
+	for i := range ops {
+		id := fmt.Sprintf("item.%04d", i)
+		ops[i] = catalog.Operation{ID: id, Name: "Get item", Description: "fetch one", Group: "items"}
+		uses[i] = catalog.SchemaUse{OperationID: id, Name: "Order"}
+	}
+	cat := &catalog.Catalog{Operations: ops, Uses: uses}
+	cat.Finalize()
+	sem := semantics.New(cat)
+	syns := sem.AllSynonyms()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		if catalog.Search(cat, "order", syns) == nil {
+			b.Fatal("empty")
+		}
+	}
 }

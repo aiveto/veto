@@ -4,6 +4,7 @@ package semantics
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/aiveto/veto/catalog"
@@ -27,8 +28,8 @@ type (
 	}
 
 	Derived struct {
-		cat   *catalog.Catalog
 		notes map[string]Note
+		syns  map[string][]string
 	}
 
 	OverlayEntry struct {
@@ -45,6 +46,7 @@ type (
 	FileOverlay struct {
 		base  notes
 		notes map[string]Note
+		syns  map[string][]string
 	}
 )
 
@@ -62,14 +64,23 @@ func (n Note) Text() string {
 }
 
 func New(cat *catalog.Catalog) *Derived {
-	d := &Derived{cat: cat, notes: map[string]Note{}}
+	d := &Derived{notes: map[string]Note{}, syns: map[string][]string{}}
+	if cat == nil {
+		return d
+	}
 	for _, op := range cat.Operations {
 		syns := deriveSynonyms(op)
+		rel := relationSentence(cat, op.ID)
+		if rel != "" {
+			syns = append(append([]string{}, syns...), strings.Fields(rel)...)
+		}
 		d.notes[op.ID] = Note{
 			OperationID: op.ID,
 			Sentence:    op.Description,
 			Synonyms:    syns,
+			Relation:    rel,
 		}
+		d.syns[op.ID] = syns
 	}
 	return d
 }
@@ -77,11 +88,7 @@ func New(cat *catalog.Catalog) *Derived {
 func (d *Derived) Note(operationID string) Note {
 	n, ok := d.notes[operationID]
 	if !ok {
-		n = Note{OperationID: operationID}
-	}
-	n.Relation = relationSentence(d.cat, operationID)
-	if n.Relation != "" {
-		n.Synonyms = append(append([]string{}, n.Synonyms...), strings.Fields(n.Relation)...)
+		return Note{OperationID: operationID}
 	}
 	return n
 }
@@ -91,11 +98,7 @@ func (d *Derived) Synonyms(operationID string) []string {
 }
 
 func (d *Derived) AllSynonyms() map[string][]string {
-	out := make(map[string][]string, len(d.notes))
-	for id := range d.notes {
-		out[id] = d.Synonyms(id)
-	}
-	return out
+	return d.syns
 }
 
 func deriveSynonyms(op catalog.Operation) []string {
@@ -165,6 +168,7 @@ func ParseOverlay(data []byte, base notes) (*FileOverlay, error) {
 			Synonyms:    e.Synonyms,
 		}
 	}
+	fo.syns = fo.allSynonyms()
 	return fo, nil
 }
 
@@ -204,7 +208,14 @@ func (f *FileOverlay) Synonyms(operationID string) []string {
 }
 
 func (f *FileOverlay) AllSynonyms() map[string][]string {
-	out := f.base.AllSynonyms()
+	return f.syns
+}
+
+func (f *FileOverlay) allSynonyms() map[string][]string {
+	out := map[string][]string{}
+	if f.base != nil {
+		maps.Copy(out, f.base.AllSynonyms())
+	}
 	for id := range f.notes {
 		out[id] = f.Note(id).Synonyms
 	}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/aiveto/veto/auth"
@@ -89,23 +90,26 @@ type (
 	}
 
 	// Runtime resolves, validates, checks policy, verifies approval, executes, shapes, and records.
-	// The owner constructs Gate so copies share one limiter. A nil Gate is created on first use.
+	// The owner constructs Gate so a second Runtime can share one limiter. A nil Gate is created on first use.
 	Runtime struct {
-		Catalog *catalog.Catalog
-		Policy  policy.Hook
-		Base    policy.Hook
-		State   *policy.State
-		Exec    Executor
-		Notify  policy.Notifier
-		Gate    *InvokeGate
-		now     func() time.Time
+		Catalog  *catalog.Catalog
+		Policy   policy.Hook
+		Base     policy.Hook
+		State    *policy.State
+		Exec     Executor
+		Notify   policy.Notifier
+		Gate     *InvokeGate
+		gateOnce sync.Once
+		now      func() time.Time
 	}
 )
 
 func (rt *Runtime) invokeGate() *InvokeGate {
-	if rt.Gate == nil {
-		rt.Gate = &InvokeGate{}
-	}
+	rt.gateOnce.Do(func() {
+		if rt.Gate == nil {
+			rt.Gate = &InvokeGate{}
+		}
+	})
 	return rt.Gate
 }
 
