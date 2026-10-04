@@ -209,12 +209,11 @@ func TestInvokeRejectsABodyOutsideTheSchemaBeforeHTTP(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Equal(t, "invalid_body", out.Code)
-	assert.Contains(t, out.Why, "/age")
+	assert.Empty(t, out.Why)
 	assert.False(t, out.HTTP)
 	assert.Contains(t, err.Error(), "/age")
 	assert.NotContains(t, err.Error(), secret)
 	assert.NotContains(t, out.Error, secret)
-	assert.NotContains(t, out.Why, secret)
 	assert.Equal(t, int32(0), hits.Load())
 }
 
@@ -248,6 +247,27 @@ func TestMissingAuthWhyDoesNotCallHTTP(t *testing.T) {
 	assert.Equal(t, "ada", out.Caller)
 	assert.False(t, out.HTTP)
 	assert.Equal(t, int32(0), hits.Load())
+}
+
+func TestTokenURLUnsetIsNotMissingAuth(t *testing.T) {
+	cat := &catalog.Catalog{Operations: []catalog.Operation{{
+		ID:           "orders.get",
+		Method:       http.MethodGet,
+		PathTemplate: "/orders/{id}",
+		Params:       []catalog.Param{{Name: "id", In: "path", Required: true}},
+	}}}
+	cat.Finalize()
+	rt := runtime.Runtime{Catalog: cat, State: policy.NewState(), Exec: errExec{err: fmt.Errorf("token url is unset")}}
+	out, err := rt.Invoke(context.Background(), runtime.Request{
+		Operation: "orders.get",
+		Arguments: runtime.FromStrings(map[string]string{"id": "1"}),
+		Caller:    "ada",
+	})
+	require.ErrorContains(t, err, "token url is unset")
+	assert.Empty(t, out.Code)
+	assert.Empty(t, out.Why)
+	assert.Equal(t, "ada", out.Caller)
+	assert.False(t, out.HTTP)
 }
 
 func TestConcurrentFirstInvokeSharesTheGate(t *testing.T) {
@@ -331,6 +351,12 @@ func TestMissingParamSkipsHTTP(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, "missing_param", out.Code)
 	assert.Equal(t, int32(0), hits.Load())
+}
+
+type errExec struct{ err error }
+
+func (e errExec) InvokeHTTPResult(context.Context, *catalog.Operation, map[string]string) (result.HTTPResult, error) {
+	return result.HTTPResult{}, e.err
 }
 
 type allowExec struct{}

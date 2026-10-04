@@ -2,13 +2,13 @@ package execute
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 
 	"github.com/aiveto/veto/auth"
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/credentials"
+	"github.com/aiveto/veto/result"
 )
 
 func obtainAuth(ctx context.Context, cfg Client, op *catalog.Operation, req *http.Request, force bool) (bool, []credentials.Credential, error) {
@@ -65,7 +65,7 @@ func providerFor(cfg Client, a catalog.Auth) (credentials.Provider, error) {
 	if val := cfg.Auth[a.Name]; val != "" {
 		return auth.Fixed(a, val), nil
 	}
-	return nil, fmt.Errorf("%s is unset", a.Name)
+	return nil, result.AuthError{Name: a.Name}
 }
 
 func applyCredentials(req *http.Request, creds []credentials.Credential) ([]string, []string, error) {
@@ -109,7 +109,7 @@ func selectRequirement(ctx context.Context, cfg Client, groups [][]catalog.Auth)
 		return group, nil
 	}
 	if why == nil {
-		why = errors.New("credential is unset")
+		why = result.AuthError{}
 	}
 	return nil, why
 }
@@ -129,7 +129,7 @@ func requirementError(ctx context.Context, cfg Client, group []catalog.Auth) err
 			return fmt.Errorf("security scheme %s is not supported", a.Name)
 		}
 		if cfg.Auth[a.Name] == "" {
-			return fmt.Errorf("%s is unset", a.Name)
+			return result.AuthError{Name: a.Name}
 		}
 	}
 	return nil
