@@ -272,15 +272,28 @@ func buildLoop(contracts []string, configPath, agentPath, relationsPath, baseURL
 	return buildLoopBundle(contracts, configPath, "", agentPath, relationsPath, baseURL)
 }
 
+func buildEvalLoop(contracts []string, configPath, agentPath, relationsPath, baseURL string) (*agent.Loop, config.File, error) {
+	src, err := resolveBundle(configPath, "", contracts, relationsPath, agentPath)
+	if err != nil {
+		return nil, config.File{}, err
+	}
+	src.cfg.Model = "scripted"
+	return assembleLoop(src, baseURL)
+}
+
 func buildLoopBundle(contracts []string, configPath, bundlePath, agentPath, relationsPath, baseURL string) (*agent.Loop, config.File, error) {
 	src, err := resolveBundle(configPath, bundlePath, contracts, relationsPath, agentPath)
 	if err != nil {
 		return nil, config.File{}, err
 	}
+	return assembleLoop(src, baseURL)
+}
+
+func assembleLoop(src sources, baseURL string) (*agent.Loop, config.File, error) {
 	cfg := src.cfg
-	contracts = src.contracts
-	relationsPath = src.relations
-	agentPath = src.agent
+	contracts := src.contracts
+	relationsPath := src.relations
+	agentPath := src.agent
 	cat, err := loadCatalog(contracts, relationsPath)
 	if err != nil {
 		return nil, config.File{}, err

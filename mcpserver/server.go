@@ -119,9 +119,13 @@ func (s *Server) Preview(ctx context.Context, req runtime.Request) (runtime.Prev
 // Call runs one typed invoke. It does not use the agent loop.
 func (s *Server) Call(ctx context.Context, req runtime.Request) (InvokeResult, error) {
 	if s == nil || s.Calls == nil {
-		return InvokeResult{Status: "error", Error: "runtime required"}, errors.New("runtime required")
+		return InvokeResult{Status: runtime.StatusError, Error: "runtime required"}, errors.New("runtime required")
 	}
 	call, err := s.Calls.Invoke(ctx, req)
+	return invokeResultOf(call), err
+}
+
+func invokeResultOf(call runtime.Result) InvokeResult {
 	return InvokeResult{
 		Status:      call.Status,
 		ApprovalID:  call.ApprovalID,
@@ -137,7 +141,7 @@ func (s *Server) Call(ctx context.Context, req runtime.Request) (InvokeResult, e
 		Why:         call.Why,
 		Caller:      call.Caller,
 		HTTP:        call.HTTP,
-	}, err
+	}
 }
 
 // Grouped mode adds one tool per resource, never one tool per operation.

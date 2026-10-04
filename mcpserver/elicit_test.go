@@ -18,13 +18,19 @@ import (
 )
 
 func TestElicitationRunsTheDeleteOnAccept(t *testing.T) {
-	hits, session := elicitSession(t, true, func(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+	var asked string
+	hits, session := elicitSession(t, true, func(_ context.Context, req *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+		if req != nil && req.Params != nil {
+			asked = req.Params.Message
+		}
 		return &mcp.ElicitResult{Action: "accept"}, nil
 	})
 	res := callDelete(t, session)
 	assert.False(t, res.IsError)
 	body := elicitText(t, res)
 	assert.Contains(t, body, `"status":"ok"`)
+	assert.Contains(t, asked, "orders.delete")
+	assert.Contains(t, asked, "id=123")
 	assert.Equal(t, int32(1), hits.Load())
 }
 

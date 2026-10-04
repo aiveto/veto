@@ -14,6 +14,19 @@ import (
 	"github.com/aiveto/veto/telemetry"
 )
 
+const (
+	StatusOK                   = "ok"
+	StatusError                = "error"
+	StatusDenied               = "denied"
+	StatusLimited              = "limited"
+	StatusConfirmationRequired = "confirmation_required"
+	CodeMissingAuth            = "missing_auth"
+	CodeInvalidBody            = "invalid_body"
+	CodeMissingParam           = "missing_param"
+	CodeNotCallable            = "not_callable"
+	CodeInvokeLimited          = "invoke_limited"
+)
+
 // ErrInvalidApproval is an approved id that does not match this caller, operation, and parameters.
 var ErrInvalidApproval = errors.New("invalid approval")
 
@@ -97,7 +110,7 @@ func (rt *Runtime) invokeGate() *InvokeGate {
 // Invoke runs one operation. MCP uses this directly. It does not run the agent loop.
 func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 	if rt == nil {
-		return Result{Status: "error"}, errors.New("runtime required")
+		return Result{Status: StatusError}, errors.New("runtime required")
 	}
 	caller := requestCaller(ctx, req)
 	ctx = auth.WithCaller(ctx, caller)
@@ -107,9 +120,9 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 			retry = wait.String()
 		}
 		return rt.record(ctx, Result{
-			Status:      "limited",
+			Status:      StatusLimited,
 			OperationID: req.Operation,
-			Code:        "invoke_limited",
+			Code:        CodeInvokeLimited,
 			Error:       "invoke limit",
 			RetryAfter:  retry,
 		}), nil
@@ -121,7 +134,7 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 	}
 	if op.Exposure == catalog.ExposureDiscovery {
 		err := fmt.Errorf("operation %q is discovery-only", req.Operation)
-		return rt.record(ctx, errorResult(req.Operation, "not_callable", err)), err
+		return rt.record(ctx, errorResult(req.Operation, CodeNotCallable, err)), err
 	}
 
 	args, err := wire(req.Arguments)
@@ -156,7 +169,7 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 			}
 			span.SetAttributes(telemetry.Attr("approval.id", id))
 			res := Result{
-				Status:      "confirmation_required",
+				Status:      StatusConfirmationRequired,
 				ApprovalID:  id,
 				OperationID: req.Operation,
 				Why:         "held until you approve",
@@ -177,7 +190,7 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 		decision = policy.DecisionAllow
 	}
 	if decision != policy.DecisionAllow {
-		return rt.record(ctx, Result{Status: "denied", OperationID: req.Operation}), nil
+		return rt.record(ctx, Result{Status: StatusDenied, OperationID: req.Operation}), nil
 	}
 	if rt.Exec == nil {
 		err := errors.New("missing executor")
@@ -197,7 +210,7 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 	}
 	status := call.Code
 	if status == "" {
-		status = "ok"
+		status = StatusOK
 	}
 	return rt.record(ctx, Result{
 		Status:      status,
@@ -264,14 +277,14 @@ func (rt *Runtime) clock() time.Time {
 }
 
 func errorResult(op, code string, err error) Result {
-	res := Result{Status: "error", OperationID: op, Code: code}
+	res := Result{Status: StatusError, OperationID: op, Code: code}
 	if err != nil {
 		res.Error = err.Error()
 		if res.Code == "" {
 			res.Code = paramCode(err)
 		}
 	}
-	if res.Code == "missing_auth" {
+	if res.Code == CodeMissingAuth {
 		res.Why = "missing auth"
 	}
 	return res
@@ -279,13 +292,13 @@ func errorResult(op, code string, err error) Result {
 
 func paramCode(err error) string {
 	if _, ok := errors.AsType[result.ParamError](err); ok {
-		return "missing_param"
+		return CodeMissingParam
 	}
 	if _, ok := errors.AsType[result.BodyError](err); ok {
-		return "invalid_body"
+		return CodeInvalidBody
 	}
 	if _, ok := errors.AsType[result.AuthError](err); ok {
-		return "missing_auth"
+		return CodeMissingAuth
 	}
 	return ""
 }

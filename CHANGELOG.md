@@ -3,6 +3,8 @@
 ## Unreleased
 
 - Invoke says why a call did not run when it was held or missing auth, and whether HTTP left. `caller` is who asked.
+- `veto eval` uses the scripted model even when `veto.yaml` names openai.
+- The confirmation form names the operation and the parameters.
 
 ## v0.1.4 - 2026-10-03
 
