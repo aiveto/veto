@@ -28,6 +28,19 @@ func TestGraphLinksOperationsAndSchemas(t *testing.T) {
 	assert.Contains(t, cat.Graph.OperationsForResource("orders"), "orders.delete")
 }
 
+func TestSchemasAreSorted(t *testing.T) {
+	g := catalog.BuildGraph(
+		[]catalog.Operation{{ID: "orders.get", Name: "get"}},
+		nil,
+		[]catalog.SchemaUse{
+			{OperationID: "orders.get", Name: "Problem"},
+			{OperationID: "orders.get", Name: "Address"},
+			{OperationID: "orders.get", Name: "Order"},
+		},
+	)
+	assert.Equal(t, []string{"Address", "Order", "Problem"}, g.Schemas("orders.get"))
+}
+
 func TestRelatedIdsAreUnique(t *testing.T) {
 	g := catalog.BuildGraph(
 		[]catalog.Operation{{ID: "orders.get", Name: "get"}, {ID: "customers.get", Name: "customer"}},
