@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"strings"
 
 	"github.com/aiveto/veto/internal/jsonfield"
 	"github.com/aiveto/veto/internal/yamlfile"
@@ -15,13 +16,15 @@ import (
 type (
 	Step struct {
 		Operation string `yaml:"operation"`
-		Output    string `yaml:"output"` // copied onto the next step's parameter To
-		To        string `yaml:"to"`
+		Output    string `yaml:"output,omitempty"` // copied onto the next step's parameter To
+		To        string `yaml:"to,omitempty"`
 	}
 
 	Definition struct {
-		Name  string `yaml:"name"`
-		Steps []Step `yaml:"steps"`
+		Name     string   `yaml:"name"`
+		Question string   `yaml:"question,omitempty"`
+		Answer   []string `yaml:"answer,omitempty"`
+		Steps    []Step   `yaml:"steps"`
 	}
 
 	StoppedError struct {
@@ -79,6 +82,61 @@ func Parse(data []byte) (*Definition, error) {
 		return nil, fmt.Errorf("parse flow: %w", err)
 	}
 	return &def, nil
+}
+
+// ParseFile reads one flow, or a flows list.
+func ParseFile(data []byte) ([]*Definition, error) {
+	if err := yamlfile.Prepare(data); err != nil {
+		return nil, fmt.Errorf("parse flow: %w", err)
+	}
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil, fmt.Errorf("parse flow: %w", err)
+	}
+	root := &doc
+	if doc.Kind == yaml.DocumentNode && len(doc.Content) == 1 {
+		root = doc.Content[0]
+	}
+	if root != nil && root.Kind == yaml.MappingNode && mappingKey(root, "flows") {
+		if mappingKey(root, "name") || mappingKey(root, "steps") || mappingKey(root, "question") || mappingKey(root, "answer") {
+			return nil, errors.New("parse flow: flows cannot sit beside name, steps, question, or answer")
+		}
+		var file struct {
+			Flows []Definition `yaml:"flows"`
+		}
+		if err := decodeStrict(data, &file); err != nil {
+			return nil, fmt.Errorf("parse flow: %w", err)
+		}
+		out := make([]*Definition, 0, len(file.Flows))
+		seen := map[string]bool{}
+		for i := range file.Flows {
+			name := strings.TrimSpace(file.Flows[i].Name)
+			if name == "" {
+				return nil, errors.New("parse flow: a flow needs a name")
+			}
+			if seen[name] {
+				return nil, fmt.Errorf("parse flow: duplicate flow %s", name)
+			}
+			seen[name] = true
+			file.Flows[i].Name = name
+			out = append(out, &file.Flows[i])
+		}
+		return out, nil
+	}
+	def, err := Parse(data)
+	if err != nil {
+		return nil, err
+	}
+	return []*Definition{def}, nil
+}
+
+func mappingKey(node *yaml.Node, key string) bool {
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if node.Content[i].Value == key {
+			return true
+		}
+	}
+	return false
 }
 
 func decodeStrict(data []byte, out any) error {

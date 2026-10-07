@@ -30,6 +30,17 @@ func TestOverlayMissingKeyKeepsDerivedSentence(t *testing.T) {
 	assert.Equal(t, "Order.customerId identifies customers.get", missing.Relation)
 }
 
+func TestOverlayRejectsAnUnknownOperation(t *testing.T) {
+	cat := &catalog.Catalog{Operations: []catalog.Operation{{ID: "orders.get"}}}
+	cat.Finalize()
+	over, err := ParseOverlay([]byte("- operation: orders.missing\n  sentence: gone\n"), New(cat))
+	require.NoError(t, err)
+	require.EqualError(t, RequireKnown(over, cat), "semantics: unknown operation orders.missing")
+	known, err := ParseOverlay([]byte("- operation: orders.get\n  sentence: Fetch one order\n"), New(cat))
+	require.NoError(t, err)
+	require.NoError(t, RequireKnown(known, cat))
+}
+
 func TestNoteSynonymsAreCallerOwned(t *testing.T) {
 	cat := &catalog.Catalog{Operations: []catalog.Operation{{
 		ID: "widgets.ping", Name: "Ping", Description: "Ping", Tags: []string{"retire"},

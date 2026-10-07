@@ -104,6 +104,7 @@ func newServer(loop *agent.Loop) *capability.Server {
 		Catalog:   loop.Catalog,
 		Semantics: loop.Semantics,
 		Calls:     loop.RuntimePtr(),
+		Flows:     loop.Flows,
 	}
 }
 

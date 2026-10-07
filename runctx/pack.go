@@ -38,6 +38,8 @@ type (
 
 	Builder struct {
 		MaxBytes int
+		// Tasks are index lines for flows that have a question. Build adds a line when the user text matches its name, question, or answer.
+		Tasks []string
 	}
 )
 
@@ -52,7 +54,7 @@ func NewBuilder(maxBytes int) *Builder {
 func (b *Builder) Build(cat *catalog.Catalog, turns []Turn, described *catalog.Operation, sem notes, pending *policy.PendingConfirmation) Pack {
 	p := Pack{
 		Rules: defaultRules,
-		Index: selectedIndex(cat, turns, described, sem),
+		Index: joinIndex(selectedIndex(cat, turns, described, sem), matchTasks(b.Tasks, lastUser(turns))),
 		Turns: turns,
 	}
 	if described != nil {
@@ -359,4 +361,29 @@ func lastUser(turns []Turn) string {
 		}
 	}
 	return ""
+}
+
+func joinIndex(ops, tasks string) string {
+	if tasks == "" {
+		return ops
+	}
+	if ops == "" {
+		return tasks
+	}
+	return ops + "; " + tasks
+}
+
+func matchTasks(lines []string, query string) string {
+	q := strings.ToLower(strings.TrimSpace(query))
+	if q == "" {
+		return ""
+	}
+	var hit []string
+	for _, line := range lines {
+		head, _, _ := strings.Cut(strings.ToLower(line), " | ")
+		if strings.Contains(head, q) {
+			hit = append(hit, line)
+		}
+	}
+	return strings.Join(hit, "; ")
 }

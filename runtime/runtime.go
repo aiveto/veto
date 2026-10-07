@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,6 +32,10 @@ const (
 	CodePendingApproval        = "pending_approval"
 	WhyHeld                    = "held until you approve"
 	WhyMissingAuth             = "missing auth"
+	WhyParameter               = "parameter"
+	WhyPolicy                  = "policy"
+	WhyUpstream                = "upstream"
+	WhyCatalog                 = "catalog"
 )
 
 // ErrInvalidApproval is an approved id that does not match this caller, operation, and parameters.
@@ -210,7 +215,7 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 		decision = policy.DecisionAllow
 	}
 	if decision != policy.DecisionAllow {
-		return rt.record(ctx, Result{Status: StatusDenied, OperationID: req.Operation}), nil
+		return rt.record(ctx, Result{Status: StatusDenied, OperationID: req.Operation, Why: WhyPolicy}), nil
 	}
 	if rt.Exec == nil {
 		err := errors.New("missing executor")
@@ -234,6 +239,9 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 		res.HTTPStatus = call.Status
 		res.Sent = call.Sent || call.HTTP
 		res.Body = call.Body
+		if res.Why == "" && (res.HTTP || res.Sent) {
+			res.Why = WhyUpstream
+		}
 		return rt.record(ctx, res), err
 	}
 	if follow {
@@ -244,6 +252,9 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 			res.HTTPStatus = call.Status
 			res.Sent = call.Sent || call.HTTP
 			res.Body = call.Body
+			if res.Why == "" && (res.HTTP || res.Sent) {
+				res.Why = WhyUpstream
+			}
 			return rt.record(ctx, res), err
 		}
 	}
@@ -262,6 +273,9 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 		Page:        call.Page,
 		HTTP:        true,
 		Sent:        true,
+	}
+	if status != StatusOK {
+		res.Why = WhyUpstream
 	}
 	if status == StatusOK {
 		res.NextCalls = rt.nextCalls(req.Operation, call.Body)
@@ -327,7 +341,31 @@ func errorResult(op, code string, err error) Result {
 	if res.Code == CodeMissingAuth {
 		res.Why = WhyMissingAuth
 	}
+	if res.Why == "" {
+		res.Why = whyFor(res.Code, err)
+	}
 	return res
+}
+
+func whyFor(code string, err error) string {
+	switch code {
+	case CodeMissingParam, CodeInvalidParam, CodeInvalidBody:
+		return WhyParameter
+	case CodeMissingAuth:
+		return WhyMissingAuth
+	case CodeNotCallable:
+		return WhyCatalog
+	}
+	if err == nil {
+		return ""
+	}
+	if errors.Is(err, ErrInvalidApproval) {
+		return WhyHeld
+	}
+	if strings.HasPrefix(err.Error(), "unknown operation") {
+		return WhyCatalog
+	}
+	return ""
 }
 
 func paramCode(err error) string {

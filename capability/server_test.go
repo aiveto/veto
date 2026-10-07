@@ -9,6 +9,7 @@ import (
 
 	"github.com/aiveto/veto/capability"
 	"github.com/aiveto/veto/catalog"
+	"github.com/aiveto/veto/flow"
 	"github.com/aiveto/veto/openapi"
 	"github.com/aiveto/veto/runctx"
 	"github.com/aiveto/veto/semantics"
@@ -115,4 +116,31 @@ func TestSearchDoesNotCloneSynonymsOnEveryCall(t *testing.T) {
 	srv.Search("retire", 0, 8)
 	allocs := testing.AllocsPerRun(20, func() { srv.Search("retire", 0, 8) })
 	assert.Less(t, allocs, 200.0)
+}
+
+func TestSearchReturnsATask(t *testing.T) {
+	taught, err := flow.Teach(&flow.Definition{
+		Name:     "investigate-charge",
+		Question: "Investigate a customer's disputed charge",
+		Answer:   []string{"amount", "currency"},
+		Steps:    []flow.Step{{Operation: "orders.get"}, {Operation: "invoices.get"}},
+	}, &catalog.Catalog{
+		Operations: []catalog.Operation{
+			{ID: "orders.get", Kind: catalog.KindRead, ResponseFields: []string{"invoiceId"}},
+			{ID: "invoices.get", Kind: catalog.KindRead, ResponseFields: []string{"amount", "currency"}, Params: []catalog.Param{{Name: "id", In: "path", Required: true}}},
+		},
+		Links: []catalog.OpLink{{From: "orders.get", To: "invoices.get", Note: "Order.invoiceId"}},
+	})
+	require.NoError(t, err)
+	srv := &capability.Server{Flows: map[string]*flow.Definition{taught.Name: taught}}
+	hits := srv.Search("disputed charge", 0, 8)
+	require.Len(t, hits, 1)
+	assert.True(t, hits[0].Task)
+	assert.Equal(t, "investigate-charge", hits[0].ID)
+	assert.Equal(t, "Investigate a customer's disputed charge", hits[0].Call)
+	assert.Equal(t, []string{"orders.get invoiceId -> invoices.get id"}, hits[0].Related)
+	body, err := srv.Describe("investigate-charge")
+	require.NoError(t, err)
+	assert.Contains(t, string(body), "invoiceId")
+	assert.Empty(t, srv.Search("orders.get", 0, 8))
 }
