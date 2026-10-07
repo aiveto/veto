@@ -51,6 +51,23 @@ func TestCheckParamsChecksTheBodySchema(t *testing.T) {
 	assert.NoError(t, op.CheckParams(map[string]string{"body": `{"name":"ada","age":3,"extra":true}`}))
 }
 
+func TestCheckParamsRejectsAnIntegerEnumFloatWouldCollapse(t *testing.T) {
+	op := &catalog.Operation{ID: "orders.get", Params: []catalog.Param{{
+		Name: "id", In: "query", Schema: `{"type":"integer","enum":[9007199254740992]}`,
+	}}}
+	err := op.CheckParams(map[string]string{"id": "9007199254740993"})
+	bad, ok := errors.AsType[result.ParamError](err)
+	require.True(t, ok, err)
+	assert.Equal(t, "value is not one of the allowed values", bad.Reason)
+	assert.NoError(t, op.CheckParams(map[string]string{"id": "9007199254740992"}))
+
+	small := &catalog.Operation{ID: "orders.get", Params: []catalog.Param{{
+		Name: "id", In: "query", Schema: `{"type":"integer","enum":[2]}`,
+	}}}
+	assert.NoError(t, small.CheckParams(map[string]string{"id": "2"}))
+	require.Error(t, small.CheckParams(map[string]string{"id": "3"}))
+}
+
 func TestCheckParamsUsesPreparedSchema(t *testing.T) {
 	cat := &catalog.Catalog{Operations: []catalog.Operation{{
 		ID: "customers.create",

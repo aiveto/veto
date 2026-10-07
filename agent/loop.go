@@ -36,6 +36,7 @@ type (
 		ApprovalID  string
 		Text        string
 		Pack        runctx.Pack
+		Result      runtime.Result
 	}
 
 	Request struct {
@@ -183,13 +184,17 @@ func (l *Loop) Run(ctx context.Context, userText string) (Outcome, error) {
 	} else {
 		call, err = l.Invoke(ctx, resp.OperationID, resp.Params, "")
 	}
+	out, memErr := l.outcome(ctx, userText, turns, resp, call, err == nil)
 	if err != nil {
-		return Outcome{}, err
+		return out, err
 	}
+	return out, memErr
+}
 
+func (l *Loop) outcome(ctx context.Context, userText string, turns []runctx.Turn, resp Response, call Call, store bool) (Outcome, error) {
 	described := l.Catalog.ByID(call.OperationID)
 	var pending *policy.PendingConfirmation
-	if call.ApprovalID != "" {
+	if call.ApprovalID != "" && l.State != nil {
 		pending = l.State.Pending(ctx, call.ApprovalID)
 	}
 	summary := call.Status
@@ -210,31 +215,35 @@ func (l *Loop) Run(ctx context.Context, userText string) (Outcome, error) {
 	} else if call.Code != "" {
 		summary = fmt.Sprintf("%s code=%s retryable=%t", call.Status, call.Code, call.Retryable)
 	}
-	followTurns := slices.Clone(turns)
-	followTurns = append(followTurns, runctx.Turn{Role: "tool", Content: summary + " " + call.OperationID})
-	follow := l.Packs.Build(l.Catalog, followTurns, described, l.Semantics, pending)
-	text := summary
-	if l.Memory != nil {
-		id := uuid.NewString()
-		if err := l.Memory.Store(ctx, memory.Item{
-			ID:      id,
-			Content: userText + " " + call.Status,
-			Tags:    []string{call.OperationID},
-		}); err != nil {
-			return Outcome{}, fmt.Errorf("memory: %w", err)
-		}
+	content := summary + " " + call.OperationID
+	if call.Body != "" {
+		content += "\n" + call.Body
 	}
+	followTurns := slices.Clone(turns)
+	followTurns = append(followTurns, runctx.Turn{Role: "tool", Content: content})
+	follow := l.Packs.Build(l.Catalog, followTurns, described, l.Semantics, pending)
 	opID := call.OperationID
 	if opID == "" {
 		opID = resp.OperationID
 	}
-	return Outcome{
+	out := Outcome{
 		OperationID: opID,
 		Status:      call.Status,
 		ApprovalID:  call.ApprovalID,
-		Text:        text,
+		Text:        summary,
 		Pack:        follow,
-	}, nil
+		Result:      call,
+	}
+	if store && l.Memory != nil {
+		if err := l.Memory.Store(ctx, memory.Item{
+			ID:      uuid.NewString(),
+			Content: userText + " " + call.Status,
+			Tags:    []string{call.OperationID},
+		}); err != nil {
+			return out, fmt.Errorf("memory: %w", err)
+		}
+	}
+	return out, nil
 }
 
 // Runtime is the invoke sequence this loop uses. Policy and state are the loop's current values.
@@ -274,14 +283,17 @@ func (l *Loop) runFlow(ctx context.Context, resp Response) (Call, error) {
 		return Call{}, fmt.Errorf("unknown flow %q", resp.FlowName)
 	}
 	var paused Call
+	var last Call
 	runner := flow.Runner{Invoke: func(ctx context.Context, operationID string, params map[string]string, approvalID string) (string, string, error) {
 		if len(params) == 0 {
 			params = resp.Params
 		}
 		call, err := l.Invoke(ctx, operationID, params, approvalID)
 		if err != nil {
+			last = call
 			return "", "", err
 		}
+		last = call
 		if call.Status == runtime.StatusConfirmationRequired {
 			paused = call
 		}
@@ -296,17 +308,23 @@ func (l *Loop) runFlow(ctx context.Context, resp Response) (Call, error) {
 		return Call{Status: stopped.Status, OperationID: stopped.Operation}, nil
 	}
 	if err != nil {
+		if last.OperationID != "" {
+			return last, err
+		}
 		return Call{Status: runtime.StatusError, OperationID: resp.OperationID}, err
 	}
-	last := ""
+	if last.OperationID != "" {
+		return last, nil
+	}
+	step := ""
 	if n := len(def.Steps); n > 0 {
-		last = def.Steps[n-1].Operation
+		step = def.Steps[n-1].Operation
 	}
 	status := runtime.StatusOK
 	if len(results) > 0 {
 		status = results[len(results)-1]
 	}
-	return Call{Status: status, OperationID: last}, nil
+	return Call{Status: status, OperationID: step}, nil
 }
 
 func (l *Loop) memoryTurns(ctx context.Context, userText string) ([]runctx.Turn, error) {

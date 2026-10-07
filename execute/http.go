@@ -66,6 +66,7 @@ func (c Client) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, par
 func (c Client) FinishPages(status int, body string, truncated bool, p runtime.Projection) (result.HTTPResult, error) {
 	code, retryable := classify(status)
 	out := result.HTTPResult{Status: status, Body: body, Code: code, Retryable: retryable, HTTP: true, Sent: true, Truncated: truncated}
+	p = c.pageProjection(p)
 	if len(p.Fields) == 0 {
 		return out, nil
 	}

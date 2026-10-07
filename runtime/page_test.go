@@ -142,6 +142,71 @@ func TestPageFollowMarksACapThatLeavesALaterPage(t *testing.T) {
 	assert.NotContains(t, got.Body, "name")
 }
 
+func TestPageFollowAppliesDeploymentFields(t *testing.T) {
+	op, ts := pageServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("cursor") == "b" {
+			_, _ = w.Write([]byte(`{"items":[{"id":"2","secret":"later"}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"items":[{"id":"1","secret":"first"}],"next":"b"}`))
+	})
+	defer ts.Close()
+	rt := runtime.Runtime{
+		Catalog: pageCatalog(t, op),
+		Exec:    execute.Client{BaseURL: ts.URL, Fields: []string{"id"}},
+		Policy:  policy.Builtin{},
+		Pages:   5,
+	}
+	got, err := rt.Invoke(context.Background(), runtime.Request{Operation: "orders.list"})
+	require.NoError(t, err)
+	assert.Contains(t, got.Body, `"id":"1"`)
+	assert.Contains(t, got.Body, `"id":"2"`)
+	assert.NotContains(t, got.Body, "secret")
+}
+
+func TestPageFollowKeepsEvidenceWhenALaterPageIsNotAPage(t *testing.T) {
+	op, ts := pageServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("cursor") == "b" {
+			_, _ = w.Write([]byte(`not-a-page`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"items":[{"id":"1"}],"next":"b"}`))
+	})
+	defer ts.Close()
+	rt := runtime.Runtime{Catalog: pageCatalog(t, op), Exec: execute.Client{BaseURL: ts.URL}, Policy: policy.Builtin{}, Pages: 5}
+	got, err := rt.Invoke(context.Background(), runtime.Request{Operation: "orders.list"})
+	require.ErrorContains(t, err, "not a page")
+	assert.True(t, got.HTTP)
+	assert.True(t, got.Sent)
+	assert.Equal(t, http.StatusOK, got.HTTPStatus)
+}
+
+func TestPageFollowRejectsADerivedCursorInArguments(t *testing.T) {
+	var hits atomic.Int32
+	op, ts := pageServer(t, func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		if r.URL.Query().Get("cursor") == "b" {
+			_, _ = w.Write([]byte(`{"items":[{"id":"secret"}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"items":[{"id":"ok"}],"next":"b"}`))
+	})
+	defer ts.Close()
+	hook := policy.Wrap(nil, func(ctx context.Context, _ *catalog.Operation) (policy.Decision, bool, error) {
+		if policy.InputFrom(ctx).Arguments["cursor"] == "b" {
+			return policy.DecisionDeny, true, nil
+		}
+		return policy.DecisionAllow, true, nil
+	})
+	rt := runtime.Runtime{Catalog: pageCatalog(t, op), Exec: execute.Client{BaseURL: ts.URL}, Policy: hook, Pages: 5}
+	got, err := rt.Invoke(context.Background(), runtime.Request{Operation: "orders.list"})
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), hits.Load())
+	assert.True(t, got.Truncated)
+	assert.Contains(t, got.Body, `"ok"`)
+	assert.NotContains(t, got.Body, "secret")
+}
+
 func TestPageFollowAuthorizesEachDerivedRequest(t *testing.T) {
 	var paths []string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

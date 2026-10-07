@@ -23,6 +23,17 @@ type View struct {
 	Page      *result.Page
 }
 
+// pageProjection applies deployment fields and limit when the collected pages did not name their own.
+func (c Client) pageProjection(p runtime.Projection) runtime.Projection {
+	if len(p.Fields) == 0 {
+		p.Fields = c.Fields
+	}
+	if p.Limit == 0 {
+		p.Limit = c.Limit
+	}
+	return p
+}
+
 func (c Client) projection(ctx context.Context) runtime.Projection {
 	if runtime.SkipProjection(ctx) {
 		return runtime.Projection{}

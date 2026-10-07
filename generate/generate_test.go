@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/aiveto/veto/catalog"
@@ -108,20 +109,43 @@ func TestRenderRejectsAModulePathThatCannotBeImported(t *testing.T) {
 	require.ErrorContains(t, err, "module path")
 }
 
+func TestGeneratedClientMethodsDoNotCollide(t *testing.T) {
+	cat := &catalog.Catalog{Operations: []catalog.Operation{
+		{ID: "confirm", Method: "POST", PathTemplate: "/confirm"},
+		{ID: "operation", Method: "GET", PathTemplate: "/operation"},
+		{ID: "setPolicy", Method: "PUT", PathTemplate: "/policy"},
+	}}
+	cat.Finalize()
+	files, err := generate.Render("example.com/names", cat)
+	require.NoError(t, err)
+	sdk := string(files.SDK)
+	assert.Equal(t, 1, strings.Count(sdk, "func (c *Client) Confirm("))
+	assert.Equal(t, 1, strings.Count(sdk, "func (c *Client) Operation("))
+	assert.Equal(t, 1, strings.Count(sdk, "func (c *Client) SetPolicy("))
+	assert.Contains(t, sdk, "func (c *Client) Confirm2(")
+	assert.Contains(t, sdk, "func (c *Client) Operation2(")
+	assert.Contains(t, sdk, "func (c *Client) SetPolicy2(")
+}
+
 func TestGeneratedAdversarialNamesCompile(t *testing.T) {
-	cat := &catalog.Catalog{Operations: []catalog.Operation{{
-		ID: "orders.delete", Method: "DELETE", PathTemplate: "/orders/{id}",
-		RequiresConfirmation: true,
-		Params: []catalog.Param{
-			{Name: "id", In: "path", Required: true},
-			{Name: "args", In: "query"},
-			{Name: "confirm", In: "query"},
-			{Name: "fmt", In: "query"},
-			{Name: "ctx", In: "query"},
-			{Name: "help-json", In: "query"},
-			{Name: "a=b", In: "query"},
+	cat := &catalog.Catalog{Operations: []catalog.Operation{
+		{ID: "confirm", Method: "POST", PathTemplate: "/confirm"},
+		{ID: "operation", Method: "GET", PathTemplate: "/operation"},
+		{ID: "setPolicy", Method: "PUT", PathTemplate: "/policy"},
+		{
+			ID: "orders.delete", Method: "DELETE", PathTemplate: "/orders/{id}",
+			RequiresConfirmation: true,
+			Params: []catalog.Param{
+				{Name: "id", In: "path", Required: true},
+				{Name: "args", In: "query"},
+				{Name: "confirm", In: "query"},
+				{Name: "fmt", In: "query"},
+				{Name: "ctx", In: "query"},
+				{Name: "help-json", In: "query"},
+				{Name: "a=b", In: "query"},
+			},
 		},
-	}}}
+	}}
 	cat.Finalize()
 	dir := t.TempDir()
 	require.NoError(t, generate.Write(dir, "example.com/adversarial", cat))

@@ -354,7 +354,7 @@ func views(cat *catalog.Catalog) []opView {
 	ops := append([]catalog.Operation(nil), cat.Operations...)
 	slices.SortFunc(ops, func(a, b catalog.Operation) int { return strings.Compare(a.ID, b.ID) })
 	usedCmd := map[string]int{}
-	usedGo := map[string]int{"New": 1, "Calls": 1}
+	usedGo := map[string]int{"New": 1, "Calls": 1, "Confirm": 1, "Operation": 1, "SetPolicy": 1}
 	out := make([]opView, 0, len(ops))
 	for _, op := range ops {
 		goName := unique(usedGo, goName(op.ID))

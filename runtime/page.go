@@ -56,7 +56,7 @@ func (rt *Runtime) collectPages(ctx context.Context, op *catalog.Operation, para
 		body = resp.Body
 		more, ok := pageItems(body)
 		if !ok {
-			return result.HTTPResult{}, errors.New("follow page: response is not a page")
+			return resp, errors.New("follow page: response is not a page")
 		}
 		if pageBytes(items)+pageBytes(more) > int(limit) {
 			truncated = true
@@ -72,10 +72,10 @@ func (rt *Runtime) collectPages(ctx context.Context, op *catalog.Operation, para
 	}
 	raw, err := jsonv2.Marshal(items)
 	if err != nil {
-		return result.HTTPResult{}, fmt.Errorf("collect pages: %w", err)
+		return sentPages(first.Status), fmt.Errorf("collect pages: %w", err)
 	}
 	if int64(len(raw)) > limit {
-		return result.HTTPResult{}, fmt.Errorf("response exceeds %d bytes", limit)
+		return sentPages(first.Status), fmt.Errorf("response exceeds %d bytes", limit)
 	}
 	merged := result.HTTPResult{
 		Status:    first.Status,
@@ -94,11 +94,16 @@ func (rt *Runtime) collectPages(ctx context.Context, op *catalog.Operation, para
 
 func (rt *Runtime) allowDerived(ctx context.Context, op *catalog.Operation, params map[string]string) bool {
 	ctx = policy.WithInput(ctx, policy.Input{
-		Params: params,
-		Caller: auth.Caller(ctx),
+		Params:    params,
+		Arguments: FromStrings(params),
+		Caller:    auth.Caller(ctx),
 	})
 	decision, err := rt.decide(ctx, op)
 	return err == nil && decision == policy.DecisionAllow
+}
+
+func sentPages(status int) result.HTTPResult {
+	return result.HTTPResult{Status: status, HTTP: true, Sent: true}
 }
 
 func (rt *Runtime) bodyLimit() int64 {

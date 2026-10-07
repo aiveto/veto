@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- A derived page is checked with the same policy arguments as a direct call. Deployment response fields apply after the page walk. A page that was sent and then fails to parse keeps `http` and `sent`.
+- The agent loop keeps the invoke result, including send evidence when the transport fails, and puts the response body in the follow-up pack.
+- Generated client methods `Confirm`, `Operation`, and `SetPolicy` stay reserved. An integer enum is compared exactly, so a value float64 would collapse is rejected. A context pack omits a pending id that does not fit instead of shortening it.
+
 ## v0.1.7 - 2026-10-04
 
 - A confirmation form sends a confirm schema. `veto invoke` asks the same sentence when stdin and stdout are a terminal; `y` runs the call once. A skill or `veto serve --json` still returns the pending id.

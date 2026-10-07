@@ -146,8 +146,12 @@ func TestSerializedPackStaysInsideTheBudget(t *testing.T) {
 	})
 	assert.LessOrEqual(t, len(many.Serialize()), 8192)
 	assert.NotContains(t, many.Serialize(), strings.Repeat("9", 4000))
-	require.NotNil(t, many.PendingConfirmation)
-	assert.Empty(t, many.PendingConfirmation.Params)
+	if many.PendingConfirmation != nil {
+		assert.Equal(t, strings.Repeat("p", 5000), many.PendingConfirmation.ID)
+		assert.Equal(t, longID, many.PendingConfirmation.OperationID)
+	} else {
+		assert.NotContains(t, many.Serialize(), "pending_confirmation:")
+	}
 
 	tiny := runctx.NewBuilder(1).Build(cat, []runctx.Turn{{Role: "user", Content: "hello"}}, cat.ByID("orders.get"), sem, nil)
 	assert.LessOrEqual(t, len(tiny.Serialize()), 1)
@@ -159,6 +163,20 @@ func TestSerializedPackStaysInsideTheBudget(t *testing.T) {
 	assert.LessOrEqual(t, len(cut.Serialize()), len("rules: ")+len(runctx.NewBuilder(0).Build(nil, nil, nil, nil, nil).Rules)+8)
 	assert.True(t, utf8.ValidString(cut.Serialize()))
 	assert.Equal(t, runeText, original[0].Content)
+}
+
+func TestPackOmitsAnApprovalIDThatDoesNotFit(t *testing.T) {
+	id := strings.Repeat("a", 80)
+	pack := runctx.NewBuilder(40).Build(nil, nil, nil, nil, &policy.PendingConfirmation{
+		ID: id, OperationID: "orders.delete",
+	})
+	assert.LessOrEqual(t, len(pack.Serialize()), 40)
+	if pack.PendingConfirmation != nil {
+		assert.Equal(t, id, pack.PendingConfirmation.ID)
+	} else {
+		assert.NotContains(t, pack.Serialize(), "pending_confirmation:")
+	}
+	assert.NotContains(t, pack.Serialize(), strings.Repeat("a", 10))
 }
 
 func TestPackKeepsSearchHitsAndDropsTheRest(t *testing.T) {
