@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -251,17 +252,16 @@ func exactInteger(raw, schemaText string) error {
 		ExclusiveMaximum json.RawMessage   `json:"exclusiveMaximum"`
 		MultipleOf       json.RawMessage   `json:"multipleOf"`
 	}
-	if json.Unmarshal([]byte(schemaText), &doc) != nil {
-		return nil
-	}
-	if len(doc.Enum) > 0 && !integerInEnum(raw, doc.Enum) {
-		return errors.New("value is not one of the allowed values")
-	}
-	if jsonNumber(doc.Const) && !sameIntegerLiteral(raw, doc.Const) {
-		return errors.New("value does not match const")
-	}
-	if !floatKeepsInteger(raw) && hasNumericBound(doc.Minimum, doc.Maximum, doc.ExclusiveMinimum, doc.ExclusiveMaximum, doc.MultipleOf) {
-		return errors.New("integer cannot be checked exactly")
+	if json.Unmarshal([]byte(schemaText), &doc) == nil {
+		if len(doc.Enum) > 0 && !integerInEnum(raw, doc.Enum) {
+			return errors.New("value is not one of the allowed values")
+		}
+		if jsonNumber(doc.Const) && !sameIntegerLiteral(raw, doc.Const) {
+			return errors.New("value does not match const")
+		}
+		if !floatKeepsInteger(raw) && hasNumericBound(doc.Minimum, doc.Maximum, doc.ExclusiveMinimum, doc.ExclusiveMaximum, doc.MultipleOf) {
+			return errors.New("integer cannot be checked exactly")
+		}
 	}
 	return nil
 }
@@ -321,12 +321,7 @@ func jsonNumber(raw json.RawMessage) bool {
 }
 
 func hasNumericBound(parts ...json.RawMessage) bool {
-	for _, part := range parts {
-		if jsonNumber(part) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(parts, jsonNumber)
 }
 
 func integerNumber(n json.Number) bool {
