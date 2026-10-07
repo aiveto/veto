@@ -6,6 +6,7 @@
 - The agent loop keeps the invoke result, including send evidence when the transport fails, and puts the response body in the follow-up pack.
 - Generated client methods `Confirm`, `Operation`, and `SetPolicy` stay reserved. An integer enum is compared exactly, so a value float64 would collapse is rejected. A context pack omits a pending id that does not fit instead of shortening it.
 - The agent loop invokes through the kernel runtime instead of copying its fields. `NewRuntime` takes that runtime. A derived page is validated before it is sent.
+- A successful invoke includes `next_calls` when a relation names a path or query value in the response. A missing or projected field is omitted, and a header is not copied. A JSON body integer is compared exactly, so an enum float64 would collapse is rejected.
 
 ## v0.1.7 - 2026-10-04
 

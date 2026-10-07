@@ -68,6 +68,56 @@ func TestCheckParamsRejectsAnIntegerEnumFloatWouldCollapse(t *testing.T) {
 	require.Error(t, small.CheckParams(map[string]string{"id": "3"}))
 }
 
+func TestCheckParamsRejectsABodyIntegerEnumFloatWouldCollapse(t *testing.T) {
+	op := &catalog.Operation{ID: "orders.create", Params: []catalog.Param{{
+		Name: "body", In: "body", Required: true, MediaType: "application/json",
+		Schema: `{"type":"object","properties":{"id":{"type":"integer","enum":[9007199254740992]},"order":{"type":"object","properties":{"n":{"type":"integer","const":9007199254740992}}},"ns":{"type":"array","items":{"type":"integer","enum":[9007199254740992]}}}}`,
+	}}}
+	err := op.CheckParams(map[string]string{"body": `{"id":9007199254740993}`})
+	bad, ok := errors.AsType[result.BodyError](err)
+	require.True(t, ok, err)
+	assert.Equal(t, "/id", bad.Path)
+	assert.Equal(t, "value is not one of the allowed values", bad.Reason)
+	require.NoError(t, op.CheckParams(map[string]string{"body": `{"id":9007199254740992}`}))
+
+	err = op.CheckParams(map[string]string{"body": `{"order":{"n":9007199254740993}}`})
+	bad, ok = errors.AsType[result.BodyError](err)
+	require.True(t, ok, err)
+	assert.Equal(t, "/order/n", bad.Path)
+	assert.Equal(t, "value does not match const", bad.Reason)
+
+	err = op.CheckParams(map[string]string{"body": `{"ns":[9007199254740993]}`})
+	bad, ok = errors.AsType[result.BodyError](err)
+	require.True(t, ok, err)
+	assert.Equal(t, "/ns/0", bad.Path)
+	require.NoError(t, op.CheckParams(map[string]string{"body": `{"ns":[9007199254740992]}`}))
+
+	joined := &catalog.Operation{ID: "orders.create", Params: []catalog.Param{{
+		Name: "body", In: "body", Required: true, MediaType: "application/json",
+		Schema: `{"allOf":[{"type":"object","properties":{"id":{"type":"integer","enum":[9007199254740992]}}}]}`,
+	}}}
+	err = joined.CheckParams(map[string]string{"body": `{"id":9007199254740993}`})
+	bad, ok = errors.AsType[result.BodyError](err)
+	require.True(t, ok, err)
+	assert.Equal(t, "/id", bad.Path)
+
+	bound := &catalog.Operation{ID: "orders.create", Params: []catalog.Param{{
+		Name: "body", In: "body", Required: true, MediaType: "application/json",
+		Schema: `{"type":"object","properties":{"n":{"type":"integer","minimum":9007199254740992}}}`,
+	}}}
+	err = bound.CheckParams(map[string]string{"body": `{"n":9007199254740993}`})
+	bad, ok = errors.AsType[result.BodyError](err)
+	require.True(t, ok, err)
+	assert.Equal(t, "integer cannot be checked exactly", bad.Reason)
+
+	small := &catalog.Operation{ID: "orders.create", Params: []catalog.Param{{
+		Name: "body", In: "body", Required: true, MediaType: "application/json",
+		Schema: `{"type":"object","properties":{"age":{"type":"integer","enum":[2]}}}`,
+	}}}
+	require.NoError(t, small.CheckParams(map[string]string{"body": `{"age":2}`}))
+	require.Error(t, small.CheckParams(map[string]string{"body": `{"age":3}`}))
+}
+
 func TestCheckParamsUsesPreparedSchema(t *testing.T) {
 	cat := &catalog.Catalog{Operations: []catalog.Operation{{
 		ID: "customers.create",
