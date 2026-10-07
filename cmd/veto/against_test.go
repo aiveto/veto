@@ -29,7 +29,7 @@ func TestCheckAgainstSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(path, body, 0o600))
 	cmd := checkCmd{against: path, config: cfgPath, cases: []string{cases}}
-	require.NoError(t, diffAgainst(cmd, cat))
+	require.NoError(t, diffAgainst(cmd, cat, nil))
 	facts := catalog.Facts(cat)
 	facts["gone.get"] = catalog.OpFact{Referenced: true}
 	body, err = json.Marshal(snapshotFile{
@@ -42,9 +42,30 @@ func TestCheckAgainstSnapshot(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(path, body, 0o600))
-	err = diffAgainst(cmd, cat)
+	err = diffAgainst(cmd, cat, nil)
 	require.ErrorContains(t, err, "gone.get")
 	assert.ErrorContains(t, err, "delete-requires-confirmation")
+}
+
+func TestCheckAgainstNamesABrokenTask(t *testing.T) {
+	cfgPath := filepath.Join("..", "..", "testdata", "veto.yaml")
+	cases := filepath.Join("..", "..", "testdata", "cases")
+	src, err := resolve(cfgPath, nil, "", "")
+	require.NoError(t, err)
+	cat, err := loadCatalog(src.contracts, src.relations)
+	require.NoError(t, err)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "surface.json")
+	body, err := json.Marshal(snapshotFile{Operations: catalog.Facts(cat), Tasks: []string{
+		"task investigate-charge: Investigate a customer's disputed charge. answer: amount, currency | orders.get invoiceId -> invoices.get id",
+	}})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, body, 0o600))
+	err = diffAgainst(checkCmd{against: path, config: cfgPath, cases: []string{cases}}, cat, []string{
+		"task investigate-charge: Investigate a customer's disputed charge. answer: currency",
+	})
+	require.ErrorContains(t, err, "task investigate-charge can no longer obtain invoiceId from orders.get")
+	assert.ErrorContains(t, err, "task investigate-charge can no longer read amount")
 }
 
 func TestCheckAgainstDeploymentConfirmationOff(t *testing.T) {
@@ -67,13 +88,13 @@ func TestCheckAgainstDeploymentConfirmationOff(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(snap, body, 0o600))
 
-	err = diffAgainst(checkCmd{against: snap, config: offPath, cases: []string{filepath.Join(dir, "case.yaml")}}, loop.Catalog)
+	err = diffAgainst(checkCmd{against: snap, config: offPath, cases: []string{filepath.Join(dir, "case.yaml")}}, loop.Catalog, nil)
 	require.NoError(t, err)
 
 	held, _, err := buildLoop(nil, onPath, "", "", "")
 	require.NoError(t, err)
 	held.Catalog.ClearConfirmation()
-	err = diffAgainst(checkCmd{against: snap, config: onPath, cases: []string{filepath.Join(dir, "case.yaml")}}, held.Catalog)
+	err = diffAgainst(checkCmd{against: snap, config: onPath, cases: []string{filepath.Join(dir, "case.yaml")}}, held.Catalog, nil)
 	require.ErrorContains(t, err, "orders.delete lost confirmation")
 }
 
@@ -98,7 +119,7 @@ func TestCheckAgainstGitRef(t *testing.T) {
 	cases := filepath.Join(dir, "cases")
 	cat := loadChecked(t, cfgPath)
 	cmd := checkCmd{against: "HEAD", config: cfgPath, cases: []string{cases}}
-	err := diffAgainst(cmd, cat)
+	err := diffAgainst(cmd, cat, nil)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "customers.get")
 	require.ErrorContains(t, err, "orders.purge")
@@ -107,7 +128,7 @@ func TestCheckAgainstGitRef(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "agent.yaml"), []byte("operations:\n  - operation: orders.purge\n    confirmation: false\n"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "cases", "get.yaml"), caseBody, 0o600))
 	cat = loadChecked(t, cfgPath)
-	err = diffAgainst(cmd, cat)
+	err = diffAgainst(cmd, cat, nil)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "customers.get")
 	assert.NotContains(t, err.Error(), "orders.purge")
@@ -122,10 +143,10 @@ func TestCheckAgainstGitRefAppliesEachSideSelection(t *testing.T) {
 	commitBaseline(t, dir)
 
 	cmd := checkCmd{against: "HEAD", config: cfgPath}
-	require.NoError(t, diffAgainst(cmd, loadDeployed(t, cfgPath)))
+	require.NoError(t, diffAgainst(cmd, loadDeployed(t, cfgPath), nil))
 
 	require.NoError(t, os.WriteFile(cfgPath, []byte("contracts:\n  - orders.yaml\n"), 0o600))
-	require.ErrorContains(t, diffAgainst(cmd, loadDeployed(t, cfgPath)), "orders.purge")
+	require.ErrorContains(t, diffAgainst(cmd, loadDeployed(t, cfgPath), nil), "orders.purge")
 }
 
 func commitBaseline(t *testing.T, dir string) {

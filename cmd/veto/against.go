@@ -28,12 +28,14 @@ type (
 		Operations    map[string]catalog.OpFact
 		Cases         []eval.CaseExpect
 		Confirmations map[string]*bool
+		Tasks         []string
 	}
 
 	snapshotFile struct {
 		Operations    map[string]catalog.OpFact `json:"operations"`
 		Cases         []eval.CaseExpect         `json:"cases"`
 		Confirmations map[string]*bool          `json:"confirmations,omitempty"`
+		Tasks         []string                  `json:"tasks,omitempty"`
 	}
 
 	checkCmd struct {
@@ -59,7 +61,7 @@ func newCheckCommand() *cobra.Command {
 	c.Flags().StringVar(&cmd.agent, "agent", "", "Path to agent.yaml. Overrides agent_file.")
 	c.Flags().StringVar(&cmd.relations, "relations", "", "Relations file. Overrides relations_file.")
 	c.Flags().StringVar(&cmd.baseURL, "base-url", "", "Override the server URL on every operation. Empty uses each contract server.")
-	c.Flags().StringVar(&cmd.against, "against", "", "Git ref or snapshot JSON. Fail if a joined operation disappeared, confirmation was dropped without an agent.yaml change or confirmation: false, a new destructive operation appeared, or an eval expectation changed.")
+	c.Flags().StringVar(&cmd.against, "against", "", "Git ref or snapshot JSON. Fail if a joined operation disappeared, confirmation was dropped without an agent.yaml change or confirmation: false, a new destructive operation appeared, an eval expectation changed, or a task lost a binding or an answer field.")
 	return c
 }
 
@@ -93,14 +95,14 @@ func runChecked(cmd checkCmd) error {
 		return errors.New("case required")
 	}
 	if cmd.against != "" {
-		if err := diffAgainst(cmd, loop.Catalog); err != nil {
+		if err := diffAgainst(cmd, loop.Catalog, flow.Lines(loop.Flows)); err != nil {
 			return err
 		}
 	}
 	return runCases(loop, cmd.cases)
 }
 
-func diffAgainst(cmd checkCmd, cat *catalog.Catalog) error {
+func diffAgainst(cmd checkCmd, cat *catalog.Catalog, tasks []string) error {
 	base, err := loadBaseline(cmd)
 	if err != nil {
 		return err
@@ -123,6 +125,7 @@ func diffAgainst(cmd checkCmd, cat *catalog.Catalog) error {
 	}
 	lines := catalog.SurfaceRegressions(base.Operations, catalog.Facts(cat), agentmeta.ChangedConfirmations(base.Confirmations, agentmeta.Confirmations(curAgent)), !src.cfg.Confirms())
 	lines = append(lines, eval.Drift(base.Cases, eval.Expects(cases))...)
+	lines = append(lines, flow.TaskRegressions(base.Tasks, tasks)...)
 	if len(lines) == 0 {
 		return nil
 	}
@@ -239,7 +242,11 @@ func baselineFromConfig(root, ref, configPath string, casePaths []string) (base 
 	if err != nil {
 		return baseline{}, err
 	}
-	return baseline{Operations: catalog.Facts(cat), Cases: cases, Confirmations: conf}, nil
+	tasks, err := taskLines(cfg, cat)
+	if err != nil {
+		return baseline{}, err
+	}
+	return baseline{Operations: catalog.Facts(cat), Cases: cases, Confirmations: conf, Tasks: tasks}, nil
 }
 
 func baselineFromPaths(root, ref string, contracts []string, relations, agentPath string, casePaths []string) (base baseline, err error) {
@@ -329,6 +336,14 @@ func loadConfigAt(configPath string) (config.File, error) {
 		return config.File{}, err
 	}
 	return src.cfg, nil
+}
+
+func taskLines(cfg config.File, cat *catalog.Catalog) ([]string, error) {
+	flows, err := loadFlows(cfg, cat)
+	if err != nil {
+		return nil, err
+	}
+	return flow.Lines(flows), nil
 }
 
 func casesAtRef(root, ref string, paths []string) (out []eval.CaseExpect, err error) {

@@ -100,6 +100,23 @@ func TestFindMatchesTheQuestionNotTheOperation(t *testing.T) {
 	assert.Contains(t, flow.Lines(flows)[0], "answer: amount, currency")
 }
 
+func TestTaskRegressionsNameTheBrokenBinding(t *testing.T) {
+	taught, err := flow.Teach(&flow.Definition{
+		Name:     "investigate-charge",
+		Question: "Investigate a customer's disputed charge",
+		Answer:   []string{"amount", "currency"},
+		Steps:    []flow.Step{{Operation: "orders.get"}, {Operation: "invoices.get"}},
+	}, chargeCatalog())
+	require.NoError(t, err)
+	base := flow.Lines(map[string]*flow.Definition{taught.Name: taught})
+	broken := "task investigate-charge: Investigate a customer's disputed charge. answer: currency"
+	assert.Equal(t, []string{
+		"task investigate-charge can no longer obtain invoiceId from orders.get",
+		"task investigate-charge can no longer read amount from invoices.get",
+	}, flow.TaskRegressions(base, []string{broken}))
+	assert.Empty(t, flow.TaskRegressions(nil, base))
+}
+
 func TestParseReadsTheQuestion(t *testing.T) {
 	def, err := flow.Parse([]byte("name: investigate-charge\nquestion: Investigate a customer's disputed charge\nanswer: [amount, currency]\nsteps:\n  - orders.get\n  - invoices.get\n"))
 	require.NoError(t, err)

@@ -249,3 +249,109 @@ func hasParam(op catalog.Operation, name string) bool {
 	}
 	return false
 }
+
+// TaskRegressions reports a task the baseline could teach and the current lines cannot.
+func TaskRegressions(base, next []string) []string {
+	before := parseTaskLines(base)
+	after := parseTaskLines(next)
+	var out []string
+	for name, old := range before {
+		cur, ok := after[name]
+		if !ok {
+			out = append(out, "task "+name+" was removed")
+			continue
+		}
+		for _, bind := range old.binds {
+			if slices.Contains(cur.binds, bind) {
+				continue
+			}
+			from, field, _, _ := bindParts(bind)
+			if from == "" || field == "" {
+				out = append(out, "task "+name+" lost binding "+bind)
+				continue
+			}
+			out = append(out, "task "+name+" can no longer obtain "+field+" from "+from)
+		}
+		from := cur.last
+		if from == "" {
+			from = old.last
+		}
+		for _, field := range old.answer {
+			if slices.Contains(cur.answer, field) {
+				continue
+			}
+			if from == "" {
+				out = append(out, "task "+name+" can no longer read "+field)
+				continue
+			}
+			out = append(out, "task "+name+" can no longer read "+field+" from "+from)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+type taskLine struct {
+	answer []string
+	binds  []string
+	last   string
+}
+
+func parseTaskLines(lines []string) map[string]taskLine {
+	out := map[string]taskLine{}
+	for _, line := range lines {
+		name, fact, ok := parseTaskLine(line)
+		if !ok || name == "" {
+			continue
+		}
+		out[name] = fact
+	}
+	return out
+}
+
+func parseTaskLine(line string) (string, taskLine, bool) {
+	const prefix = "task "
+	if !strings.HasPrefix(line, prefix) {
+		return "", taskLine{}, false
+	}
+	rest := strings.TrimPrefix(line, prefix)
+	name, rest, ok := strings.Cut(rest, ":")
+	if !ok {
+		return "", taskLine{}, false
+	}
+	name = strings.TrimSpace(name)
+	head, bindsPart, _ := strings.Cut(rest, " | ")
+	var fact taskLine
+	if _, answer, ok := strings.Cut(head, ". answer: "); ok {
+		for _, field := range strings.Split(answer, ",") {
+			field = strings.TrimSpace(field)
+			if field != "" {
+				fact.answer = append(fact.answer, field)
+			}
+		}
+	}
+	if bindsPart != "" {
+		for _, bind := range strings.Split(bindsPart, " | ") {
+			bind = strings.TrimSpace(bind)
+			if bind == "" {
+				continue
+			}
+			fact.binds = append(fact.binds, bind)
+			_, _, to, _ := bindParts(bind)
+			if to != "" {
+				fact.last = to
+			}
+		}
+	}
+	return name, fact, true
+}
+
+func bindParts(bind string) (from, field, to, param string) {
+	left, right, ok := strings.Cut(bind, " -> ")
+	if !ok {
+		return "", "", "", ""
+	}
+	from, field, _ = strings.Cut(left, " ")
+	to, param, _ = strings.Cut(right, " ")
+	return strings.TrimSpace(from), strings.TrimSpace(field), strings.TrimSpace(to), strings.TrimSpace(param)
+}
