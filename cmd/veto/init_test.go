@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/aiveto/veto/flow"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
@@ -26,6 +27,8 @@ func TestInitWritesStarterAndRefusesOverwrite(t *testing.T) {
 		rel, err := os.ReadFile(filepath.Join(dir, "relations.yaml"))
 		require.NoError(t, err)
 		assert.Equal(t, "relations: []\n", string(rel))
+		_, statErr := os.Stat(filepath.Join(dir, "flow.yaml"))
+		assert.True(t, os.IsNotExist(statErr))
 	})
 
 	t.Run("refuses to overwrite veto.yaml", func(t *testing.T) {
@@ -51,3 +54,46 @@ func TestInitWritesStarterAndRefusesOverwrite(t *testing.T) {
 		assert.Equal(t, kept, got)
 	})
 }
+
+func TestInitWritesAReadOnlyTask(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "orders.yaml"), []byte(initOrderSpec), 0o600))
+	require.NoError(t, writeStarter(dir, []string{"orders.yaml"}))
+	raw, err := os.ReadFile(filepath.Join(dir, "veto.yaml"))
+	require.NoError(t, err)
+	var doc struct {
+		FlowFile string `yaml:"flow_file"`
+	}
+	require.NoError(t, yaml.Unmarshal(raw, &doc))
+	assert.Equal(t, "flow.yaml", doc.FlowFile)
+	flowRaw, err := os.ReadFile(filepath.Join(dir, "flow.yaml"))
+	require.NoError(t, err)
+	def, err := flow.Parse(flowRaw)
+	require.NoError(t, err)
+	assert.Equal(t, "read-orders-get", def.Name)
+	assert.Equal(t, "Get order by id", def.Question)
+	assert.Equal(t, []string{"customerId"}, def.Answer)
+	assert.Equal(t, []flow.Step{{Operation: "orders.get"}}, def.Steps)
+}
+
+const initOrderSpec = `
+openapi: 3.0.3
+info: {title: Orders, version: "1"}
+paths:
+  /orders/{id}:
+    get:
+      operationId: orders.get
+      summary: Get order by id
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: One order
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  customerId: {type: string}
+                  id: {type: string}
+`

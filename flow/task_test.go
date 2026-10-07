@@ -117,6 +117,26 @@ func TestTaskRegressionsNameTheBrokenBinding(t *testing.T) {
 	assert.Empty(t, flow.TaskRegressions(nil, base))
 }
 
+func TestSuggestPrefersARelationThenASingleRead(t *testing.T) {
+	got := flow.Suggest(chargeCatalog())
+	require.NotNil(t, got)
+	assert.Equal(t, "read-invoices-get", got.Name)
+	assert.Equal(t, []string{"amount"}, got.Answer)
+	require.Len(t, got.Steps, 2)
+	assert.Empty(t, got.Steps[0].Output)
+	assert.Equal(t, "orders.get", got.Steps[0].Operation)
+	assert.Equal(t, "invoices.get", got.Steps[1].Operation)
+
+	one := flow.Suggest(&catalog.Catalog{Operations: []catalog.Operation{{
+		ID: "orders.get", Kind: catalog.KindRead, Summary: "Get order by id",
+		ResponseFields: []string{"customerId"},
+	}}})
+	require.NotNil(t, one)
+	assert.Equal(t, "read-orders-get", one.Name)
+	assert.Equal(t, "Get order by id", one.Question)
+	assert.Equal(t, []flow.Step{{Operation: "orders.get"}}, one.Steps)
+}
+
 func TestParseReadsTheQuestion(t *testing.T) {
 	def, err := flow.Parse([]byte("name: investigate-charge\nquestion: Investigate a customer's disputed charge\nanswer: [amount, currency]\nsteps:\n  - orders.get\n  - invoices.get\n"))
 	require.NoError(t, err)

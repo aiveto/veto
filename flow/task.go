@@ -355,3 +355,101 @@ func bindParts(bind string) (from, field, to, param string) {
 	to, param, _ = strings.Cut(right, " ")
 	return strings.TrimSpace(from), strings.TrimSpace(field), strings.TrimSpace(to), strings.TrimSpace(param)
 }
+
+// Suggest returns a read-only task the catalog can already teach.
+func Suggest(cat *catalog.Catalog) *Definition {
+	reads := readOps(cat)
+	if len(reads) == 0 {
+		return nil
+	}
+	type pair struct{ from, to string }
+	var pairs []pair
+	seen := map[string]bool{}
+	for _, link := range cat.Links {
+		if !strings.Contains(link.Note, ".") {
+			continue
+		}
+		key := link.From + "\x00" + link.To
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		if len(linksBetween(link.From, link.To, cat.Links)) != 1 {
+			continue
+		}
+		if !hasReadFields(cat, link.From) || !hasReadFields(cat, link.To) {
+			continue
+		}
+		pairs = append(pairs, pair{link.From, link.To})
+	}
+	slices.SortFunc(pairs, func(a, b pair) int {
+		return strings.Compare(a.from+" "+a.to, b.from+" "+b.to)
+	})
+	for _, p := range pairs {
+		if def := teachable(cat, p.from, p.to); def != nil {
+			return def
+		}
+	}
+	for _, op := range reads {
+		if def := teachable(cat, op.ID); def != nil {
+			return def
+		}
+	}
+	return nil
+}
+
+func readOps(cat *catalog.Catalog) []catalog.Operation {
+	if cat == nil {
+		return nil
+	}
+	var out []catalog.Operation
+	for _, op := range cat.Operations {
+		if op.Kind == catalog.KindRead && len(op.ResponseFields) > 0 {
+			out = append(out, op)
+		}
+	}
+	slices.SortFunc(out, func(a, b catalog.Operation) int {
+		return strings.Compare(a.ID, b.ID)
+	})
+	return out
+}
+
+func hasReadFields(cat *catalog.Catalog, id string) bool {
+	op := cat.ByID(id)
+	return op != nil && op.Kind == catalog.KindRead && len(op.ResponseFields) > 0
+}
+
+func teachable(cat *catalog.Catalog, ids ...string) *Definition {
+	last := cat.ByID(ids[len(ids)-1])
+	if last == nil || len(last.ResponseFields) == 0 {
+		return nil
+	}
+	fields := slices.Clone(last.ResponseFields)
+	slices.Sort(fields)
+	steps := make([]Step, len(ids))
+	for i, id := range ids {
+		steps[i] = Step{Operation: id}
+	}
+	question := strings.TrimSpace(last.Summary)
+	if question == "" {
+		question = "Read " + last.ID
+	}
+	def := &Definition{
+		Name:     taskName(cat, last.ID),
+		Question: question,
+		Answer:   []string{fields[0]},
+		Steps:    steps,
+	}
+	if _, err := Teach(def, cat); err != nil {
+		return nil
+	}
+	return def
+}
+
+func taskName(cat *catalog.Catalog, id string) string {
+	name := "read-" + strings.NewReplacer(".", "-", "/", "-").Replace(id)
+	if cat.ByID(name) != nil {
+		return "task-" + name
+	}
+	return name
+}

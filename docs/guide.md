@@ -53,7 +53,7 @@ Traces are OpenTelemetry. OTLP export is optional. The Go model and memory inter
 veto init orders.yaml customers.yaml
 ```
 
-This writes `veto.yaml` in the current directory and, if it is missing, a `relations.yaml` stub (`relations: []`). If `veto.yaml` is already there, `veto init` stops and leaves both files alone.
+This writes `veto.yaml` in the current directory and, if it is missing, a `relations.yaml` stub (`relations: []`). When a contract loads and a read lists response fields, it also writes `flow.yaml` for that read and sets `flow_file`. A declared relation between two reads becomes the two steps. An existing `flow.yaml` is left in place. If `veto.yaml` is already there, `veto init` stops and leaves the files alone.
 
 ```yaml
 contracts:

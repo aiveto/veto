@@ -16,8 +16,8 @@ import (
 type (
 	Step struct {
 		Operation string `yaml:"operation"`
-		Output    string `yaml:"output"` // copied onto the next step's parameter To
-		To        string `yaml:"to"`
+		Output    string `yaml:"output,omitempty"` // copied onto the next step's parameter To
+		To        string `yaml:"to,omitempty"`
 	}
 
 	Definition struct {

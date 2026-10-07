@@ -6,6 +6,7 @@
 - `veto check --against` names a task that lost a binding or an answer field.
 - An invoke failure names its stage in `why`: parameter, policy, catalog, upstream, missing auth, or held until you approve.
 - A semantics file that names an operation the catalog does not have fails to load.
+- `veto init` writes a read-only task when a contract lists response fields for a read. A declared relation between two reads becomes the two steps.
 
 ## v0.1.8 - 2026-10-06
 
