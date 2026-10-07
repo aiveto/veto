@@ -294,18 +294,7 @@ func assembleLoop(src sources, baseURL string) (*agent.Loop, config.File, error)
 	if err != nil {
 		return nil, config.File{}, err
 	}
-	loop.JSON = srv.Calls.JSON
-	loop.State = srv.Calls.State
-	loop.SetPolicy(srv.Calls.Policy)
-	loop.SetFloor(srv.Calls.Base)
-	loop.Notify = srv.Calls.Notify
-	loop.Pages = srv.Calls.Pages
-	loop.MaxBody = srv.Calls.MaxBody
-	if srv.Calls.Gate != nil {
-		loop.SetGate(srv.Calls.Gate)
-	} else {
-		loop.SetInvokeLimit(cfg.InvokeLimit)
-	}
+	loop.SetRuntime(srv.Calls)
 	flows, err := loadFlows(cfg)
 	if err != nil {
 		return nil, config.File{}, err

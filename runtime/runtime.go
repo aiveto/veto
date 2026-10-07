@@ -158,11 +158,7 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 		return rt.record(ctx, errorResult(op.ID, "", err)), err
 	}
 
-	ctx = policy.WithInput(ctx, policy.Input{
-		Params:    args,
-		Arguments: req.Arguments,
-		Caller:    caller,
-	})
+	ctx = rt.policyContext(ctx, args, req.Arguments)
 	decision, err := rt.decide(ctx, op)
 	if err != nil {
 		return rt.record(ctx, errorResult(req.Operation, "", err)), err
@@ -291,11 +287,7 @@ func (rt *Runtime) Preview(ctx context.Context, req Request) (Preview, error) {
 		}
 		out.Request = draft
 	}
-	ctx = policy.WithInput(ctx, policy.Input{
-		Params:    args,
-		Arguments: req.Arguments,
-		Caller:    caller,
-	})
+	ctx = rt.policyContext(ctx, args, req.Arguments)
 	decision, err := rt.decide(ctx, op)
 	if err != nil {
 		out.Errors = append(out.Errors, err.Error())
@@ -345,6 +337,14 @@ func paramCode(err error) string {
 		return CodeMissingAuth
 	}
 	return ""
+}
+
+func (rt *Runtime) policyContext(ctx context.Context, args map[string]string, arguments map[string]any) context.Context {
+	return policy.WithInput(ctx, policy.Input{
+		Params:    args,
+		Arguments: arguments,
+		Caller:    auth.Caller(ctx),
+	})
 }
 
 func requestCaller(ctx context.Context, req Request) string {
