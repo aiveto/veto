@@ -1,12 +1,14 @@
 package flow
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"slices"
 	"strings"
 
 	"github.com/aiveto/veto/catalog"
+	"gopkg.in/yaml.v3"
 )
 
 // Teach fills bindings for a flow that has a question. A flow without a question is returned as it was parsed.
@@ -357,10 +359,62 @@ func bindParts(bind string) (from, field, to string) {
 	return strings.TrimSpace(from), strings.TrimSpace(field), strings.TrimSpace(to)
 }
 
-// Suggest returns a read-only task the catalog can already teach.
+// Suggest returns one read-only task the catalog can already teach.
 func Suggest(cat *catalog.Catalog) *Definition {
-	reads := readOps(cat)
-	if len(reads) == 0 {
+	for _, p := range relationPairs(cat) {
+		if def := teachable(cat, p[0], p[1]); def != nil {
+			return def
+		}
+	}
+	for _, op := range readOps(cat) {
+		if def := teachable(cat, op.ID); def != nil {
+			return def
+		}
+	}
+	return nil
+}
+
+// Propose returns a reviewable task for every declared relation between two reads.
+// The question is the relation sentence. The answer lists the last operation's response fields.
+func Propose(cat *catalog.Catalog) []*Definition {
+	var out []*Definition
+	seen := map[string]bool{}
+	for _, p := range relationPairs(cat) {
+		def := reviewTask(cat, p[0], p[1])
+		if def == nil || seen[def.Name] {
+			continue
+		}
+		seen[def.Name] = true
+		out = append(out, def)
+	}
+	return out
+}
+
+// Format writes one task, or a flows list when there are several.
+func Format(defs []*Definition) ([]byte, error) {
+	if len(defs) == 0 {
+		return nil, errors.New("no task to write")
+	}
+	var doc any = defs[0]
+	if len(defs) > 1 {
+		doc = struct {
+			Flows []*Definition `yaml:"flows"`
+		}{Flows: defs}
+	}
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(doc); err != nil {
+		return nil, err
+	}
+	if err := enc.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func relationPairs(cat *catalog.Catalog) [][2]string {
+	if cat == nil {
 		return nil
 	}
 	type pair struct{ from, to string }
@@ -386,17 +440,48 @@ func Suggest(cat *catalog.Catalog) *Definition {
 	slices.SortFunc(pairs, func(a, b pair) int {
 		return strings.Compare(a.from+" "+a.to, b.from+" "+b.to)
 	})
-	for _, p := range pairs {
-		if def := teachable(cat, p.from, p.to); def != nil {
-			return def
-		}
+	out := make([][2]string, len(pairs))
+	for i, p := range pairs {
+		out[i] = [2]string{p.from, p.to}
 	}
-	for _, op := range reads {
-		if def := teachable(cat, op.ID); def != nil {
-			return def
-		}
+	return out
+}
+
+func reviewTask(cat *catalog.Catalog, from, to string) *Definition {
+	last := cat.ByID(to)
+	if last == nil || len(last.ResponseFields) == 0 {
+		return nil
 	}
-	return nil
+	fields := slices.Clone(last.ResponseFields)
+	slices.Sort(fields)
+	question := strings.TrimSpace(last.Summary)
+	if note := relationQuestion(cat, from, to); note != "" {
+		question = note
+	}
+	if question == "" {
+		question = "Read " + to
+	}
+	def := &Definition{
+		Name:     taskName(cat, from+"-"+to),
+		Question: question,
+		Answer:   fields,
+		Steps:    []Step{{Operation: from}, {Operation: to}},
+	}
+	taught, err := Teach(def, cat)
+	if err != nil {
+		return nil
+	}
+	taught.Steps[0].Output = ""
+	taught.Steps[0].To = ""
+	return taught
+}
+
+func relationQuestion(cat *catalog.Catalog, from, to string) string {
+	links := linksBetween(from, to, cat.Links)
+	if len(links) != 1 || links[0].Note == "" {
+		return ""
+	}
+	return links[0].Note + " identifies " + to
 }
 
 func readOps(cat *catalog.Catalog) []catalog.Operation {
