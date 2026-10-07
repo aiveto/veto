@@ -291,9 +291,10 @@ func (l *Loop) SetRuntime(rt *runtime.Runtime) {
 }
 
 // Runtime is the invoke sequence this loop uses. Policy and state are the loop's current values.
+// The snapshot copies exported fields. The shared runtime, including its gate lock, stays on RuntimePtr.
 func (l *Loop) Runtime() runtime.Runtime {
 	if l != nil && l.calls != nil {
-		return *l.calls
+		return runtimeSnapshot(l.calls)
 	}
 	if l.base == nil {
 		l.base = policy.Builtin{}
@@ -312,6 +313,21 @@ func (l *Loop) Runtime() runtime.Runtime {
 		JSON:    l.JSON,
 		Pages:   l.Pages,
 		MaxBody: l.MaxBody,
+	}
+}
+
+func runtimeSnapshot(rt *runtime.Runtime) runtime.Runtime {
+	return runtime.Runtime{
+		Catalog: rt.Catalog,
+		Policy:  rt.Policy,
+		Base:    rt.Base,
+		State:   rt.State,
+		Exec:    rt.Exec,
+		Notify:  rt.Notify,
+		Gate:    rt.Gate,
+		JSON:    rt.JSON,
+		Pages:   rt.Pages,
+		MaxBody: rt.MaxBody,
 	}
 }
 
