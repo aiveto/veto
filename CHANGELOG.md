@@ -8,6 +8,7 @@
 - A semantics file that names an operation the catalog does not have fails to load.
 - `veto init` writes a read-only task when a contract lists response fields for a read. A declared relation between two reads becomes the two steps.
 - `veto propose` drafts a reviewable task from each declared relation. The owner keeps the question and the answer fields that matter.
+- `veto run` prints what a read-only task kept true. A missing binding or answer field uses the same sentence as check. The response and its values are not stored.
 
 ## v0.1.8 - 2026-10-06
 

@@ -55,6 +55,7 @@ func newRoot() (*cobra.Command, error) {
 		newValidateCommand(),
 		newInitCommand(),
 		newProposeCommand(),
+		newRunCommand(),
 		newServeCommand(),
 		evalCmd,
 		generateCmd,

@@ -32,12 +32,22 @@ type (
 		Operation string
 	}
 
+	// MissingOutputError is a response that did not include the field the next step needs.
+	MissingOutputError struct {
+		Operation string
+		Field     string
+	}
+
 	Runner struct {
 		Invoke func(ctx context.Context, operationID string, params map[string]string, approvalID string) (string, string, error)
 	}
 )
 
 func (s StoppedError) Error() string { return s.Status }
+
+func (e MissingOutputError) Error() string {
+	return "step " + e.Operation + ": output " + e.Field + " is missing"
+}
 
 func (s *Step) UnmarshalYAML(value *yaml.Node) error {
 	if value.Kind == yaml.AliasNode && value.Alias != nil {
@@ -153,7 +163,7 @@ func (r *Runner) Run(ctx context.Context, def *Definition, params map[string]str
 			if prev.Output != "" {
 				val, ok := jsonfield.String(lastBody, prev.Output)
 				if !ok {
-					return results, fmt.Errorf("step %s: output %s is missing", prev.Operation, prev.Output)
+					return results, MissingOutputError{Operation: prev.Operation, Field: prev.Output}
 				}
 				to := prev.To
 				if to == "" {
