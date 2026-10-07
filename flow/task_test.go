@@ -137,6 +137,28 @@ func TestSuggestPrefersARelationThenASingleRead(t *testing.T) {
 	assert.Equal(t, []flow.Step{{Operation: "orders.get"}}, one.Steps)
 }
 
+func TestProposeAsksTheOwnerToReviewTheRelation(t *testing.T) {
+	cat := chargeCatalog()
+	cat.Operations = append(cat.Operations, catalog.Operation{
+		ID: "customers.get", Kind: catalog.KindRead, ResponseFields: []string{"name", "id"},
+		Params: []catalog.Param{{Name: "id", In: "path", Required: true}},
+	})
+	cat.Links = append(cat.Links, catalog.OpLink{From: "orders.get", To: "customers.get", Note: "Order.customerId"})
+	got := flow.Propose(cat)
+	require.Len(t, got, 2)
+	assert.Equal(t, "read-orders-get-customers-get", got[0].Name)
+	assert.Equal(t, "Order.customerId identifies customers.get", got[0].Question)
+	assert.Equal(t, []string{"id", "name"}, got[0].Answer)
+	assert.Empty(t, got[0].Steps[0].Output)
+	_, err := flow.Teach(got[0], cat)
+	require.NoError(t, err)
+	body, err := flow.Format(got)
+	require.NoError(t, err)
+	defs, err := flow.ParseFile(body)
+	require.NoError(t, err)
+	require.Len(t, defs, 2)
+}
+
 func TestParseReadsTheQuestion(t *testing.T) {
 	def, err := flow.Parse([]byte("name: investigate-charge\nquestion: Investigate a customer's disputed charge\nanswer: [amount, currency]\nsteps:\n  - orders.get\n  - invoices.get\n"))
 	require.NoError(t, err)

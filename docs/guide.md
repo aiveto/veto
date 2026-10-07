@@ -363,7 +363,7 @@ steps:
   - invoices.get
 ```
 
-`Order.invoiceId` joined to `invoices.get` becomes the binding `orders.get invoiceId -> invoices.get id`. `veto search "disputed charge"` returns the task. The context pack includes that sentence when the message matches the question or an answer field. `veto check` prints the sentence. A `flows` list in that file holds the task next to any other flow. Check fails when the response no longer includes the binding field or an answer field, when the next operation has no parameter for it, or when a step is not a read.
+`Order.invoiceId` joined to `invoices.get` becomes the binding `orders.get invoiceId -> invoices.get id`. `veto search "disputed charge"` returns the task. The context pack includes that sentence when the message matches the question or an answer field. `veto propose` prints a task for each declared relation between two reads. The question is the relation sentence. The answer lists that operation's response fields for you to keep or delete. The steps do not copy the parameter mapping. `veto check` prints the sentence. A `flows` list in that file holds the task next to any other flow. Check fails when the response no longer includes the binding field or an answer field, when the next operation has no parameter for it, or when a step is not a read.
 
 ## Pack
 

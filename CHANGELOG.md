@@ -7,6 +7,7 @@
 - An invoke failure names its stage in `why`: parameter, policy, catalog, upstream, missing auth, or held until you approve.
 - A semantics file that names an operation the catalog does not have fails to load.
 - `veto init` writes a read-only task when a contract lists response fields for a read. A declared relation between two reads becomes the two steps.
+- `veto propose` drafts a reviewable task from each declared relation. The owner keeps the question and the answer fields that matter.
 
 ## v0.1.8 - 2026-10-06
 
