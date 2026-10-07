@@ -11,13 +11,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Teach fills bindings for a flow that has a question. A flow without a question is returned as it was parsed.
+// Teach fills bindings for a flow that has a question.
+// A flow without a question is returned as parsed when its steps still name operations, fields, and parameters the catalog has.
 func Teach(def *Definition, cat *catalog.Catalog) (*Definition, error) {
 	if def == nil {
 		return nil, errors.New("task is missing")
 	}
 	if strings.TrimSpace(def.Question) == "" {
-		return def, nil
+		return knownFlow(def, cat)
 	}
 	name := strings.TrimSpace(def.Name)
 	if name == "" {
@@ -141,6 +142,44 @@ func Find(flows map[string]*Definition, query string) []*Definition {
 		out = append(out, flows[name])
 	}
 	return out
+}
+
+func knownFlow(def *Definition, cat *catalog.Catalog) (*Definition, error) {
+	if def == nil || cat == nil {
+		return def, nil
+	}
+	name := strings.TrimSpace(def.Name)
+	if name == "" {
+		name = "flow"
+	}
+	for i, step := range def.Steps {
+		op := cat.ByID(step.Operation)
+		if op == nil {
+			return nil, fmt.Errorf("flow %s: unknown operation %s", name, step.Operation)
+		}
+		field := strings.TrimSpace(step.Output)
+		if field == "" {
+			continue
+		}
+		if len(op.ResponseFields) > 0 && !slices.Contains(op.ResponseFields, field) {
+			return nil, fmt.Errorf("flow %s can no longer obtain %s from %s", name, field, op.ID)
+		}
+		if i+1 >= len(def.Steps) {
+			continue
+		}
+		next := cat.ByID(def.Steps[i+1].Operation)
+		if next == nil {
+			return nil, fmt.Errorf("flow %s: unknown operation %s", name, def.Steps[i+1].Operation)
+		}
+		param := strings.TrimSpace(step.To)
+		if param == "" {
+			param = field
+		}
+		if !hasParam(*next, param) {
+			return nil, fmt.Errorf("flow %s: %s has no parameter %s", name, next.ID, param)
+		}
+	}
+	return def, nil
 }
 
 func answerFields(task string, fields []string) ([]string, error) {

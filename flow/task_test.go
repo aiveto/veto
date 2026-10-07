@@ -79,11 +79,32 @@ func TestTeachRefusesATaskTheContractCannotSupport(t *testing.T) {
 }
 
 func TestTeachLeavesAFlowWithoutAQuestion(t *testing.T) {
+	cat := chargeCatalog()
+	cat.Operations = append(cat.Operations, catalog.Operation{ID: "orders.delete", Kind: catalog.KindDelete})
 	def := &flow.Definition{Name: "then-delete", Steps: []flow.Step{{Operation: "orders.get"}, {Operation: "orders.delete"}}}
-	got, err := flow.Teach(def, chargeCatalog())
+	got, err := flow.Teach(def, cat)
 	require.NoError(t, err)
 	assert.Same(t, def, got)
 	assert.Empty(t, got.Steps[0].Output)
+}
+
+func TestTeachFlagsAFlowReferenceTheCatalogLost(t *testing.T) {
+	cat := chargeCatalog()
+	def := &flow.Definition{Name: "then-delete", Steps: []flow.Step{{Operation: "orders.get"}, {Operation: "orders.missing"}}}
+	_, err := flow.Teach(def, cat)
+	require.EqualError(t, err, "flow then-delete: unknown operation orders.missing")
+
+	stale := &flow.Definition{Name: "then-get", Steps: []flow.Step{
+		{Operation: "orders.get", Output: "invoiceId", To: "missing"},
+		{Operation: "invoices.get"},
+	}}
+	_, err = flow.Teach(stale, cat)
+	require.EqualError(t, err, "flow then-get: invoices.get has no parameter missing")
+
+	stale.Steps[0].To = "id"
+	cat.Operations[0].ResponseFields = []string{"customerId"}
+	_, err = flow.Teach(stale, cat)
+	require.EqualError(t, err, "flow then-get can no longer obtain invoiceId from orders.get")
 }
 
 func TestFindMatchesTheQuestionNotTheOperation(t *testing.T) {
