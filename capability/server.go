@@ -8,12 +8,15 @@ import (
 
 	"github.com/aiveto/veto/auth"
 	"github.com/aiveto/veto/catalog"
+	"github.com/aiveto/veto/flow"
 	"github.com/aiveto/veto/jsonopts"
 	"github.com/aiveto/veto/result"
 	"github.com/aiveto/veto/runctx"
 	"github.com/aiveto/veto/runtime"
 	"github.com/aiveto/veto/semantics"
 )
+
+const searchPage = 8
 
 type (
 	// SearchHit is one search result on the wire. Describe still returns the operation.
@@ -23,6 +26,7 @@ type (
 		Related      []string `json:"related,omitempty"`
 		RelatedCalls []string `json:"related_calls,omitempty"`
 		Confirmation bool     `json:"confirmation,omitempty"`
+		Task         bool     `json:"task,omitempty"`
 	}
 
 	InvokeResult struct {
@@ -54,6 +58,7 @@ type (
 		Catalog   *catalog.Catalog
 		Semantics semantics.Notes
 		Calls     *runtime.Runtime
+		Flows     map[string]*flow.Definition
 		synOnce   sync.Once
 		syns      map[string][]string
 	}
@@ -73,11 +78,24 @@ func (s *Server) searchSyns() map[string][]string {
 
 func (s *Server) Search(query string, offset, limit int) []SearchHit {
 	var cat *catalog.Catalog
+	var flows map[string]*flow.Definition
 	if s != nil {
 		cat = s.Catalog
+		flows = s.Flows
 	}
 	syns := s.searchSyns()
-	matches := catalog.SearchPage(cat, query, syns, offset, limit)
+	var tasks []SearchHit
+	if s != nil {
+		tasks = s.taskHits(flows, query)
+	}
+	if len(tasks) == 0 {
+		return operationHits(s, cat, catalog.SearchPage(cat, query, syns, offset, limit))
+	}
+	ops := operationHits(s, cat, catalog.SearchPage(cat, query, syns, 0, searchPage))
+	return pageSearch(append(tasks, ops...), offset, limit)
+}
+
+func operationHits(s *Server, cat *catalog.Catalog, matches []catalog.Match) []SearchHit {
 	if len(matches) == 0 {
 		return nil
 	}
@@ -98,7 +116,53 @@ func (s *Server) Search(query string, offset, limit int) []SearchHit {
 	return out
 }
 
+func (s *Server) taskHits(flows map[string]*flow.Definition, query string) []SearchHit {
+	found := flow.Find(flows, query)
+	if len(found) == 0 {
+		return nil
+	}
+	out := make([]SearchHit, 0, len(found))
+	for _, def := range found {
+		out = append(out, SearchHit{
+			ID:      def.Name,
+			Call:    def.Question,
+			Related: def.Binds(),
+			Task:    true,
+		})
+	}
+	return out
+}
+
+func pageSearch(hits []SearchHit, offset, limit int) []SearchHit {
+	if len(hits) == 0 {
+		return nil
+	}
+	if limit <= 0 || limit > searchPage {
+		limit = searchPage
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if offset >= len(hits) {
+		return nil
+	}
+	end := offset + limit
+	if end > len(hits) {
+		end = len(hits)
+	}
+	return hits[offset:end]
+}
+
 func (s *Server) Describe(operationID string) ([]byte, error) {
+	if def := s.flowTask(operationID); def != nil {
+		return s.Encode(map[string]any{
+			"task":     def.Name,
+			"question": def.Question,
+			"answer":   def.Answer,
+			"steps":    def.Steps,
+			"binds":    def.Binds(),
+		})
+	}
 	op := s.Catalog.ByID(operationID)
 	if op == nil {
 		return nil, fmt.Errorf("unknown operation %q", operationID)
@@ -116,6 +180,20 @@ func (s *Server) Describe(operationID string) ([]byte, error) {
 		"relation":  note.Relation,
 	}
 	return s.Encode(payload)
+}
+
+func (s *Server) flowTask(id string) *flow.Definition {
+	if s == nil || s.Flows == nil {
+		return nil
+	}
+	def := s.Flows[id]
+	if def == nil || def.Question == "" {
+		return nil
+	}
+	if s.Catalog != nil && s.Catalog.ByID(id) != nil {
+		return nil
+	}
+	return def
 }
 
 func (s *Server) RunSearch(args SearchArgs) ([]byte, error) {

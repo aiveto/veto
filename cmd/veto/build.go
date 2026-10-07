@@ -295,11 +295,10 @@ func assembleLoop(src sources, baseURL string) (*agent.Loop, config.File, error)
 		return nil, config.File{}, err
 	}
 	loop.SetRuntime(srv.Calls)
-	flows, err := loadFlows(cfg)
-	if err != nil {
-		return nil, config.File{}, err
+	loop.Flows = srv.Flows
+	if loop.Packs != nil {
+		loop.Packs.Tasks = flow.Lines(srv.Flows)
 	}
-	loop.Flows = flows
 	if err := applyAgentProviders(loop, cfg); err != nil {
 		return nil, cfg, err
 	}
@@ -339,7 +338,11 @@ func assembleKernel(src sources, baseURL string) (*capability.Server, config.Fil
 	if err := applyRuntimePolicy(&rt, cfg); err != nil {
 		return nil, config.File{}, err
 	}
-	return &capability.Server{Catalog: cat, Semantics: sem, Calls: &rt}, cfg, nil
+	flows, err := loadFlows(cfg, cat)
+	if err != nil {
+		return nil, config.File{}, err
+	}
+	return &capability.Server{Catalog: cat, Semantics: sem, Calls: &rt, Flows: flows}, cfg, nil
 }
 
 func loadKernel(src sources) (*catalog.Catalog, semantics.Notes, error) {
@@ -374,7 +377,7 @@ func loadKernel(src sources) (*catalog.Catalog, semantics.Notes, error) {
 	return cat, sem, nil
 }
 
-func loadFlows(cfg config.File) (map[string]*flow.Definition, error) {
+func loadFlows(cfg config.File, cat *catalog.Catalog) (map[string]*flow.Definition, error) {
 	flows := map[string]*flow.Definition{}
 	if cfg.FlowFile == "" {
 		return flows, nil
@@ -383,11 +386,20 @@ func loadFlows(cfg config.File) (map[string]*flow.Definition, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read flow: %w", err)
 	}
-	def, err := flow.Parse(data)
+	defs, err := flow.ParseFile(data)
 	if err != nil {
 		return nil, err
 	}
-	flows[def.Name] = def
+	for _, def := range defs {
+		taught, err := flow.Teach(def, cat)
+		if err != nil {
+			return nil, err
+		}
+		if _, ok := flows[taught.Name]; ok {
+			return nil, fmt.Errorf("duplicate flow %s", taught.Name)
+		}
+		flows[taught.Name] = taught
+	}
 	return flows, nil
 }
 

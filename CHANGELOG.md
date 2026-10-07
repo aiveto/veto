@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A flow with a question is a read-only task. Search and the context pack return it. A later step takes its parameter from a declared relation. Check fails when that field or an answer field is gone, or a step is not a read.
+
 ## v0.1.8 - 2026-10-06
 
 - A derived page keeps the caller's argument types, so a boolean stays a boolean under policy. A later page failure keeps the first page's HTTP evidence. An integer bound is compared exactly, including additional properties, oneOf, and a structured query. Query and path validation uses the text that is sent. A stopped flow keeps the invoke result. Generated clients reserve `jsonv2` and keep catalog links and page maps, so `next_calls` matches a direct invoke. A JSON Pointer index that overflows is missing.

@@ -16,6 +16,7 @@ import (
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/config"
 	"github.com/aiveto/veto/eval"
+	"github.com/aiveto/veto/flow"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -80,6 +81,9 @@ func runChecked(cmd checkCmd) error {
 		fmt.Println(line)
 	}
 	for _, line := range loop.Catalog.Joins() {
+		fmt.Println(line)
+	}
+	for _, line := range flow.Lines(loop.Flows) {
 		fmt.Println(line)
 	}
 	if len(cmd.cases) == 0 {

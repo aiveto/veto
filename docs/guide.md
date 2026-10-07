@@ -42,6 +42,7 @@ veto check --config testdata/veto.yaml --case testdata/cases
 | Print a saved trace | [replay --from](#replay) |
 | Run a message | [replay](#replay) |
 | Share contracts, relations, and cases apart from deployment credentials | [capability bundle](#capability-bundle) |
+| A read-only task the agent can find. Check fails when its binding or answer field is gone | [tasks](#tasks) |
 | Call the same runtime from your own Go module | [generate](#generate) a client, a CLI, and an MCP dispatch package |
 
 Traces are OpenTelemetry. OTLP export is optional. The Go model and memory interfaces, and sequential flows, run in-process. They are not a durable workflow service.
@@ -349,6 +350,21 @@ parameters:
 
 `$response.body#/items/0/id` is the one index. A second index, such as `$response.body#/rows/0/cols/1`, is an error and is not a call.
 
+## Tasks
+
+A flow with a question is a task. Name the read-only steps and the response fields that answer it. A later step takes its parameter from one declared relation. Set `output` and `to` on that step when more than one relation reaches the next operation.
+
+```yaml
+name: investigate-charge
+question: Investigate a customer's disputed charge
+answer: [amount, currency]
+steps:
+  - orders.get
+  - invoices.get
+```
+
+`Order.invoiceId` joined to `invoices.get` becomes the binding `orders.get invoiceId -> invoices.get id`. `veto search "disputed charge"` returns the task. The context pack includes that sentence when the message matches the question or an answer field. `veto check` prints the sentence. A `flows` list in that file holds the task next to any other flow. Check fails when the response no longer includes the binding field or an answer field, when the next operation has no parameter for it, or when a step is not a read.
+
 ## Pack
 
 ```bash
@@ -359,7 +375,7 @@ veto pack --config veto.yaml --message "who placed order 123"
 
 ## Check in CI
 
-`veto check` loads the catalog, prints joins, and runs the case files. `--case` names the case file or directory. When it is omitted, check uses the `cases` list from the bundle. `--against` is a git ref or a snapshot JSON file. The check fails when a joined operation disappears, confirmation is dropped without an `agent.yaml` change or `confirmation: false`, a new destructive operation appears, a discovery-only operation becomes callable, a required permission is removed, or an eval expectation changes. Drift compares `operation`, `confirmation_required`, `no_http`, `pack_contains`, `pack_excludes`, and `related`. `confirmation: false` prints `confirmation is off` and does not also report each operation as lost confirmation.
+`veto check` loads the catalog, prints joins and any task, and runs the case files. `--case` names the case file or directory. When it is omitted, check uses the `cases` list from the bundle. `--against` is a git ref or a snapshot JSON file. The check fails when a joined operation disappears, confirmation is dropped without an `agent.yaml` change or `confirmation: false`, a new destructive operation appears, a discovery-only operation becomes callable, a required permission is removed, an eval expectation changes, or a task can no longer obtain its binding or an answer field. Drift compares `operation`, `confirmation_required`, `no_http`, `pack_contains`, `pack_excludes`, and `related`. `confirmation: false` prints `confirmation is off` and does not also report each operation as lost confirmation.
 
 `--against` reads files from that git ref, so the checkout needs the history.
 

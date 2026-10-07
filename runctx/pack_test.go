@@ -202,3 +202,13 @@ func TestPackKeepsSearchHitsAndDropsTheRest(t *testing.T) {
 	assert.Contains(t, pack.Index, "orders.delete")
 	assert.NotEqual(t, cat.IndexLine(), pack.Index)
 }
+
+func TestPackIncludesAMatchingTask(t *testing.T) {
+	b := runctx.NewBuilder(8192)
+	b.Tasks = []string{"task investigate-charge: Investigate a customer's disputed charge. answer: amount, currency | orders.get invoiceId -> invoices.get id"}
+	pack := b.Build(nil, []runctx.Turn{{Role: "user", Content: "disputed charge"}}, nil, nil, nil)
+	assert.Contains(t, pack.Index, "investigate-charge")
+	assert.Contains(t, pack.Index, "invoiceId")
+	other := b.Build(nil, []runctx.Turn{{Role: "user", Content: "orders.get"}}, nil, nil, nil)
+	assert.NotContains(t, other.Index, "investigate-charge")
+}
