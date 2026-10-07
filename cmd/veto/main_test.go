@@ -430,6 +430,7 @@ contracts:
 	require.NoError(t, err)
 	blocked := doctorBlockers(context.Background(), downLoop.Catalog, downCfg, nil, true)
 	assert.Contains(t, strings.Join(blocked, "\n"), "ping ")
+	assert.Contains(t, strings.Join(blocked, "\n"), "upstream")
 }
 
 func TestDoctorReportsCallRisks(t *testing.T) {

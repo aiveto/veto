@@ -50,6 +50,9 @@ func TestRunFailureNamesARefusedNextCall(t *testing.T) {
 	err := flow.RunFailure(taught, flow.StoppedError{Status: "error", Operation: "invoices.get"})
 	require.EqualError(t, err, "task investigate-charge: invoices.get did not accept id")
 
+	err = flow.RunFailure(taught, flow.StoppedError{Status: "denied", Operation: "invoices.get", Why: "policy"})
+	require.EqualError(t, err, "task investigate-charge: invoices.get did not accept id: policy")
+
 	err = flow.RunFailure(taught, flow.MissingOutputError{Operation: "orders.get", Field: "invoiceId"})
 	require.EqualError(t, err, "task investigate-charge can no longer obtain invoiceId from orders.get")
 	assert.NotContains(t, err.Error(), "cus_mara")

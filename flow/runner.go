@@ -30,6 +30,7 @@ type (
 	StoppedError struct {
 		Status    string
 		Operation string
+		Why       string
 	}
 
 	// MissingOutputError is a response that did not include the field the next step needs.

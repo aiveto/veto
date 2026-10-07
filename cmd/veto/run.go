@@ -62,9 +62,10 @@ func runTask(flags catalogFlags, name string, pairs []string) error {
 		if err != nil {
 			return res.Status, "", err
 		}
-		if res.Status == runtime.StatusOK {
-			bodies = append(bodies, res.Body)
+		if res.Status != runtime.StatusOK {
+			return res.Status, "", flow.StoppedError{Status: res.Status, Operation: operationID, Why: res.Why}
 		}
+		bodies = append(bodies, res.Body)
 		return res.Status, res.Body, nil
 	}}
 	_, err = runner.Run(ctx, def, params)
