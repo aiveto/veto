@@ -103,20 +103,20 @@ func TestMCPAndJSONShareInvokeOutcomes(t *testing.T) {
 			allow: map[string]bool{},
 			json:  `{"invoke":{"operation_id":"orders.get","params":{"id":"1"}}}`,
 			mcp:   map[string]any{"operation_id": "orders.get", "params": map[string]any{"id": "1"}},
-			want:  invokeOutcome{Status: "denied", Failed: true},
+			want:  invokeOutcome{Status: "denied", Why: "policy", Failed: true},
 		},
 		{
 			name: "missing parameters",
 			json: `{"invoke":{"operation_id":"orders.get"}}`,
 			mcp:  map[string]any{"operation_id": "orders.get"},
-			want: invokeOutcome{Status: "error", Code: "missing_param", Error: "operation orders.get: id required", Failed: true},
+			want: invokeOutcome{Status: "error", Code: "missing_param", Why: "parameter", Error: "operation orders.get: id required", Failed: true},
 		},
 		{
 			name: "ambiguous execution failure",
 			exec: captureExec{sent: true, err: errors.New("lost response")},
 			json: `{"invoke":{"operation_id":"orders.get","params":{"id":"1"}}}`,
 			mcp:  map[string]any{"operation_id": "orders.get", "params": map[string]any{"id": "1"}},
-			want: invokeOutcome{Status: "error", Sent: true, Error: "lost response", Failed: true},
+			want: invokeOutcome{Status: "error", Sent: true, Why: "upstream", Error: "lost response", Failed: true},
 		},
 		{
 			name: "preview failure",
