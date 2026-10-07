@@ -9,7 +9,6 @@ import (
 	"maps"
 	"strings"
 
-	"github.com/aiveto/veto/auth"
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/internal/jsonfield"
 	"github.com/aiveto/veto/policy"
@@ -42,6 +41,9 @@ func (rt *Runtime) collectPages(ctx context.Context, op *catalog.Operation, para
 		}
 		seen[sig] = true
 		maps.Copy(current, next)
+		if err := op.CheckParams(current); err != nil {
+			return sentPages(first.Status), err
+		}
 		if !rt.allowDerived(ctx, op, current) {
 			truncated = true
 			break
@@ -93,11 +95,7 @@ func (rt *Runtime) collectPages(ctx context.Context, op *catalog.Operation, para
 }
 
 func (rt *Runtime) allowDerived(ctx context.Context, op *catalog.Operation, params map[string]string) bool {
-	ctx = policy.WithInput(ctx, policy.Input{
-		Params:    params,
-		Arguments: FromStrings(params),
-		Caller:    auth.Caller(ctx),
-	})
+	ctx = rt.policyContext(ctx, params, FromStrings(params))
 	decision, err := rt.decide(ctx, op)
 	return err == nil && decision == policy.DecisionAllow
 }

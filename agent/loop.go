@@ -77,6 +77,7 @@ type (
 		JSON      jsonopts.Set
 		Pages     int
 		MaxBody   int64
+		calls     *runtime.Runtime
 	}
 )
 
@@ -103,10 +104,16 @@ func New(cat *catalog.Catalog, sem semantics.Notes, exec Executor) (*Loop, error
 }
 
 func (l *Loop) SetPolicy(hook policy.Hook) {
+	if l == nil {
+		return
+	}
 	if hook == nil {
 		hook = policy.Builtin{}
 	}
 	l.Policy = hook
+	if l.calls != nil {
+		l.calls.Policy = hook
+	}
 }
 
 func (l *Loop) SetFloor(hook policy.Hook) {
@@ -117,11 +124,22 @@ func (l *Loop) SetFloor(hook policy.Hook) {
 		hook = policy.Builtin{}
 	}
 	l.base = hook
+	if l.calls != nil {
+		l.calls.Base = hook
+	}
 }
 
 // SetInvokeLimit sets calls per second per caller. Zero keeps 16.
 func (l *Loop) SetInvokeLimit(n int) {
 	if l == nil {
+		return
+	}
+	if l.calls != nil {
+		if l.calls.Gate == nil {
+			l.calls.Gate = &runtime.InvokeGate{}
+		}
+		l.calls.Gate.Per = n
+		l.gate = l.calls.Gate
 		return
 	}
 	if l.gate == nil {
@@ -139,6 +157,9 @@ func (l *Loop) SetGate(gate *runtime.InvokeGate) {
 		gate = &runtime.InvokeGate{}
 	}
 	l.gate = gate
+	if l.calls != nil {
+		l.calls.Gate = gate
+	}
 }
 
 func (l *Loop) WrapPolicy(around policy.Around) {
@@ -150,6 +171,9 @@ func (l *Loop) WrapPolicy(around policy.Around) {
 		l.base = next
 	}
 	l.Policy = policy.Wrap(next, around)
+	if l.calls != nil {
+		l.calls.Policy = l.Policy
+	}
 }
 
 func (l *Loop) Run(ctx context.Context, userText string) (Outcome, error) {
@@ -246,8 +270,32 @@ func (l *Loop) outcome(ctx context.Context, userText string, turns []runctx.Turn
 	return out, nil
 }
 
+// SetRuntime uses rt for invoke. The loop still owns the model, memory, and context pack.
+func (l *Loop) SetRuntime(rt *runtime.Runtime) {
+	if l == nil || rt == nil {
+		return
+	}
+	l.calls = rt
+	if rt.Catalog != nil {
+		l.Catalog = rt.Catalog
+	}
+	l.Policy = rt.Policy
+	l.base = rt.Base
+	l.State = rt.State
+	l.Exec = rt.Exec
+	l.Notify = rt.Notify
+	l.gate = rt.Gate
+	l.JSON = rt.JSON
+	l.Pages = rt.Pages
+	l.MaxBody = rt.MaxBody
+}
+
 // Runtime is the invoke sequence this loop uses. Policy and state are the loop's current values.
+// The snapshot copies exported fields. The shared runtime, including its gate lock, stays on RuntimePtr.
 func (l *Loop) Runtime() runtime.Runtime {
+	if l != nil && l.calls != nil {
+		return runtimeSnapshot(l.calls)
+	}
 	if l.base == nil {
 		l.base = policy.Builtin{}
 	}
@@ -268,8 +316,35 @@ func (l *Loop) Runtime() runtime.Runtime {
 	}
 }
 
-func (l *Loop) Invoke(ctx context.Context, operationID string, params map[string]string, approvalID string) (Call, error) {
+func runtimeSnapshot(rt *runtime.Runtime) runtime.Runtime {
+	return runtime.Runtime{
+		Catalog: rt.Catalog,
+		Policy:  rt.Policy,
+		Base:    rt.Base,
+		State:   rt.State,
+		Exec:    rt.Exec,
+		Notify:  rt.Notify,
+		Gate:    rt.Gate,
+		JSON:    rt.JSON,
+		Pages:   rt.Pages,
+		MaxBody: rt.MaxBody,
+	}
+}
+
+// RuntimePtr is the runtime Invoke uses. A shared runtime is that pointer.
+func (l *Loop) RuntimePtr() *runtime.Runtime {
+	if l == nil {
+		return nil
+	}
+	if l.calls != nil {
+		return l.calls
+	}
 	rt := l.Runtime()
+	return &rt
+}
+
+func (l *Loop) Invoke(ctx context.Context, operationID string, params map[string]string, approvalID string) (Call, error) {
+	rt := l.RuntimePtr()
 	return rt.Invoke(ctx, runtime.Request{
 		Operation: operationID,
 		Arguments: runtime.FromStrings(params),

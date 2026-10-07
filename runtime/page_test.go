@@ -207,6 +207,26 @@ func TestPageFollowRejectsADerivedCursorInArguments(t *testing.T) {
 	assert.NotContains(t, got.Body, "secret")
 }
 
+func TestPageFollowValidatesADerivedCursor(t *testing.T) {
+	var hits atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		_, _ = w.Write([]byte(`{"items":[{"id":"ok"}],"next":"nope"}`))
+	}))
+	defer ts.Close()
+	path := filepath.Join(t.TempDir(), "spec.yaml")
+	spec := strings.ReplaceAll(pageEnumSpec, "http://127.0.0.1:9", ts.URL)
+	require.NoError(t, os.WriteFile(path, []byte(spec), 0o600))
+	cat, err := openapi.Load(context.Background(), path)
+	require.NoError(t, err)
+	rt := runtime.Runtime{Catalog: cat, Exec: execute.Client{BaseURL: ts.URL}, Policy: policy.Builtin{}, Pages: 5}
+	got, err := rt.Invoke(context.Background(), runtime.Request{Operation: "orders.list"})
+	require.Error(t, err)
+	assert.Equal(t, int32(1), hits.Load())
+	assert.True(t, got.HTTP)
+	assert.True(t, got.Sent)
+}
+
 func TestPageFollowAuthorizesEachDerivedRequest(t *testing.T) {
 	var paths []string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -297,6 +317,43 @@ paths:
           in: query
           schema:
             type: string
+      responses:
+        "200":
+          description: page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                  next:
+                    type: string
+          links:
+            next:
+              operationId: orders.list
+              parameters:
+                cursor: $response.body#/next
+`
+
+const pageEnumSpec = `openapi: 3.0.3
+info:
+  title: Orders
+  version: "1"
+servers:
+  - url: http://127.0.0.1:9
+paths:
+  /orders:
+    get:
+      operationId: orders.list
+      parameters:
+        - name: cursor
+          in: query
+          schema:
+            type: string
+            enum: [b]
       responses:
         "200":
           description: page

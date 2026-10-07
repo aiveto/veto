@@ -31,10 +31,10 @@ import (
 )
 
 // Client is the Go client for one contract. Calls go through the invoke runtime.
-// New is catalog-faithful and policy-minimal. Production embedders should
-// construct the same runtime serve uses, or call SetPolicy.
+// New is catalog-faithful and policy-minimal. NewRuntime takes a runtime the
+// caller already configured. SetPolicy replaces that policy.
 type Client struct {
-	rt runtime.Runtime
+	rt *runtime.Runtime
 }
 
 // New builds a client whose calls pass the builtin policy gate.
@@ -69,13 +69,31 @@ func New(baseURL string, httpClient *http.Client) (*Client, error) {
 		},
 	}
 	cat.Finalize()
-	return &Client{rt: runtime.Runtime{
+	return NewRuntime(&runtime.Runtime{
 		Catalog: cat,
 		Policy:  policy.Builtin{},
 		State:   policy.NewState(),
 		Exec:    execute.Client{BaseURL: baseURL, HTTP: httpClient},
 		Gate:    &runtime.InvokeGate{},
-	}}, nil
+	}), nil
+}
+
+// NewRuntime uses rt for every call. Nil policy, state, or gate keep the defaults.
+// The caller can share approval storage, credentials, pagination, and the limiter.
+func NewRuntime(rt *runtime.Runtime) *Client {
+	if rt == nil {
+		rt = &runtime.Runtime{}
+	}
+	if rt.Policy == nil {
+		rt.Policy = policy.Builtin{}
+	}
+	if rt.State == nil {
+		rt.State = policy.NewState()
+	}
+	if rt.Gate == nil {
+		rt.Gate = &runtime.InvokeGate{}
+	}
+	return &Client{rt: rt}
 }
 
 // Operation is the catalog entry for id.

@@ -58,7 +58,7 @@ contracts:
 	loop, _, err := buildLoop(nil, filepath.Join(dir, "veto.yaml"), "", "", "")
 	require.NoError(t, err)
 	var hits atomic.Int32
-	loop.Exec = floorHit{hits: &hits}
+	loop.RuntimePtr().Exec = floorHit{hits: &hits}
 	out, err := loop.Invoke(context.Background(), "orders.get", map[string]string{"id": "123"}, "")
 	require.NoError(t, err)
 	assert.Equal(t, "denied", out.Status)

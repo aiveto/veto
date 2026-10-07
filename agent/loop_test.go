@@ -21,6 +21,7 @@ import (
 	"github.com/aiveto/veto/openapi"
 	"github.com/aiveto/veto/policy"
 	"github.com/aiveto/veto/runctx"
+	"github.com/aiveto/veto/runtime"
 	"github.com/aiveto/veto/semantics"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -151,6 +152,33 @@ paths:
 	require.NoError(t, err)
 	assert.Equal(t, int32(2), hits.Load())
 	assert.JSONEq(t, `[{"id":"1"},{"id":"2"}]`, many.Body)
+}
+
+func TestSetRuntimeIsWhatInvokeUses(t *testing.T) {
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
+	require.NoError(t, err)
+	var hits atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer ts.Close()
+	rt := &runtime.Runtime{
+		Catalog: cat,
+		Exec:    execute.Client{BaseURL: ts.URL},
+		Policy:  policy.Builtin{},
+		State:   policy.NewState(),
+		Gate:    &runtime.InvokeGate{},
+	}
+	loop, err := agent.New(cat, nil, nil)
+	require.NoError(t, err)
+	loop.SetRuntime(rt)
+	_, err = loop.Invoke(context.Background(), "orders.get", map[string]string{"id": "1"}, "")
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), hits.Load())
+	rt.Pages = 4
+	assert.Equal(t, 4, loop.RuntimePtr().Pages)
+	assert.Same(t, rt, loop.RuntimePtr())
 }
 
 func TestLoopKeepsTheAPIResult(t *testing.T) {
