@@ -90,20 +90,8 @@ func starterYAML(contracts []string, flowFile string) ([]byte, error) {
 }
 
 func suggestedFlow(dir string, contracts []string) ([]byte, error) {
-	parts := make([]*catalog.Catalog, 0, len(contracts))
-	for _, name := range contracts {
-		path := name
-		if !filepath.IsAbs(path) {
-			path = filepath.Join(dir, name)
-		}
-		cat, err := openapi.Load(context.Background(), path)
-		if err != nil {
-			return nil, nil
-		}
-		parts = append(parts, cat)
-	}
-	cat, err := catalog.Merge(parts...)
-	if err != nil {
+	cat, ok := starterCatalog(dir, contracts)
+	if !ok {
 		return nil, nil
 	}
 	if data, err := os.ReadFile(filepath.Join(dir, "relations.yaml")); err == nil {
@@ -129,6 +117,26 @@ func suggestedFlow(dir string, contracts []string) ([]byte, error) {
 		return nil, fmt.Errorf("write flow.yaml: %w", err)
 	}
 	return buf.Bytes(), nil
+}
+
+func starterCatalog(dir string, contracts []string) (*catalog.Catalog, bool) {
+	parts := make([]*catalog.Catalog, 0, len(contracts))
+	for _, name := range contracts {
+		path := name
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(dir, name)
+		}
+		cat, err := openapi.Load(context.Background(), path)
+		if err != nil {
+			return nil, false
+		}
+		parts = append(parts, cat)
+	}
+	cat, err := catalog.Merge(parts...)
+	if err != nil {
+		return nil, false
+	}
+	return cat, true
 }
 
 func writeIfMissing(path string, body []byte) error {

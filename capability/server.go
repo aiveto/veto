@@ -146,10 +146,7 @@ func pageSearch(hits []SearchHit, offset, limit int) []SearchHit {
 	if offset >= len(hits) {
 		return nil
 	}
-	end := offset + limit
-	if end > len(hits) {
-		end = len(hits)
-	}
+	end := min(offset+limit, len(hits))
 	return hits[offset:end]
 }
 

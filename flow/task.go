@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -11,14 +12,14 @@ import (
 // Teach fills bindings for a flow that has a question. A flow without a question is returned as it was parsed.
 func Teach(def *Definition, cat *catalog.Catalog) (*Definition, error) {
 	if def == nil {
-		return nil, fmt.Errorf("task is missing")
+		return nil, errors.New("task is missing")
 	}
 	if strings.TrimSpace(def.Question) == "" {
 		return def, nil
 	}
 	name := strings.TrimSpace(def.Name)
 	if name == "" {
-		return nil, fmt.Errorf("task needs a name")
+		return nil, errors.New("task needs a name")
 	}
 	if cat == nil {
 		return nil, fmt.Errorf("task %s: catalog is missing", name)
@@ -265,7 +266,7 @@ func TaskRegressions(base, next []string) []string {
 			if slices.Contains(cur.binds, bind) {
 				continue
 			}
-			from, field, _, _ := bindParts(bind)
+			from, field, _ := bindParts(bind)
 			if from == "" || field == "" {
 				out = append(out, "task "+name+" lost binding "+bind)
 				continue
@@ -323,7 +324,7 @@ func parseTaskLine(line string) (string, taskLine, bool) {
 	head, bindsPart, _ := strings.Cut(rest, " | ")
 	var fact taskLine
 	if _, answer, ok := strings.Cut(head, ". answer: "); ok {
-		for _, field := range strings.Split(answer, ",") {
+		for field := range strings.SplitSeq(answer, ",") {
 			field = strings.TrimSpace(field)
 			if field != "" {
 				fact.answer = append(fact.answer, field)
@@ -331,13 +332,13 @@ func parseTaskLine(line string) (string, taskLine, bool) {
 		}
 	}
 	if bindsPart != "" {
-		for _, bind := range strings.Split(bindsPart, " | ") {
+		for bind := range strings.SplitSeq(bindsPart, " | ") {
 			bind = strings.TrimSpace(bind)
 			if bind == "" {
 				continue
 			}
 			fact.binds = append(fact.binds, bind)
-			_, _, to, _ := bindParts(bind)
+			_, _, to := bindParts(bind)
 			if to != "" {
 				fact.last = to
 			}
@@ -346,14 +347,14 @@ func parseTaskLine(line string) (string, taskLine, bool) {
 	return name, fact, true
 }
 
-func bindParts(bind string) (from, field, to, param string) {
+func bindParts(bind string) (from, field, to string) {
 	left, right, ok := strings.Cut(bind, " -> ")
 	if !ok {
-		return "", "", "", ""
+		return "", "", ""
 	}
 	from, field, _ = strings.Cut(left, " ")
-	to, param, _ = strings.Cut(right, " ")
-	return strings.TrimSpace(from), strings.TrimSpace(field), strings.TrimSpace(to), strings.TrimSpace(param)
+	to, _, _ = strings.Cut(right, " ")
+	return strings.TrimSpace(from), strings.TrimSpace(field), strings.TrimSpace(to)
 }
 
 // Suggest returns a read-only task the catalog can already teach.
