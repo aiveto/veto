@@ -66,7 +66,7 @@ func TestCLIInvokeDeleteWaits(t *testing.T) {
 		hits.Add(1)
 	}))
 	defer ts.Close()
-	loop.Exec = execute.Client{BaseURL: ts.URL, HTTP: ts.Client()}
+	loop.RuntimePtr().Exec = execute.Client{BaseURL: ts.URL, HTTP: ts.Client()}
 	srv := newServer(loop)
 	in, err := decodeInvoke([]string{`{"operation_id":"orders.delete","params":{"id":"123"}}`})
 	require.NoError(t, err)
@@ -90,7 +90,7 @@ func TestCLIInvokeTTYAcceptRunsOnce(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer ts.Close()
-	loop.Exec = execute.Client{BaseURL: ts.URL, HTTP: ts.Client()}
+	loop.RuntimePtr().Exec = execute.Client{BaseURL: ts.URL, HTTP: ts.Client()}
 	srv := newServer(loop)
 	in, err := decodeInvoke([]string{`{"operation_id":"orders.delete","params":{"id":"123"}}`})
 	require.NoError(t, err)
@@ -121,7 +121,7 @@ func TestCLIInvokeTTYDeclineLeavesPending(t *testing.T) {
 		hits.Add(1)
 	}))
 	defer ts.Close()
-	loop.Exec = execute.Client{BaseURL: ts.URL, HTTP: ts.Client()}
+	loop.RuntimePtr().Exec = execute.Client{BaseURL: ts.URL, HTTP: ts.Client()}
 	srv := newServer(loop)
 	in, err := decodeInvoke([]string{`{"operation_id":"orders.delete","params":{"id":"123"}}`})
 	require.NoError(t, err)
@@ -162,7 +162,7 @@ func TestCLIInvokeWithoutTTYLeavesPending(t *testing.T) {
 		hits.Add(1)
 	}))
 	defer ts.Close()
-	loop.Exec = execute.Client{BaseURL: ts.URL, HTTP: ts.Client()}
+	loop.RuntimePtr().Exec = execute.Client{BaseURL: ts.URL, HTTP: ts.Client()}
 	srv := newServer(loop)
 	in, err := decodeInvoke([]string{`{"operation_id":"orders.delete","params":{"id":"123"}}`})
 	require.NoError(t, err)

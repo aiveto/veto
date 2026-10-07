@@ -80,9 +80,9 @@ func runReplay(cmd replayCmd) {
 		redact = false
 	}
 	if !redact {
-		if c, ok := loop.Exec.(execute.Client); ok {
+		if c, ok := loop.RuntimePtr().Exec.(execute.Client); ok {
 			c.RecordBody = true
-			loop.Exec = c
+			loop.RuntimePtr().Exec = c
 		}
 	}
 	if _, err := loop.Run(context.Background(), cmd.message); err != nil {

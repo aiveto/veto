@@ -100,11 +100,10 @@ func newServer(loop *agent.Loop) *capability.Server {
 	if loop == nil {
 		return &capability.Server{}
 	}
-	calls := loop.Runtime()
 	return &capability.Server{
 		Catalog:   loop.Catalog,
 		Semantics: loop.Semantics,
-		Calls:     &calls,
+		Calls:     loop.RuntimePtr(),
 	}
 }
 
