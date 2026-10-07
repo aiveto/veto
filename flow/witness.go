@@ -74,12 +74,12 @@ func RunFailure(def *Definition, err error) error {
 		return fmt.Errorf("task %s can no longer obtain %s from %s", def.Name, missing.Field, missing.Operation)
 	}
 	if stopped, ok := errors.AsType[StoppedError](err); ok {
-		return notAccepted(def, stopped.Operation)
+		return notAccepted(def, stopped.Operation, stopped.Why)
 	}
 	return err
 }
 
-func notAccepted(def *Definition, operation string) error {
+func notAccepted(def *Definition, operation, stage string) error {
 	param := ""
 	for i, step := range def.Steps {
 		if step.Operation != operation || i == 0 {
@@ -92,7 +92,13 @@ func notAccepted(def *Definition, operation string) error {
 		break
 	}
 	if param == "" {
-		return fmt.Errorf("task %s: %s did not accept the next call", def.Name, operation)
+		if stage == "" {
+			return fmt.Errorf("task %s: %s did not accept the next call", def.Name, operation)
+		}
+		return fmt.Errorf("task %s: %s did not accept the next call: %s", def.Name, operation, stage)
 	}
-	return fmt.Errorf("task %s: %s did not accept %s", def.Name, operation, param)
+	if stage == "" {
+		return fmt.Errorf("task %s: %s did not accept %s", def.Name, operation, param)
+	}
+	return fmt.Errorf("task %s: %s did not accept %s: %s", def.Name, operation, param, stage)
 }

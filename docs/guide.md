@@ -363,7 +363,7 @@ steps:
   - invoices.get
 ```
 
-`Order.invoiceId` joined to `invoices.get` becomes the binding `orders.get invoiceId -> invoices.get id`. `veto search "disputed charge"` returns the task. The context pack includes that sentence when the message matches the question or an answer field. `veto propose` prints a task for each declared relation between two reads. The question is the relation sentence. The answer lists that operation's response fields for you to keep or delete. The steps do not copy the parameter mapping. `veto run investigate-charge --param id=10482` calls those steps and prints what stayed true: the earlier response supplied the binding field, the next operation accepted that parameter, the last response included the answer fields, and the task stayed read-only. Those lines do not include the response or the identifier. A flow step that names an operation, response field, or parameter the catalog does not have fails to load. `veto check` prints the sentence. A `flows` list in that file holds the task next to any other flow. Check fails when the response no longer includes the binding field or an answer field, when the next operation has no parameter for it, or when a step is not a read.
+`Order.invoiceId` joined to `invoices.get` becomes the binding `orders.get invoiceId -> invoices.get id`. `veto search "disputed charge"` returns the task. The context pack includes that sentence when the message matches the question or an answer field. `veto propose` prints a task for each declared relation between two reads. The question is the relation sentence. The answer lists that operation's response fields for you to keep or delete. The steps do not copy the parameter mapping. `veto run investigate-charge --param id=10482` calls those steps and prints what stayed true: the earlier response supplied the binding field, the next operation accepted that parameter, the last response included the answer fields, and the task stayed read-only. Those lines do not include the response or the identifier. A step that stops names the stage: parameter, policy, catalog, upstream, missing auth, or held until you approve. A flow step that names an operation, response field, or parameter the catalog does not have fails to load. `veto check` prints the sentence. A `flows` list in that file holds the task next to any other flow. Check fails when the response no longer includes the binding field or an answer field, when the next operation has no parameter for it, or when a step is not a read.
 
 ## Pack
 
@@ -468,7 +468,7 @@ The first command runs the message and prints the trace. With the default model 
 - an empty summary, or a weak summary (one word, or the same as the operation id)
 - a write that requires approval
 - `confirmation is off`, when `veto.yaml` sets `confirmation: false`
-- with `--ping`, a GET that fails for a server URL
+- with `--ping`, a GET that fails for a server URL. The failure says upstream.
 
 It exits non-zero when a finding would make a call wrong: missing auth, a colliding id, or a parameter that cannot be serialized. A fallback id, a weak summary, a write that requires approval, and `confirmation is off` are reported and do not by themselves fail the command. It does not evaluate policy, and it does not approve a delete.
 

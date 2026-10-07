@@ -281,19 +281,19 @@ func pingServers(ctx context.Context, client *http.Client, cat *catalog.Catalog)
 	for _, raw := range urls {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
 		if err != nil {
-			out = append(out, fmt.Sprintf("ping %s: %v", raw, err))
+			out = append(out, fmt.Sprintf("ping %s: upstream: %v", raw, err))
 			continue
 		}
 		resp, err := client.Do(req)
 		if err != nil {
-			out = append(out, fmt.Sprintf("ping %s: %v", raw, err))
+			out = append(out, fmt.Sprintf("ping %s: upstream: %v", raw, err))
 			continue
 		}
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			out = append(out, fmt.Sprintf("ping %s: status %d", raw, resp.StatusCode))
+			out = append(out, fmt.Sprintf("ping %s: upstream: status %d", raw, resp.StatusCode))
 		}
 		if err := resp.Body.Close(); err != nil {
-			out = append(out, fmt.Sprintf("ping %s: %v", raw, err))
+			out = append(out, fmt.Sprintf("ping %s: upstream: %v", raw, err))
 		}
 	}
 	return out
