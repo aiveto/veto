@@ -472,7 +472,15 @@ Preview runs resolve, validate, and policy, then stops. It does not call upstrea
 veto generate --config veto.yaml --out ./client --module example.com/client
 ```
 
-The generated client calls through the same gate. `New` builds a catalog-faithful client with builtin policy. `SetPolicy` replaces that hook. `Confirm` records a yes. The runtime stays unexported.
+The generated client calls through the same gate. `New` builds a catalog-faithful client with builtin policy. Links and page maps from the catalog are on that client, so `next_calls` and a page walk match a direct invoke. `SetPolicy` replaces that hook. `Confirm` records a yes. The runtime stays unexported.
+
+A caller that already configured policy, approval state, or pagination passes that runtime in:
+
+```go
+client := sdk.NewRuntime(rt)
+```
+
+`rt` is the runtime `veto serve` and the agent loop use.
 
 A page walk authorizes every derived request the same way as the first. `page: follow` in `veto.yaml` walks up to five pages. Unset stays one page.
 

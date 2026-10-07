@@ -145,12 +145,25 @@ func TestGeneratedAdversarialNamesCompile(t *testing.T) {
 				{Name: "ctx", In: "query"},
 				{Name: "help-json", In: "query"},
 				{Name: "a=b", In: "query"},
+				{Name: "jsonv2", In: "query"},
 			},
 		},
-	}}
+		{
+			ID: "orders.get", Method: "GET", PathTemplate: "/orders/{id}",
+			Page:   map[string]string{"cursor": "$response.body#/next"},
+			Params: []catalog.Param{{Name: "id", In: "path", Required: true}},
+		},
+		{
+			ID: "customers.get", Method: "GET", PathTemplate: "/customers/{id}",
+			Params: []catalog.Param{{Name: "id", In: "path", Required: true}},
+		},
+	}, Links: []catalog.OpLink{{
+		From: "orders.get", To: "customers.get", Note: "Order.customerId",
+	}}}
 	cat.Finalize()
 	dir := t.TempDir()
 	require.NoError(t, generate.Write(dir, "example.com/adversarial", cat))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "sdk", "relation_test.go"), []byte(relationTest), 0o600))
 	root, err := filepath.Abs("..")
 	require.NoError(t, err)
 	replace := exec.CommandContext(t.Context(), "go", "mod", "edit", "-replace", "github.com/aiveto/veto="+root)
@@ -182,5 +195,37 @@ func TestGeneratedAdversarialNamesCompile(t *testing.T) {
 	for _, p := range doc.Params {
 		names = append(names, p.Name)
 	}
-	assert.ElementsMatch(t, []string{"id", "args", "confirm-2", "fmt", "ctx", "help-json-2", "arg"}, names)
+	assert.ElementsMatch(t, []string{"id", "args", "confirm-2", "fmt", "ctx", "help-json-2", "arg", "jsonv2"}, names)
 }
+
+const relationTest = `package sdk
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
+
+func TestGeneratedClientNamesTheNextCall(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(` + "`" + `{"customerId":"7"}` + "`" + `))
+	}))
+	defer ts.Close()
+	client, err := New(ts.URL, ts.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := client.OrdersGet(context.Background(), "1", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.NextCalls) != 1 || out.NextCalls[0].OperationID != "customers.get" || out.NextCalls[0].Params["id"] != "7" {
+		t.Fatalf("next calls: %+v", out.NextCalls)
+	}
+	op := client.Operation("orders.get")
+	if op == nil || op.Page["cursor"] != "$response.body#/next" {
+		t.Fatalf("page: %+v", op)
+	}
+}
+`

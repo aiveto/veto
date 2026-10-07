@@ -380,6 +380,9 @@ func (l *Loop) runFlow(ctx context.Context, resp Response) (Call, error) {
 			paused.Status = stopped.Status
 			return paused, nil
 		}
+		if last.OperationID != "" {
+			return last, nil
+		}
 		return Call{Status: stopped.Status, OperationID: stopped.Operation}, nil
 	}
 	if err != nil {

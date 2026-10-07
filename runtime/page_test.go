@@ -2,6 +2,7 @@ package runtime_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/openapi"
 	"github.com/aiveto/veto/policy"
+	"github.com/aiveto/veto/result"
 	"github.com/aiveto/veto/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -284,6 +286,167 @@ func TestPageFollowStopsWhenALaterPageNeedsConfirmation(t *testing.T) {
 	assert.Equal(t, []string{"/items/public"}, paths)
 	assert.True(t, got.Truncated)
 	assert.NotContains(t, got.Body, "secret")
+}
+
+func TestPageFollowKeepsTypedPolicyArguments(t *testing.T) {
+	op := catalog.Operation{
+		ID: "orders.list", Method: http.MethodGet, PathTemplate: "/orders",
+		Params: []catalog.Param{
+			{Name: "cursor", In: "query", Schema: `{"type":"string"}`},
+			{Name: "private", In: "query", Schema: `{"type":"boolean"}`},
+		},
+	}
+	t.Run("derived boolean stays a boolean", func(t *testing.T) {
+		op.Page = map[string]string{"cursor": "next", "private": "private"}
+		var hits atomic.Int32
+		var seen []any
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hits.Add(1)
+			if r.URL.Query().Get("cursor") == "b" {
+				_, _ = w.Write([]byte(`{"items":[{"id":"secret"}]}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"items":[{"id":"ok"}],"next":"b","private":true}`))
+		}))
+		defer ts.Close()
+		hook := policy.Wrap(nil, func(ctx context.Context, _ *catalog.Operation) (policy.Decision, bool, error) {
+			v := policy.InputFrom(ctx).Arguments["private"]
+			seen = append(seen, v)
+			if v == true {
+				return policy.DecisionDeny, true, nil
+			}
+			return policy.DecisionAllow, true, nil
+		})
+		rt := runtime.Runtime{Catalog: pageCatalog(t, &op), Exec: execute.Client{BaseURL: ts.URL}, Policy: hook, Pages: 5}
+		got, err := rt.Invoke(context.Background(), runtime.Request{
+			Operation: "orders.list",
+			Arguments: map[string]any{"private": false},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, int32(1), hits.Load())
+		assert.NotContains(t, got.Body, "secret")
+		require.Len(t, seen, 2)
+		assert.Equal(t, false, seen[0])
+		assert.Equal(t, true, seen[1])
+		assert.IsType(t, false, seen[1])
+	})
+	t.Run("an unchanged boolean stays false", func(t *testing.T) {
+		listed := op
+		listed.Page = map[string]string{"cursor": "next"}
+		var hits atomic.Int32
+		var seen []any
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hits.Add(1)
+			if r.URL.Query().Get("cursor") == "b" {
+				_, _ = w.Write([]byte(`{"items":[{"id":"two"}]}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"items":[{"id":"one"}],"next":"b"}`))
+		}))
+		defer ts.Close()
+		hook := policy.Wrap(nil, func(ctx context.Context, _ *catalog.Operation) (policy.Decision, bool, error) {
+			seen = append(seen, policy.InputFrom(ctx).Arguments["private"])
+			if policy.InputFrom(ctx).Arguments["private"] == true {
+				return policy.DecisionDeny, true, nil
+			}
+			return policy.DecisionAllow, true, nil
+		})
+		rt := runtime.Runtime{Catalog: pageCatalog(t, &listed), Exec: execute.Client{BaseURL: ts.URL}, Policy: hook, Pages: 5}
+		_, err := rt.Invoke(context.Background(), runtime.Request{
+			Operation: "orders.list",
+			Arguments: map[string]any{"private": false},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, int32(2), hits.Load())
+		require.Len(t, seen, 2)
+		assert.Equal(t, false, seen[0])
+		assert.Equal(t, false, seen[1])
+		assert.IsType(t, false, seen[1])
+	})
+	t.Run("direct boolean true is denied", func(t *testing.T) {
+		var hits atomic.Int32
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hits.Add(1)
+		}))
+		defer ts.Close()
+		hook := policy.Wrap(nil, func(ctx context.Context, _ *catalog.Operation) (policy.Decision, bool, error) {
+			if policy.InputFrom(ctx).Arguments["private"] == true {
+				return policy.DecisionDeny, true, nil
+			}
+			return policy.DecisionAllow, true, nil
+		})
+		rt := runtime.Runtime{Catalog: pageCatalog(t, &op), Exec: execute.Client{BaseURL: ts.URL}, Policy: hook, Pages: 5}
+		got, err := rt.Invoke(context.Background(), runtime.Request{
+			Operation: "orders.list",
+			Arguments: map[string]any{"private": true},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, runtime.StatusDenied, got.Status)
+		assert.Equal(t, int32(0), hits.Load())
+		assert.False(t, got.HTTP)
+		assert.False(t, got.Sent)
+	})
+}
+
+func TestPageFollowKeepsEvidenceWhenCredentialsFail(t *testing.T) {
+	var hits atomic.Int32
+	op, ts := pageServer(t, func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		_, _ = w.Write([]byte(`{"items":[{"id":"ok"}],"next":"b"}`))
+	})
+	defer ts.Close()
+	rt := runtime.Runtime{
+		Catalog: pageCatalog(t, op),
+		Exec:    &stopAfter{exec: execute.Client{BaseURL: ts.URL}},
+		Policy:  policy.Builtin{},
+		Pages:   5,
+	}
+	got, err := rt.Invoke(context.Background(), runtime.Request{Operation: "orders.list"})
+	require.ErrorContains(t, err, "credentials")
+	assert.Equal(t, int32(1), hits.Load())
+	assert.True(t, got.HTTP)
+	assert.True(t, got.Sent)
+	assert.Equal(t, http.StatusOK, got.HTTPStatus)
+	assert.Contains(t, got.Body, `"ok"`)
+}
+
+func TestInvokeRejectsTheQueryTextThatWouldBeSent(t *testing.T) {
+	var hits atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		hits.Add(1)
+	}))
+	defer ts.Close()
+	cat := &catalog.Catalog{Operations: []catalog.Operation{{
+		ID: "orders.list", Method: http.MethodGet, PathTemplate: "/orders",
+		Params: []catalog.Param{{Name: "q", In: "query", Schema: `{"type":"string","enum":["safe"]}`}},
+	}}}
+	cat.Finalize()
+	rt := runtime.Runtime{Catalog: cat, Exec: execute.Client{BaseURL: ts.URL}, Policy: policy.Builtin{}}
+	_, err := rt.Invoke(context.Background(), runtime.Request{
+		Operation: "orders.list",
+		Arguments: map[string]any{"q": " safe "},
+	})
+	require.Error(t, err)
+	assert.Equal(t, int32(0), hits.Load())
+	_, err = rt.Invoke(context.Background(), runtime.Request{
+		Operation: "orders.list",
+		Arguments: map[string]any{"q": "safe"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), hits.Load())
+}
+
+type stopAfter struct {
+	exec execute.Client
+	n    int
+}
+
+func (s *stopAfter) InvokeHTTPResult(ctx context.Context, op *catalog.Operation, params map[string]string) (result.HTTPResult, error) {
+	s.n++
+	if s.n > 1 {
+		return result.HTTPResult{}, errors.New("credentials")
+	}
+	return s.exec.InvokeHTTPResult(ctx, op, params)
 }
 
 func pageServer(t *testing.T, h http.HandlerFunc) (*catalog.Operation, *httptest.Server) {

@@ -145,6 +145,22 @@ func TestInvokeCapsNextCalls(t *testing.T) {
 	assert.Len(t, out.NextCalls, 8)
 }
 
+func TestPointerIndexDoesNotWrap(t *testing.T) {
+	_, _, err := runtime.LinkParams(catalog.OpLink{
+		From: "orders.get", To: "customers.get",
+		Params: map[string]string{"id": "$response.body#/18446744073709551616"},
+	}, `["wrong"]`, nil)
+	require.Error(t, err)
+
+	got, ok, err := runtime.LinkParams(catalog.OpLink{
+		From: "orders.get", To: "customers.get",
+		Params: map[string]string{"id": "$response.body#/0"},
+	}, `["right"]`, nil)
+	require.NoError(t, err)
+	assert.True(t, ok)
+	assert.Equal(t, map[string]string{"id": "right"}, got)
+}
+
 func invokeOrdersGet(t *testing.T, cat *catalog.Catalog, ts *httptest.Server, fields []string) (runtime.Result, error) {
 	t.Helper()
 	rt := runtime.Runtime{

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"go/format"
 	"go/token"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -64,7 +65,13 @@ func New(baseURL string, httpClient *http.Client) (*Client, error) {
 					{Name: {{quote .Name}}, In: {{quote .In}}, Required: {{.Required}}, Description: {{quote .Description}}, Schema: {{quote .Schema}}, MediaType: {{quote .MediaType}}, Default: {{quote .Default}}, Style: {{quote .Style}}, Explode: {{.Explode}}},
 {{- end}}
 				},
+				Page: {{.PageLit}},
 			},
+{{- end}}
+		},
+		Links: []catalog.OpLink{
+{{- range .Links}}
+			{From: {{quote .From}}, To: {{quote .To}}, Note: {{quote .Note}}, Params: {{.ParamsLit}}},
 {{- end}}
 		},
 	}
@@ -330,6 +337,14 @@ type (
 		AuthLit     string
 		ReqLit      string
 		Params      []paramView
+		PageLit     string
+	}
+
+	linkView struct {
+		From      string
+		To        string
+		Note      string
+		ParamsLit string
 	}
 
 	paramView struct {
@@ -353,7 +368,7 @@ func Render(module string, cat *catalog.Catalog) (Files, error) {
 		return Files{}, err
 	}
 	views := views(cat)
-	sdk, err := render("sdk", sdkTmpl, map[string]any{"Ops": views})
+	sdk, err := render("sdk", sdkTmpl, map[string]any{"Ops": views, "Links": linkViews(cat)})
 	if err != nil {
 		return Files{}, err
 	}
@@ -418,9 +433,45 @@ func views(cat *catalog.Catalog) []opView {
 			AuthLit:     authSliceLit(op.Auth),
 			ReqLit:      reqLit(op.Requirements),
 			Params:      params,
+			PageLit:     stringMapLit(op.Page),
 		})
 	}
 	return out
+}
+
+func linkViews(cat *catalog.Catalog) []linkView {
+	if cat == nil || len(cat.Links) == 0 {
+		return nil
+	}
+	out := make([]linkView, 0, len(cat.Links))
+	for _, link := range cat.Links {
+		out = append(out, linkView{
+			From:      link.From,
+			To:        link.To,
+			Note:      link.Note,
+			ParamsLit: stringMapLit(link.Params),
+		})
+	}
+	return out
+}
+
+func stringMapLit(m map[string]string) string {
+	if len(m) == 0 {
+		return "nil"
+	}
+	keys := slices.Sorted(maps.Keys(m))
+	var b strings.Builder
+	b.WriteString("map[string]string{")
+	for i, key := range keys {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(strconv.Quote(key))
+		b.WriteString(": ")
+		b.WriteString(strconv.Quote(m[key]))
+	}
+	b.WriteString("}")
+	return b.String()
 }
 
 func reservedFlags(confirm bool) map[string]int {
@@ -466,7 +517,7 @@ func uniqueFlag(seen map[string]int, name string) string {
 func reservedArgs() map[string]int {
 	names := []string{
 		"ctx", "approvalID", "c", "args", "fs", "helpJSON", "confirm",
-		"call", "err", "approved", "aerr", "enc", "os", "fmt", "json",
+		"call", "err", "approved", "aerr", "enc", "os", "fmt", "json", "jsonv2",
 		"flag", "context", "sdk", "runtime", "http", "catalog", "execute",
 		"policy", "client", "finish", "usage", "status", "httpStatus",
 	}

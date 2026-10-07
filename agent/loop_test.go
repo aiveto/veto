@@ -468,6 +468,40 @@ func TestExtensionCannotSkipConfirmationOrDenial(t *testing.T) {
 	}
 }
 
+type onceFlow struct{}
+
+func (onceFlow) Complete(context.Context, agent.Request) (agent.Response, error) {
+	return agent.Response{FlowName: "once", Params: map[string]string{"id": "1"}}, nil
+}
+
+func TestFailedFlowKeepsTheResult(t *testing.T) {
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
+	require.NoError(t, err)
+	const body = `{"error":"down"}`
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(body))
+	}))
+	defer ts.Close()
+	loop, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
+	require.NoError(t, err)
+	direct, err := loop.Invoke(context.Background(), "orders.get", map[string]string{"id": "1"}, "")
+	require.NoError(t, err)
+
+	loop.Model = onceFlow{}
+	loop.Flows = map[string]*flow.Definition{"once": {Name: "once", Steps: []flow.Step{{Operation: "orders.get"}}}}
+	out, err := loop.Run(context.Background(), "get order 1")
+	require.NoError(t, err)
+
+	for _, got := range []agent.Call{direct, out.Result} {
+		assert.Equal(t, http.StatusServiceUnavailable, got.HTTPStatus)
+		assert.JSONEq(t, body, got.Body)
+		assert.True(t, got.Retryable)
+		assert.True(t, got.Sent)
+		assert.True(t, got.HTTP)
+	}
+}
+
 func filepathRego(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "deny.rego")

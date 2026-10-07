@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"math"
 	"math/big"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -23,24 +22,29 @@ func (op Operation) CheckParams(params map[string]string) error {
 			return fmt.Errorf("operation %s: parameter %s cannot be serialized: %s", op.ID, p.Name, why)
 		}
 		required := p.Required || p.In == "path"
-		v := strings.TrimSpace(params[p.Name])
-		if v == "" && p.In == "header" {
-			v = strings.TrimSpace(p.Default)
+		raw := params[p.Name]
+		present := strings.TrimSpace(raw)
+		if present == "" && p.In == "header" {
+			present = strings.TrimSpace(p.Default)
 		}
-		if required && v == "" {
+		if required && present == "" {
 			return result.ParamError{Operation: op.ID, Name: p.Name}
 		}
-		if p.In == "body" && v != "" {
-			if err := p.checkBody(op.ID, v); err != nil {
+		sent := raw
+		if p.In == "header" {
+			sent = present
+		}
+		if p.In == "body" && present != "" {
+			if err := p.checkBody(op.ID, raw); err != nil {
 				return err
 			}
-			if p.Type() == "object" && !jsonObject(v) {
+			if p.Type() == "object" && !jsonObject(raw) {
 				return result.BodyError{Operation: op.ID, Path: "/", Reason: "must be a JSON object"}
 			}
 			continue
 		}
-		if v != "" && (p.In == "query" || p.In == "path" || p.In == "header") {
-			if err := p.checkValue(op.ID, v); err != nil {
+		if sent != "" && (p.In == "query" || p.In == "path" || p.In == "header") {
+			if err := p.checkValue(op.ID, sent); err != nil {
 				return err
 			}
 		}
@@ -185,6 +189,10 @@ func (p Param) checkValue(operationID, raw string) error {
 		if err := exactInteger(raw, p.Schema); err != nil {
 			return result.ParamError{Operation: operationID, Name: p.Name, Reason: err.Error()}
 		}
+	} else if p.Structured() {
+		if err := exactBodyIntegers(operationID, raw, p.Schema); err != nil {
+			return paramReason(operationID, p.Name, err)
+		}
 	}
 	if err := schema.VisitJSON(value, openapi3.VisitAsRequest()); err != nil {
 		reason := "does not match the schema"
@@ -259,9 +267,84 @@ func exactInteger(raw, schemaText string) error {
 		if jsonNumber(doc.Const) && !sameIntegerLiteral(raw, doc.Const) {
 			return errors.New("value does not match const")
 		}
-		if !floatKeepsInteger(raw) && hasNumericBound(doc.Minimum, doc.Maximum, doc.ExclusiveMinimum, doc.ExclusiveMaximum, doc.MultipleOf) {
-			return errors.New("integer cannot be checked exactly")
+		if err := integerBounds(raw, doc.Minimum, doc.Maximum, doc.ExclusiveMinimum, doc.ExclusiveMaximum, doc.MultipleOf); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+func integerBounds(raw string, minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf json.RawMessage) error {
+	n := new(big.Int)
+	if _, ok := n.SetString(strings.TrimPrefix(raw, "+"), 10); !ok {
+		return nil
+	}
+	if err := cmpBound(n, raw, minimum, "minimum"); err != nil {
+		return err
+	}
+	if err := cmpBound(n, raw, exclusiveMinimum, "exclusiveMinimum"); err != nil {
+		return err
+	}
+	if err := cmpBound(n, raw, maximum, "maximum"); err != nil {
+		return err
+	}
+	if err := cmpBound(n, raw, exclusiveMaximum, "exclusiveMaximum"); err != nil {
+		return err
+	}
+	return cmpMultiple(n, raw, multipleOf)
+}
+
+func boundInt(raw string, bound json.RawMessage) (*big.Int, bool, error) {
+	if !jsonNumber(bound) {
+		return nil, false, nil
+	}
+	n := new(big.Int)
+	if _, ok := n.SetString(strings.TrimSpace(string(bound)), 10); ok {
+		return n, true, nil
+	}
+	if !floatKeepsInteger(raw) {
+		return nil, false, errors.New("integer cannot be checked exactly")
+	}
+	return nil, false, nil
+}
+
+func cmpBound(n *big.Int, raw string, bound json.RawMessage, kind string) error {
+	limit, ok, err := boundInt(raw, bound)
+	if err != nil || !ok {
+		return err
+	}
+	cmp := n.Cmp(limit)
+	switch kind {
+	case "minimum":
+		if cmp < 0 {
+			return errors.New("integer is below minimum")
+		}
+	case "exclusiveMinimum":
+		if cmp <= 0 {
+			return errors.New("integer is not above exclusiveMinimum")
+		}
+	case "maximum":
+		if cmp > 0 {
+			return errors.New("integer is above maximum")
+		}
+	case "exclusiveMaximum":
+		if cmp >= 0 {
+			return errors.New("integer is not below exclusiveMaximum")
+		}
+	}
+	return nil
+}
+
+func cmpMultiple(n *big.Int, raw string, bound json.RawMessage) error {
+	limit, ok, err := boundInt(raw, bound)
+	if err != nil || !ok {
+		return err
+	}
+	if limit.Sign() == 0 {
+		return errors.New("integer cannot be checked exactly")
+	}
+	if new(big.Int).Mod(n, limit).Sign() != 0 {
+		return errors.New("integer is not a multiple of multipleOf")
 	}
 	return nil
 }
@@ -318,10 +401,6 @@ func jsonNumber(raw json.RawMessage) bool {
 	default:
 		return false
 	}
-}
-
-func hasNumericBound(parts ...json.RawMessage) bool {
-	return slices.ContainsFunc(parts, jsonNumber)
 }
 
 func integerNumber(n json.Number) bool {
@@ -383,7 +462,7 @@ func (p Param) checkBody(operationID, raw string) error {
 }
 
 // exactBodyIntegers checks integer enum, const, and bounds on the raw JSON text.
-// properties, items, and allOf are walked. oneOf stays with the schema visitor.
+// properties, additionalProperties, items, allOf, and integer oneOf or anyOf alternatives are walked.
 func exactBodyIntegers(operationID, raw, schemaText string) error {
 	if strings.TrimSpace(schemaText) == "" {
 		return nil
@@ -398,10 +477,13 @@ func walkExactInteger(operationID, path string, raw, schema []byte) error {
 		return nil
 	}
 	var doc struct {
-		Type       string                     `json:"type"`
-		Properties map[string]json.RawMessage `json:"properties"`
-		Items      json.RawMessage            `json:"items"`
-		AllOf      []json.RawMessage          `json:"allOf"`
+		Type                 string                     `json:"type"`
+		Properties           map[string]json.RawMessage `json:"properties"`
+		AdditionalProperties json.RawMessage            `json:"additionalProperties"`
+		Items                json.RawMessage            `json:"items"`
+		AllOf                []json.RawMessage          `json:"allOf"`
+		OneOf                []json.RawMessage          `json:"oneOf"`
+		AnyOf                []json.RawMessage          `json:"anyOf"`
 	}
 	if json.Unmarshal(schema, &doc) == nil {
 		if doc.Type == "integer" && jsonNumber(raw) {
@@ -418,7 +500,13 @@ func walkExactInteger(operationID, path string, raw, schema []byte) error {
 				return err
 			}
 		}
-		if err := walkExactProperties(operationID, path, raw, doc.Properties); err != nil {
+		if err := walkExactAlternatives(operationID, path, raw, doc.OneOf); err != nil {
+			return err
+		}
+		if err := walkExactAlternatives(operationID, path, raw, doc.AnyOf); err != nil {
+			return err
+		}
+		if err := walkExactProperties(operationID, path, raw, doc.Properties, doc.AdditionalProperties); err != nil {
 			return err
 		}
 		return walkExactItems(operationID, path, raw, doc.Items)
@@ -426,23 +514,82 @@ func walkExactInteger(operationID, path string, raw, schema []byte) error {
 	return nil
 }
 
-func walkExactProperties(operationID, path string, raw []byte, properties map[string]json.RawMessage) error {
-	if len(properties) == 0 || len(raw) == 0 || raw[0] != '{' {
+func walkExactProperties(operationID, path string, raw []byte, properties map[string]json.RawMessage, additional []byte) error {
+	additional = bytes.TrimSpace(additional)
+	if len(raw) == 0 || raw[0] != '{' {
+		return nil
+	}
+	if len(properties) == 0 && (len(additional) == 0 || additional[0] != '{') {
 		return nil
 	}
 	var obj map[string]json.RawMessage
 	if json.Unmarshal(raw, &obj) == nil {
-		for name, prop := range properties {
-			child, ok := obj[name]
+		for name, child := range obj {
+			sub, ok := properties[name]
 			if !ok {
+				sub = additional
+			}
+			sub = bytes.TrimSpace(sub)
+			if len(sub) == 0 || sub[0] != '{' {
 				continue
 			}
-			if err := walkExactInteger(operationID, path+"/"+pointerToken(name), child, prop); err != nil {
+			if err := walkExactInteger(operationID, path+"/"+pointerToken(name), child, sub); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+func walkExactAlternatives(operationID, path string, raw []byte, branches []json.RawMessage) error {
+	raw = bytes.TrimSpace(raw)
+	if len(branches) == 0 || !jsonNumber(raw) {
+		return nil
+	}
+	var rejected error
+	saw := false
+	accepted := false
+	for _, sub := range branches {
+		if !appliesToNumber(sub) {
+			continue
+		}
+		saw = true
+		if err := walkExactInteger(operationID, path, raw, sub); err != nil {
+			rejected = err
+			continue
+		}
+		accepted = true
+	}
+	if saw && !accepted && rejected != nil {
+		return rejected
+	}
+	return nil
+}
+
+func appliesToNumber(schema []byte) bool {
+	schema = bytes.TrimSpace(schema)
+	if len(schema) == 0 || schema[0] != '{' {
+		return false
+	}
+	var doc struct {
+		Type string `json:"type"`
+	}
+	if json.Unmarshal(schema, &doc) != nil {
+		return false
+	}
+	switch doc.Type {
+	case "", "number", "integer":
+		return true
+	default:
+		return false
+	}
+}
+
+func paramReason(operationID, name string, err error) error {
+	if bad, ok := errors.AsType[result.BodyError](err); ok {
+		return result.ParamError{Operation: operationID, Name: name, Reason: bad.Reason}
+	}
+	return result.ParamError{Operation: operationID, Name: name, Reason: err.Error()}
 }
 
 func walkExactItems(operationID, path string, raw, items []byte) error {
