@@ -372,6 +372,9 @@ func loadKernel(src sources) (*catalog.Catalog, semantics.Notes, error) {
 		if err != nil {
 			return nil, nil, err
 		}
+		if err := semantics.RequireKnown(over, cat); err != nil {
+			return nil, nil, err
+		}
 		sem = over
 	}
 	return cat, sem, nil

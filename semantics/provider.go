@@ -206,6 +206,25 @@ func (f *FileOverlay) Note(operationID string) Note {
 	return f.base.Note(operationID)
 }
 
+// RequireKnown fails when a semantics file names an operation the catalog does not have.
+func RequireKnown(n Notes, cat *catalog.Catalog) error {
+	fo, ok := n.(*FileOverlay)
+	if !ok || fo == nil || cat == nil {
+		return nil
+	}
+	var missing []string
+	for id := range fo.notes {
+		if cat.ByID(id) == nil {
+			missing = append(missing, id)
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	slices.Sort(missing)
+	return fmt.Errorf("semantics: unknown operation %s", strings.Join(missing, ", "))
+}
+
 func (f *FileOverlay) Synonyms(operationID string) []string {
 	return f.Note(operationID).Synonyms
 }

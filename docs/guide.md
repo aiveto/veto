@@ -69,7 +69,7 @@ auth:
   bearerAuth: ORDER_TOKEN
 ```
 
-`confirmation: false` turns the confirmation gate off for every operation in this deployment. Unset, and `confirmation: true`, leave it on. The clear runs after `agent.yaml`, so one operation set to true does not turn the gate back on. When the key is unset, `agent.yaml` can still set `confirmation: false` on one operation. Invoke cannot set the key. A bundle manifest cannot carry it. Doctor and check print `confirmation is off`.
+`confirmation: false` turns the confirmation gate off for every operation in this deployment. Unset, and `confirmation: true`, leave it on. The clear runs after `agent.yaml`, so one operation set to true does not turn the gate back on. When the key is unset, `agent.yaml` can still set `confirmation: false` on one operation. Invoke cannot set the key. A bundle manifest cannot carry it. Doctor and check print `confirmation is off`. A semantics file that names an operation the catalog does not have fails to load.
 
 `chat_approval: true` lets a remote `--http` client answer the confirmation form. Unset, stdio still asks when the host supports elicitation, and `--http` returns the pending id for `veto approve`. A bundle manifest cannot carry it.
 
