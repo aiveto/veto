@@ -1,10 +1,14 @@
 package catalog
 
 import (
+	"bytes"
 	"encoding/json"
 	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
+	"math"
+	"math/big"
+	"strconv"
 	"strings"
 
 	"github.com/aiveto/veto/result"
@@ -176,6 +180,11 @@ func (p Param) checkValue(operationID, raw string) error {
 	if err != nil {
 		return result.ParamError{Operation: operationID, Name: p.Name, Reason: err.Error()}
 	}
+	if p.Type() == "integer" {
+		if err := exactInteger(raw, p.Schema); err != nil {
+			return result.ParamError{Operation: operationID, Name: p.Name, Reason: err.Error()}
+		}
+	}
 	if err := schema.VisitJSON(value, openapi3.VisitAsRequest()); err != nil {
 		reason := "does not match the schema"
 		if se, ok := errors.AsType[*openapi3.SchemaError](err); ok && se.Reason != "" {
@@ -227,6 +236,97 @@ func scalarTypeError(typ string) error {
 		return errors.New("must be an integer")
 	}
 	return errors.New("must be a number")
+}
+
+func exactInteger(raw, schemaText string) error {
+	if schemaText == "" || !integerNumber(json.Number(raw)) {
+		return nil
+	}
+	var doc struct {
+		Enum             []json.RawMessage `json:"enum"`
+		Const            json.RawMessage   `json:"const"`
+		Minimum          json.RawMessage   `json:"minimum"`
+		Maximum          json.RawMessage   `json:"maximum"`
+		ExclusiveMinimum json.RawMessage   `json:"exclusiveMinimum"`
+		ExclusiveMaximum json.RawMessage   `json:"exclusiveMaximum"`
+		MultipleOf       json.RawMessage   `json:"multipleOf"`
+	}
+	if json.Unmarshal([]byte(schemaText), &doc) != nil {
+		return nil
+	}
+	if len(doc.Enum) > 0 && !integerInEnum(raw, doc.Enum) {
+		return errors.New("value is not one of the allowed values")
+	}
+	if jsonNumber(doc.Const) && !sameIntegerLiteral(raw, doc.Const) {
+		return errors.New("value does not match const")
+	}
+	if !floatKeepsInteger(raw) && hasNumericBound(doc.Minimum, doc.Maximum, doc.ExclusiveMinimum, doc.ExclusiveMaximum, doc.MultipleOf) {
+		return errors.New("integer cannot be checked exactly")
+	}
+	return nil
+}
+
+func integerInEnum(raw string, enum []json.RawMessage) bool {
+	for _, item := range enum {
+		if jsonNumber(item) && sameIntegerLiteral(raw, item) {
+			return true
+		}
+	}
+	return false
+}
+
+func sameIntegerLiteral(raw string, literal json.RawMessage) bool {
+	left := new(big.Int)
+	right := new(big.Int)
+	if _, ok := left.SetString(strings.TrimPrefix(raw, "+"), 10); !ok {
+		return false
+	}
+	text := strings.TrimSpace(string(literal))
+	if _, ok := right.SetString(text, 10); ok {
+		return left.Cmp(right) == 0
+	}
+	f, err := strconv.ParseFloat(text, 64)
+	if err != nil || math.IsInf(f, 0) || math.Trunc(f) != f {
+		return false
+	}
+	back, acc := new(big.Float).SetFloat64(f).Int(nil)
+	return acc == big.Exact && back.Cmp(left) == 0
+}
+
+func floatKeepsInteger(raw string) bool {
+	raw = strings.TrimPrefix(raw, "+")
+	n := new(big.Int)
+	if _, ok := n.SetString(raw, 10); !ok {
+		return false
+	}
+	f, err := strconv.ParseFloat(raw, 64)
+	if err != nil || math.IsInf(f, 0) || math.Trunc(f) != f {
+		return false
+	}
+	back, acc := new(big.Float).SetFloat64(f).Int(nil)
+	return acc == big.Exact && back.Cmp(n) == 0
+}
+
+func jsonNumber(raw json.RawMessage) bool {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 {
+		return false
+	}
+	switch raw[0] {
+	case '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+		return true
+	default:
+		return false
+	}
+}
+
+func hasNumericBound(parts ...json.RawMessage) bool {
+	for _, part := range parts {
+		if jsonNumber(part) {
+			return true
+		}
+	}
+	return false
 }
 
 func integerNumber(n json.Number) bool {

@@ -77,7 +77,7 @@ func (b *Builder) Build(cat *catalog.Catalog, turns []Turn, described *catalog.O
 	return p
 }
 
-// The index is cut first. Related lines are dropped whole. A pending confirmation keeps its id after params are dropped.
+// The index is cut first. Related lines are dropped whole. A pending confirmation keeps its id after params are dropped. An id that does not fit is omitted whole.
 func (b *Builder) limit(p *Pack) {
 	p.Bytes = len(p.Serialize())
 	if p.Bytes <= b.MaxBytes {
@@ -127,15 +127,7 @@ func trimPending(p *Pack, limit int) {
 	if len(p.Serialize()) <= limit {
 		return
 	}
-	overflow := len(p.Serialize()) - limit
-	kept.OperationID = prefixBytes(kept.OperationID, max(len(kept.OperationID)-overflow, 0))
-	p.PendingConfirmation = &kept
-	if len(p.Serialize()) <= limit {
-		return
-	}
-	overflow = len(p.Serialize()) - limit
-	kept.ID = prefixBytes(kept.ID, max(len(kept.ID)-overflow, 0))
-	p.PendingConfirmation = &kept
+	p.PendingConfirmation = nil
 }
 
 func shrinkIndex(p *Pack, limit int) {

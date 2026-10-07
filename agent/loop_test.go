@@ -153,6 +153,42 @@ paths:
 	assert.JSONEq(t, `[{"id":"1"},{"id":"2"}]`, many.Body)
 }
 
+func TestLoopKeepsTheAPIResult(t *testing.T) {
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
+	require.NoError(t, err)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"id":"7","total":3}`))
+	}))
+	defer ts.Close()
+	loop, err := agent.New(cat, nil, execute.Client{BaseURL: ts.URL})
+	require.NoError(t, err)
+	loop.Model = getPick{}
+	out, err := loop.Run(context.Background(), "get order 1")
+	require.NoError(t, err)
+	assert.Contains(t, out.Result.Body, `"id":"7"`)
+	assert.Contains(t, out.Result.Body, `"total":3`)
+	assert.True(t, out.Result.Sent)
+	assert.True(t, out.Result.HTTP)
+	assert.Contains(t, out.Pack.Serialize(), `"id":"7"`)
+	assert.Contains(t, out.Pack.Serialize(), `"total":3`)
+}
+
+func TestLoopKeepsSendEvidenceWhenTransportFails(t *testing.T) {
+	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
+	require.NoError(t, err)
+	ts := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	base := ts.URL
+	ts.Close()
+	loop, err := agent.New(cat, nil, execute.Client{BaseURL: base})
+	require.NoError(t, err)
+	loop.Model = getPick{}
+	out, err := loop.Run(context.Background(), "get order 1")
+	require.Error(t, err)
+	assert.True(t, out.Result.Sent)
+	assert.Equal(t, "orders.get", out.OperationID)
+	assert.Equal(t, "orders.get", out.Result.OperationID)
+}
+
 func TestLoopShowsStableHTTPCode(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)
