@@ -338,7 +338,7 @@ relations:
     to: customers.get
 ```
 
-`orders.get` returns `customerId`. The relation names `customers.get` as the linked operation. A field name in the spec does not create that call. MCP invoke runs one operation. A relation that would only join an operation to itself is refused. The same related id is listed once.
+`orders.get` returns `customerId`. The relation names `customers.get` as the linked operation. A field name in the spec does not create that call. A successful invoke includes `next_calls` when the response has the field: the operation id and its path or query params. A missing or projected field is left out, and a header is not copied. The invoke stays successful. A relation that would only join an operation to itself is refused. The same related id is listed once.
 
 An OpenAPI link with no `parameters` map does not invent a call. A link parameter may be a JSON pointer into the response: objects, and one array index.
 

@@ -41,6 +41,13 @@ type (
 		Caller      string       `json:"caller,omitempty"`
 		HTTP        bool         `json:"http"`
 		Sent        bool         `json:"sent,omitempty"`
+		NextCalls   []NextCall   `json:"next_calls,omitempty"`
+	}
+
+	// NextCall is one later operation a successful response can name.
+	NextCall struct {
+		OperationID string            `json:"operation_id"`
+		Params      map[string]string `json:"params,omitempty"`
 	}
 
 	Server struct {
@@ -266,7 +273,19 @@ func toInvokeResult(call runtime.Result) InvokeResult {
 		Caller:      call.Caller,
 		HTTP:        call.HTTP,
 		Sent:        call.Sent,
+		NextCalls:   wireNext(call.NextCalls),
 	}
+}
+
+func wireNext(in []runtime.NextCall) []NextCall {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]NextCall, len(in))
+	for i := range in {
+		out[i] = NextCall{OperationID: in[i].OperationID, Params: in[i].Params}
+	}
+	return out
 }
 
 // Handle runs exactly one of search, describe, or invoke on a line.

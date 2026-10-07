@@ -72,6 +72,7 @@ type (
 		Caller      string       `json:"Caller,omitempty"`
 		HTTP        bool         `json:"HTTP"`
 		Sent        bool         `json:"Sent"`
+		NextCalls   []NextCall   `json:"NextCalls,omitempty"`
 	}
 
 	// HTTPRequest is the call that would be sent, with secret values removed.
@@ -248,7 +249,7 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 	if status == "" {
 		status = StatusOK
 	}
-	return rt.record(ctx, Result{
+	res := Result{
 		Status:      status,
 		OperationID: req.Operation,
 		HTTPStatus:  call.Status,
@@ -259,7 +260,11 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 		Page:        call.Page,
 		HTTP:        true,
 		Sent:        true,
-	}), nil
+	}
+	if status == StatusOK {
+		res.NextCalls = rt.nextCalls(req.Operation, call.Body)
+	}
+	return rt.record(ctx, res), nil
 }
 
 // Preview resolves, validates, and checks policy. It does not fetch a token or call upstream.
