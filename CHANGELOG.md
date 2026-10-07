@@ -4,6 +4,7 @@
 
 - A flow with a question is a read-only task. Search and the context pack return it. A later step takes its parameter from a declared relation. Check fails when that field or an answer field is gone, or a step is not a read.
 - `veto check --against` names a task that lost a binding or an answer field.
+- An invoke failure names its stage in `why`: parameter, policy, catalog, upstream, missing auth, or held until you approve.
 
 ## v0.1.8 - 2026-10-06
 

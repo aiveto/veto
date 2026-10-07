@@ -214,7 +214,7 @@ func TestInvokeRejectsABodyOutsideTheSchemaBeforeHTTP(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Equal(t, "invalid_body", out.Code)
-	assert.Empty(t, out.Why)
+	assert.Equal(t, "parameter", out.Why)
 	assert.False(t, out.HTTP)
 	assert.Contains(t, err.Error(), "/age")
 	assert.NotContains(t, err.Error(), secret)
@@ -492,6 +492,46 @@ paths:
       responses:
         "200": {description: ok}
 `
+
+func TestInvokeNamesTheFailureStage(t *testing.T) {
+	cat := &catalog.Catalog{Operations: []catalog.Operation{{
+		ID: "orders.get", Method: http.MethodGet, PathTemplate: "/orders/{id}",
+		Params: []catalog.Param{{Name: "id", In: "path", Required: true}},
+	}}}
+	cat.Finalize()
+	rt := runtime.Runtime{Catalog: cat, State: policy.NewState(), Exec: allowExec{}}
+	unknown, err := rt.Invoke(context.Background(), runtime.Request{Operation: "missing.get"})
+	require.Error(t, err)
+	assert.Equal(t, runtime.WhyCatalog, unknown.Why)
+
+	denied := runtime.Runtime{
+		Catalog: cat, State: policy.NewState(), Exec: allowExec{},
+		Policy: policy.Wrap(nil, func(context.Context, *catalog.Operation) (policy.Decision, bool, error) {
+			return policy.DecisionDeny, true, nil
+		}),
+	}
+	got, err := denied.Invoke(context.Background(), runtime.Request{
+		Operation: "orders.get",
+		Arguments: runtime.FromStrings(map[string]string{"id": "1"}),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, runtime.WhyPolicy, got.Why)
+	assert.False(t, got.HTTP)
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer ts.Close()
+	up := runtime.Runtime{Catalog: cat, State: policy.NewState(), Exec: execute.Client{BaseURL: ts.URL}}
+	got, err = up.Invoke(context.Background(), runtime.Request{
+		Operation: "orders.get",
+		Arguments: runtime.FromStrings(map[string]string{"id": "1"}),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "upstream", got.Status)
+	assert.Equal(t, runtime.WhyUpstream, got.Why)
+	assert.True(t, got.HTTP)
+}
 
 type errExec struct{ err error }
 
