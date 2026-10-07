@@ -233,15 +233,17 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 		res.HTTP = call.HTTP
 		res.HTTPStatus = call.Status
 		res.Sent = call.Sent || call.HTTP
+		res.Body = call.Body
 		return rt.record(ctx, res), err
 	}
 	if follow {
-		call, err = rt.collectPages(execCtx, op, args, call, proj)
+		call, err = rt.collectPages(execCtx, op, args, req.Arguments, call, proj)
 		if err != nil {
 			res := errorResult(req.Operation, "", err)
 			res.HTTP = call.HTTP
 			res.HTTPStatus = call.Status
 			res.Sent = call.Sent || call.HTTP
+			res.Body = call.Body
 			return rt.record(ctx, res), err
 		}
 	}

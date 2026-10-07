@@ -6,6 +6,7 @@ import (
 	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/aiveto/veto/catalog"
@@ -164,11 +165,8 @@ func pointerStep(cur []byte, tok string) ([]byte, error) {
 		if err := jsonv2.Unmarshal(cur, &arr); err != nil {
 			return nil, err
 		}
-		i := 0
-		for _, c := range tok {
-			i = i*10 + int(c-'0')
-		}
-		if i < 0 || i >= len(arr) || jsonNull(arr[i]) {
+		i, err := strconv.Atoi(tok)
+		if err != nil || i < 0 || i >= len(arr) || jsonNull(arr[i]) {
 			return nil, errors.New("missing")
 		}
 		return arr[i], nil

@@ -19,13 +19,14 @@ type pageFinisher interface {
 	FinishPages(status int, body string, truncated bool, p Projection) (result.HTTPResult, error)
 }
 
-func (rt *Runtime) collectPages(ctx context.Context, op *catalog.Operation, params map[string]string, first result.HTTPResult, proj Projection) (result.HTTPResult, error) {
+func (rt *Runtime) collectPages(ctx context.Context, op *catalog.Operation, params map[string]string, arguments map[string]any, first result.HTTPResult, proj Projection) (result.HTTPResult, error) {
 	items, ok := pageItems(first.Body)
 	if !ok {
 		return first, nil
 	}
 	limit := rt.bodyLimit()
 	current := cloneParams(params)
+	args := cloneArgs(arguments)
 	seen := map[string]bool{}
 	truncated := first.Truncated
 	body := first.Body
@@ -41,24 +42,25 @@ func (rt *Runtime) collectPages(ctx context.Context, op *catalog.Operation, para
 		}
 		seen[sig] = true
 		maps.Copy(current, next)
+		args = derivedArguments(args, next, op)
 		if err := op.CheckParams(current); err != nil {
-			return sentPages(first.Status), err
+			return keepEvidence(first, sentPages(first.Status)), err
 		}
-		if !rt.allowDerived(ctx, op, current) {
+		if !rt.allowDerived(ctx, op, current, args) {
 			truncated = true
 			break
 		}
 		resp, err := rt.Exec.InvokeHTTPResult(ctx, op, current)
 		if err != nil {
-			return resp, err
+			return keepEvidence(first, resp), err
 		}
 		if resp.Status < 200 || resp.Status >= 300 {
-			return resp, fmt.Errorf("follow page: http %d", resp.Status)
+			return keepEvidence(first, resp), fmt.Errorf("follow page: http %d", resp.Status)
 		}
 		body = resp.Body
 		more, ok := pageItems(body)
 		if !ok {
-			return resp, errors.New("follow page: response is not a page")
+			return keepEvidence(first, resp), errors.New("follow page: response is not a page")
 		}
 		if pageBytes(items)+pageBytes(more) > int(limit) {
 			truncated = true
@@ -74,7 +76,7 @@ func (rt *Runtime) collectPages(ctx context.Context, op *catalog.Operation, para
 	}
 	raw, err := jsonv2.Marshal(items)
 	if err != nil {
-		return sentPages(first.Status), fmt.Errorf("collect pages: %w", err)
+		return keepEvidence(first, sentPages(first.Status)), fmt.Errorf("collect pages: %w", err)
 	}
 	if int64(len(raw)) > limit {
 		return sentPages(first.Status), fmt.Errorf("response exceeds %d bytes", limit)
@@ -94,10 +96,65 @@ func (rt *Runtime) collectPages(ctx context.Context, op *catalog.Operation, para
 	return merged, nil
 }
 
-func (rt *Runtime) allowDerived(ctx context.Context, op *catalog.Operation, params map[string]string) bool {
-	ctx = rt.policyContext(ctx, params, FromStrings(params))
+func (rt *Runtime) allowDerived(ctx context.Context, op *catalog.Operation, params map[string]string, arguments map[string]any) bool {
+	ctx = rt.policyContext(ctx, params, arguments)
 	decision, err := rt.decide(ctx, op)
 	return err == nil && decision == policy.DecisionAllow
+}
+
+func derivedArguments(base map[string]any, delta map[string]string, op *catalog.Operation) map[string]any {
+	out := cloneArgs(base)
+	for name, raw := range delta {
+		out[name] = typedArg(op, name, raw)
+	}
+	return out
+}
+
+func typedArg(op *catalog.Operation, name, raw string) any {
+	if op == nil {
+		return raw
+	}
+	for _, p := range op.Params {
+		if p.Name != name {
+			continue
+		}
+		switch p.Type() {
+		case "boolean":
+			switch raw {
+			case "true":
+				return true
+			case "false":
+				return false
+			}
+		case "integer", "number":
+			return json.Number(raw)
+		}
+		break
+	}
+	return raw
+}
+
+func cloneArgs(in map[string]any) map[string]any {
+	if len(in) == 0 {
+		return map[string]any{}
+	}
+	return maps.Clone(in)
+}
+
+func keepEvidence(first, later result.HTTPResult) result.HTTPResult {
+	if first.HTTP {
+		later.HTTP = true
+	}
+	if first.Sent {
+		later.Sent = true
+	}
+	if later.Status == 0 {
+		later.Status = first.Status
+	}
+	if later.Body == "" {
+		later.Body = first.Body
+	}
+	return later
 }
 
 func sentPages(status int) result.HTTPResult {

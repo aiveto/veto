@@ -105,7 +105,12 @@ func TestCheckParamsRejectsABodyIntegerEnumFloatWouldCollapse(t *testing.T) {
 		Name: "body", In: "body", Required: true, MediaType: "application/json",
 		Schema: `{"type":"object","properties":{"n":{"type":"integer","minimum":9007199254740992}}}`,
 	}}}
-	err = bound.CheckParams(map[string]string{"body": `{"n":9007199254740993}`})
+	require.NoError(t, bound.CheckParams(map[string]string{"body": `{"n":9007199254740993}`}))
+	inexact := &catalog.Operation{ID: "orders.create", Params: []catalog.Param{{
+		Name: "body", In: "body", Required: true, MediaType: "application/json",
+		Schema: `{"type":"object","properties":{"n":{"type":"integer","minimum":1e21}}}`,
+	}}}
+	err = inexact.CheckParams(map[string]string{"body": `{"n":9007199254740993}`})
 	bad, ok = errors.AsType[result.BodyError](err)
 	require.True(t, ok, err)
 	assert.Equal(t, "integer cannot be checked exactly", bad.Reason)
@@ -203,4 +208,125 @@ func TestCheckParamsChecksQueryPathAndHeaderSchema(t *testing.T) {
 	require.True(t, ok, err)
 	assert.Equal(t, "X-Trace", bad.Name)
 	assert.Equal(t, "must be a boolean", bad.Reason)
+}
+
+func TestCheckParamsRejectsAnIntegerBoundFloatWouldCollapse(t *testing.T) {
+	const below = "9007199254740992"
+	const bound = "9007199254740993"
+	floor := `{"type":"integer","minimum":` + bound + `}`
+	cases := []struct {
+		name   string
+		op     catalog.Operation
+		params map[string]string
+		fail   bool
+	}{
+		{
+			name:   "query below an inexact minimum",
+			op:     catalog.Operation{ID: "orders.list", Params: []catalog.Param{{Name: "n", In: "query", Schema: floor}}},
+			params: map[string]string{"n": below},
+			fail:   true,
+		},
+		{
+			name:   "query equal to the minimum",
+			op:     catalog.Operation{ID: "orders.list", Params: []catalog.Param{{Name: "n", In: "query", Schema: floor}}},
+			params: map[string]string{"n": bound},
+		},
+		{
+			name: "structured query",
+			op: catalog.Operation{ID: "orders.list", Params: []catalog.Param{{
+				Name: "filter", In: "query", Style: "deepObject",
+				Schema: `{"type":"object","properties":{"n":` + floor + `}}`,
+			}}},
+			params: map[string]string{"filter": `{"n":` + below + `}`},
+			fail:   true,
+		},
+		{
+			name: "body additionalProperties",
+			op: catalog.Operation{ID: "orders.create", Params: []catalog.Param{{
+				Name: "body", In: "body", Required: true,
+				Schema: `{"type":"object","properties":{"name":{"type":"string"}},"additionalProperties":` + floor + `}`,
+			}}},
+			params: map[string]string{"body": `{"name":"a","extra":` + below + `}`},
+			fail:   true,
+		},
+		{
+			name: "body additionalProperties at the minimum",
+			op: catalog.Operation{ID: "orders.create", Params: []catalog.Param{{
+				Name: "body", In: "body", Required: true,
+				Schema: `{"type":"object","additionalProperties":` + floor + `}`,
+			}}},
+			params: map[string]string{"body": `{"extra":` + bound + `}`},
+		},
+		{
+			name: "body oneOf",
+			op: catalog.Operation{ID: "orders.create", Params: []catalog.Param{{
+				Name: "body", In: "body", Required: true,
+				Schema: `{"oneOf":[` + floor + `]}`,
+			}}},
+			params: map[string]string{"body": below},
+			fail:   true,
+		},
+		{
+			name: "body oneOf at the minimum",
+			op: catalog.Operation{ID: "orders.create", Params: []catalog.Param{{
+				Name: "body", In: "body", Required: true,
+				Schema: `{"oneOf":[` + floor + `]}`,
+			}}},
+			params: map[string]string{"body": bound},
+		},
+		{
+			name: "boolean exclusiveMinimum still rejects the bound",
+			op: catalog.Operation{ID: "orders.list", Params: []catalog.Param{{
+				Name: "n", In: "query", Schema: `{"type":"integer","minimum":0,"exclusiveMinimum":true}`,
+			}}},
+			params: map[string]string{"n": "0"},
+			fail:   true,
+		},
+		{
+			name: "boolean exclusiveMinimum allows the next integer",
+			op: catalog.Operation{ID: "orders.list", Params: []catalog.Param{{
+				Name: "n", In: "query", Schema: `{"type":"integer","minimum":0,"exclusiveMinimum":true}`,
+			}}},
+			params: map[string]string{"n": "1"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.op.CheckParams(tc.params)
+			if !tc.fail {
+				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.NotContains(t, err.Error(), below)
+		})
+	}
+}
+
+func TestCheckParamsValidatesTheOutgoingValue(t *testing.T) {
+	enum := `{"type":"string","enum":["safe"]}`
+	op := &catalog.Operation{ID: "orders.list", Params: []catalog.Param{
+		{Name: "q", In: "query", Schema: enum},
+		{Name: "id", In: "path", Required: true, Schema: enum},
+		{Name: "X-Trace", In: "header", Schema: enum},
+		{Name: "need", In: "query", Required: true, Schema: `{"type":"string"}`},
+	}}
+	err := op.CheckParams(map[string]string{"q": " safe ", "id": "safe"})
+	bad, ok := errors.AsType[result.ParamError](err)
+	require.True(t, ok, err)
+	assert.Equal(t, "q", bad.Name)
+	assert.NotEmpty(t, bad.Reason)
+
+	err = op.CheckParams(map[string]string{"q": "safe", "id": " safe "})
+	bad, ok = errors.AsType[result.ParamError](err)
+	require.True(t, ok, err)
+	assert.Equal(t, "id", bad.Name)
+
+	require.NoError(t, op.CheckParams(map[string]string{"q": "safe", "id": "safe", "X-Trace": " safe ", "need": "x"}))
+
+	err = op.CheckParams(map[string]string{"q": "safe", "id": "safe", "need": "   "})
+	bad, ok = errors.AsType[result.ParamError](err)
+	require.True(t, ok, err)
+	assert.Equal(t, "need", bad.Name)
+	assert.Empty(t, bad.Reason)
 }

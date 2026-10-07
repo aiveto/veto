@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+## v0.1.8 - 2026-10-06
+
+- A derived page keeps the caller's argument types, so a boolean stays a boolean under policy. A later page failure keeps the first page's HTTP evidence. An integer bound is compared exactly, including additional properties, oneOf, and a structured query. Query and path validation uses the text that is sent. A stopped flow keeps the invoke result. Generated clients reserve `jsonv2` and keep catalog links and page maps, so `next_calls` matches a direct invoke. A JSON Pointer index that overflows is missing.
 - A derived page is checked with the same policy arguments as a direct call. Deployment response fields apply after the page walk. A page that was sent and then fails to parse keeps `http` and `sent`.
 - The agent loop keeps the invoke result, including send evidence when the transport fails, and puts the response body in the follow-up pack.
 - Generated client methods `Confirm`, `Operation`, and `SetPolicy` stay reserved. An integer enum is compared exactly, so a value float64 would collapse is rejected. A context pack omits a pending id that does not fit instead of shortening it.
