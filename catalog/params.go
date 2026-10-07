@@ -367,6 +367,9 @@ func (p Param) checkBody(operationID, raw string) error {
 		}
 		schema = parsed
 	}
+	if err := exactBodyIntegers(operationID, raw, p.Schema); err != nil {
+		return err
+	}
 	err = schema.VisitJSON(value, openapi3.VisitAsRequest())
 	if err == nil {
 		return nil
@@ -377,6 +380,89 @@ func (p Param) checkBody(operationID, raw string) error {
 		bad.Reason = se.Reason
 	}
 	return bad
+}
+
+// exactBodyIntegers checks integer enum, const, and bounds on the raw JSON text.
+// properties, items, and allOf are walked. oneOf stays with the schema visitor.
+func exactBodyIntegers(operationID, raw, schemaText string) error {
+	if strings.TrimSpace(schemaText) == "" {
+		return nil
+	}
+	return walkExactInteger(operationID, "", []byte(raw), []byte(schemaText))
+}
+
+func walkExactInteger(operationID, path string, raw, schema []byte) error {
+	raw = bytes.TrimSpace(raw)
+	schema = bytes.TrimSpace(schema)
+	if len(schema) == 0 || schema[0] != '{' {
+		return nil
+	}
+	var doc struct {
+		Type       string                     `json:"type"`
+		Properties map[string]json.RawMessage `json:"properties"`
+		Items      json.RawMessage            `json:"items"`
+		AllOf      []json.RawMessage          `json:"allOf"`
+	}
+	if json.Unmarshal(schema, &doc) == nil {
+		if doc.Type == "integer" && jsonNumber(raw) {
+			if err := exactInteger(string(raw), string(schema)); err != nil {
+				pointer := path
+				if pointer == "" {
+					pointer = "/"
+				}
+				return result.BodyError{Operation: operationID, Path: pointer, Reason: err.Error()}
+			}
+		}
+		for _, sub := range doc.AllOf {
+			if err := walkExactInteger(operationID, path, raw, sub); err != nil {
+				return err
+			}
+		}
+		if err := walkExactProperties(operationID, path, raw, doc.Properties); err != nil {
+			return err
+		}
+		return walkExactItems(operationID, path, raw, doc.Items)
+	}
+	return nil
+}
+
+func walkExactProperties(operationID, path string, raw []byte, properties map[string]json.RawMessage) error {
+	if len(properties) == 0 || len(raw) == 0 || raw[0] != '{' {
+		return nil
+	}
+	var obj map[string]json.RawMessage
+	if json.Unmarshal(raw, &obj) == nil {
+		for name, prop := range properties {
+			child, ok := obj[name]
+			if !ok {
+				continue
+			}
+			if err := walkExactInteger(operationID, path+"/"+pointerToken(name), child, prop); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func walkExactItems(operationID, path string, raw, items []byte) error {
+	items = bytes.TrimSpace(items)
+	if len(items) == 0 || items[0] != '{' || len(raw) == 0 || raw[0] != '[' {
+		return nil
+	}
+	var arr []json.RawMessage
+	if json.Unmarshal(raw, &arr) == nil {
+		for i, item := range arr {
+			if err := walkExactInteger(operationID, path+"/"+strconv.Itoa(i), item, items); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func pointerToken(name string) string {
+	return strings.NewReplacer("~", "~0", "/", "~1").Replace(name)
 }
 
 func decodeJSON(raw string) (any, error) {

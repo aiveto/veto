@@ -62,7 +62,7 @@ relations:
     to: customers.get
 ```
 
-Search returns the related ids and `related_calls`. Describe returns the note, such as `Order.customerId identifies customers.get`. The Go Follow API walks that link. Invoke runs one operation. [Relations](docs/guide.md#relations).
+Search returns the related ids and `related_calls`. Describe returns the note, such as `Order.customerId identifies customers.get`. A successful invoke includes `next_calls` when the response has that field. Invoke still runs one operation. [Relations](docs/guide.md#relations).
 
 ## What the agent receives
 
