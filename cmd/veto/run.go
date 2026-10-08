@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/aiveto/veto/auth"
+	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/flow"
 	"github.com/aiveto/veto/runtime"
 	"github.com/spf13/cobra"
@@ -16,12 +17,13 @@ import (
 func newRunCommand() *cobra.Command {
 	var flags catalogFlags
 	var params []string
+	var save string
 	c := &cobra.Command{
 		Use:   "run TASK",
 		Short: "Run a read-only task and print what stayed true.",
 		Args:  cobra.ExactArgs(1),
 		Run: func(_ *cobra.Command, args []string) {
-			if err := runTask(flags, args[0], params); err != nil {
+			if err := runTask(flags, args[0], params, save); err != nil {
 				fmt.Fprintf(os.Stderr, "run: %v\n", err)
 				exitMain(1)
 			}
@@ -30,10 +32,11 @@ func newRunCommand() *cobra.Command {
 	addCatalogFlags(c, &flags)
 	c.Flags().StringArrayVar(&params, "param", nil, "First-step parameter, as name=value. Repeat for another.")
 	c.Flags().StringVar(&flags.caller, "caller", "", "Caller or tenant passed to policy.")
+	c.Flags().StringVar(&save, "save", "", "Write the task the run confirmed. A binding the relation already supplies is left unset.")
 	return c
 }
 
-func runTask(flags catalogFlags, name string, pairs []string) error {
+func runTask(flags catalogFlags, name string, pairs []string, save string) error {
 	params, err := taskParams(pairs)
 	if err != nil {
 		return err
@@ -79,7 +82,10 @@ func runTask(flags catalogFlags, name string, pairs []string) error {
 	for _, line := range lines {
 		fmt.Println(line)
 	}
-	return nil
+	if save == "" {
+		return nil
+	}
+	return writeSavedCheck(save, def, srv.Catalog)
 }
 
 func taskParams(pairs []string) (map[string]string, error) {
@@ -97,4 +103,23 @@ func taskParams(pairs []string) (map[string]string, error) {
 		out[key] = value
 	}
 	return out, nil
+}
+
+func writeSavedCheck(path string, def *flow.Definition, cat *catalog.Catalog) error {
+	_, err := os.Stat(path)
+	if err == nil {
+		return fmt.Errorf("%s exists", path)
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	reviewed := flow.Review(def, cat)
+	if reviewed == nil {
+		return errors.New("task is missing")
+	}
+	body, err := flow.Format([]*flow.Definition{reviewed})
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, body, 0o600)
 }
