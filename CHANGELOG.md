@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.11 - 2026-10-08
+
 - The context pack includes a task for the same words `veto search` uses. `veto search` with no words names an example query.
 - A string field of a request body is its own parameter, so `--param reason=late` is sent as `body`. `veto propose` puts the required response fields in the answer.
 - A terminal `veto invoke` names the missing parameter. `veto preview orders.list` takes the operation id. `veto propose --out` prints `veto run --flow` for the draft. Init also prints `veto invoke`. Search matches the words in a task question. `veto auth login` finds `veto.yaml` and names the environment variable when the scheme is not a login. Commands find `veto.yaml` in the current directory or a parent.
