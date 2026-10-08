@@ -28,7 +28,12 @@ func newPreviewCommand() *cobra.Command {
 		Use:     "preview [operation]",
 		Short:   "Resolve, validate, and check policy without upstream HTTP.",
 		Example: "  veto preview orders.list\n  veto preview orders.get --param id=10482",
-		Run: func(_ *cobra.Command, args []string) {
+		Args: func(_ *cobra.Command, args []string) error {
+			_, err := previewOperation(args, cmd.operation)
+			return err
+		},
+		Run: func(c *cobra.Command, args []string) {
+			useRootConfig(c, &cmd.config)
 			operation, err := previewOperation(args, cmd.operation)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "preview: %v\n", err)
@@ -68,7 +73,7 @@ func previewOperation(position []string, operation string) (string, error) {
 
 func runPreview(cmd previewCmd) {
 	if cmd.operation == "" {
-		fmt.Fprintf(os.Stderr, "preview: operation required\n")
+		fmt.Fprintf(os.Stderr, "preview: operation required, for example: veto preview orders.list\n")
 		exitMain(1)
 	}
 	srv, _, err := buildServer(cmd.contract, cmd.config, cmd.agent, cmd.relations, cmd.baseURL)

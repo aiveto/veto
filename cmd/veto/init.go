@@ -59,7 +59,7 @@ func initArgs(_ *cobra.Command, args []string) error {
 
 func writeStarter(dir string, contracts []string) ([]string, error) {
 	if len(contracts) == 0 {
-		return nil, errors.New("contract required")
+		return nil, errors.New(contractRequired)
 	}
 	configPath := filepath.Join(dir, "veto.yaml")
 	if _, err := os.Stat(configPath); err == nil {

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- `veto version` prints the build. A release prints that version. A checkout prints `dev`.
+- A missing argument or flag names that input and an example.
+- `veto --help` says what veto is. `--config` works before the command.
+- `veto invoke` exits 1 when the status is not ok, including a held delete and an upstream 401. The result is still printed.
+- On connect the MCP server tells the model to search, then describe, then invoke. A tool result carries the same JSON as text and as structured content.
+
 ## v0.1.11 - 2026-10-08
 
 - The context pack includes a task for the same words `veto search` uses. `veto search` with no words names an example query.

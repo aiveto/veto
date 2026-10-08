@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/aiveto/veto/agent"
 	"github.com/aiveto/veto/eval"
@@ -23,9 +25,17 @@ type evalCmd struct {
 func newEvalCommand() (*cobra.Command, error) {
 	cmd := &evalCmd{}
 	c := &cobra.Command{
-		Use:   "eval",
-		Short: "Run a deterministic eval case.",
-		Run: func(*cobra.Command, []string) {
+		Use:     "eval",
+		Short:   "Run a deterministic eval case.",
+		Example: "  veto eval --case testdata/delete.yaml",
+		PreRunE: func(*cobra.Command, []string) error {
+			if blank(cmd.cases) {
+				return errors.New("--case required, for example: veto eval --case testdata/delete.yaml")
+			}
+			return nil
+		},
+		Run: func(c *cobra.Command, _ []string) {
+			useRootConfig(c, &cmd.config)
 			runEval(*cmd)
 		},
 	}
@@ -39,6 +49,15 @@ func newEvalCommand() (*cobra.Command, error) {
 		return nil, err
 	}
 	return c, nil
+}
+
+func blank(values []string) bool {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return false
+		}
+	}
+	return true
 }
 
 func runEval(cmd evalCmd) {

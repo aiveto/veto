@@ -102,6 +102,7 @@ security:
 	require.NoError(t, err)
 	require.NotNil(t, res)
 	assert.False(t, res.IsError)
+	assert.NotNil(t, res.StructuredContent)
 	text := toolText(t, res)
 	assert.Contains(t, text, `"decision":"allow"`)
 	assert.Contains(t, text, `"approval_required":false`)

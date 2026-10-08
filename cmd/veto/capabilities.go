@@ -34,7 +34,8 @@ func newSearchCommand() *cobra.Command {
 		Short:   capability.SearchDescription,
 		Example: "  veto search orders",
 		Args:    searchArgs,
-		Run: func(_ *cobra.Command, args []string) {
+		Run: func(cmd *cobra.Command, args []string) {
+			useRootConfig(cmd, &flags.config)
 			runCap("search", flags, func(srv *capability.Server) ([]byte, error) {
 				in, err := decodeSearch(args)
 				if err != nil {
@@ -55,13 +56,22 @@ func searchArgs(_ *cobra.Command, args []string) error {
 	return nil
 }
 
+func describeArgs(_ *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return errors.New("operation required, for example: veto describe orders.get")
+	}
+	return nil
+}
+
 func newDescribeCommand() *cobra.Command {
 	var flags catalogFlags
 	c := &cobra.Command{
-		Use:   "describe [operation JSON or id]",
-		Short: capability.DescribeDescription,
-		Args:  cobra.MinimumNArgs(1),
-		Run: func(_ *cobra.Command, args []string) {
+		Use:     "describe [operation JSON or id]",
+		Short:   capability.DescribeDescription,
+		Example: "  veto describe orders.get",
+		Args:    describeArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			useRootConfig(cmd, &flags.config)
 			runCap("describe", flags, func(srv *capability.Server) ([]byte, error) {
 				in, err := decodeDescribe(args)
 				if err != nil {
@@ -89,7 +99,8 @@ func newInvokeCommand() *cobra.Command {
 			}
 			return nil
 		},
-		Run: func(_ *cobra.Command, args []string) {
+		Run: func(cmd *cobra.Command, args []string) {
+			useRootConfig(cmd, &flags.config)
 			merged, err := invokeArgs(args, operation, params)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "invoke: %v\n", err)
@@ -226,6 +237,9 @@ func runCap(name string, flags catalogFlags, fn func(*capability.Server) ([]byte
 				exitMain(1)
 			}
 			fmt.Print(text)
+			if name == "invoke" && invokeExit(b) != 0 {
+				exitMain(1)
+			}
 			return
 		}
 	}
@@ -237,6 +251,22 @@ func runCap(name string, flags catalogFlags, fn func(*capability.Server) ([]byte
 		exitMain(1)
 	}
 	fmt.Printf("%s\n", b)
+	if name == "invoke" && invokeExit(b) != 0 {
+		exitMain(1)
+	}
+}
+
+func invokeExit(body []byte) int {
+	var res struct {
+		Status string `json:"status"`
+	}
+	if err := jsonv2.Unmarshal(body, &res); err != nil {
+		return 0
+	}
+	if res.Status == "" || res.Status == runtime.StatusOK {
+		return 0
+	}
+	return 1
 }
 
 func decodeSearch(args []string) (capability.SearchArgs, error) {

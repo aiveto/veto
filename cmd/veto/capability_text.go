@@ -182,7 +182,7 @@ func invokeArgs(position []string, operation string, pairs []string) ([]string, 
 		return args, nil
 	}
 	if len(args) == 0 {
-		return nil, errors.New("operation required")
+		return nil, errors.New("operation required, for example: veto invoke orders.list")
 	}
 	if len(args) > 1 || strings.HasPrefix(strings.TrimSpace(args[0]), "{") {
 		return nil, errors.New("param repeats a JSON body")

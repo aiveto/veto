@@ -28,6 +28,8 @@ import (
 	"github.com/aiveto/veto/semantics"
 )
 
+const contractRequired = "contract required, for example: veto init orders.yaml"
+
 type sources struct {
 	cfg       config.File
 	contracts []string
@@ -145,7 +147,7 @@ func applyAgent(cat *catalog.Catalog, path string) error {
 
 func loadCatalog(contracts []string, relationsPath string) (*catalog.Catalog, error) {
 	if len(contracts) == 0 {
-		return nil, errors.New("contract required")
+		return nil, errors.New(contractRequired)
 	}
 	parts := make([]*catalog.Catalog, 0, len(contracts))
 	for _, path := range contracts {

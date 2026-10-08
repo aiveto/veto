@@ -3,6 +3,7 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -16,6 +17,9 @@ import (
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+// Instructions is the procedure a host gives the model on connect.
+const Instructions = "Search, then describe, then invoke. A delete waits until confirmation is stored."
 
 // Version is the MCP server build. A release sets it with -X.
 var Version = "dev"
@@ -43,7 +47,9 @@ func newMCP(srv *capability.Server, opt Options) (*mcp.Server, error) {
 			return nil, err
 		}
 	}
-	server := mcp.NewServer(&mcp.Implementation{Name: "veto", Version: Version}, nil)
+	server := mcp.NewServer(&mcp.Implementation{Name: "veto", Version: Version}, &mcp.ServerOptions{
+		Instructions: Instructions,
+	})
 	register(server, srv, opt)
 	return server, nil
 }
@@ -297,9 +303,21 @@ func invokeToolResult(res capability.InvokeResult, b []byte, err error) (*mcp.Ca
 }
 
 func textResult(s string) (*mcp.CallToolResult, any, error) {
-	return &mcp.CallToolResult{
+	result := &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{Text: s}},
-	}, nil, nil
+	}
+	if raw := structuredJSON(s); raw != nil {
+		result.StructuredContent = raw
+	}
+	return result, nil, nil
+}
+
+func structuredJSON(s string) json.RawMessage {
+	raw := []byte(strings.TrimSpace(s))
+	if len(raw) == 0 || !json.Valid(raw) {
+		return nil
+	}
+	return json.RawMessage(raw)
 }
 
 func toolError(err error) (*mcp.CallToolResult, any, error) {

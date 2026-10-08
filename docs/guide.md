@@ -12,7 +12,7 @@ brew install aiveto/veto/veto
 go install github.com/aiveto/veto/cmd/veto@latest
 ```
 
-`brew` does not need Go. `go install` needs Go 1.27.1. From a checkout of this repo, `go install ./cmd/veto` or `go run ./cmd/veto`.
+`brew` does not need Go. `go install` needs Go 1.27.1. From a checkout of this repo, `go install ./cmd/veto` or `go run ./cmd/veto`. `veto version` prints the build. A release prints that version. A checkout prints `dev`. `veto --help` opens with what veto is. `--config` works before the command, as in `veto --config veto.yaml doctor`.
 
 The container image builds `veto`. Running the image runs `veto --help`. A tagged release pushes `ghcr.io/aiveto/veto`.
 
@@ -44,6 +44,8 @@ veto check --config testdata/veto.yaml --case testdata/cases
 | Share contracts, relations, and cases apart from deployment credentials | [capability bundle](#capability-bundle) |
 | A read-only task the agent can find. Check fails when its binding or answer field is gone | [tasks](#tasks) |
 | Call the same runtime from your own Go module | [generate](#generate) a client, a CLI, and an MCP dispatch package |
+
+A missing argument or flag names that input and an example.
 
 Traces are OpenTelemetry. OTLP export is optional. The Go model and memory interfaces, and sequential flows, run in-process. They are not a durable workflow service.
 
@@ -224,7 +226,7 @@ Cursor and Claude Desktop both take this server entry. Use a config path the `ve
 
 The env block is what `veto approve` in another shell must share, or set `approval_store` for Valkey or Redis. [veto-demo](https://github.com/aiveto/veto-demo) `make mcp` prints a complete block.
 
-`veto serve` listens on stdio. The registered tools are `capabilities_search`, `capabilities_describe`, and `capabilities_invoke`. `--pin orders.get` also registers that operation id; the pin schema omits `operation_id`. `--grouped` registers one tool per resource and lists the callable ids in that group's description. A group or pin name cannot replace the three capabilities. Search returns `id`, the pack call line, related ids, `related_calls`, and `confirmation` when the gate is on. Describe still returns the operation.
+`veto serve` listens on stdio. On connect the server tells the model to search, then describe, then invoke, and that a delete waits until confirmation is stored. Each tool result carries the same JSON as text and as structured content. The registered tools are `capabilities_search`, `capabilities_describe`, and `capabilities_invoke`. `--pin orders.get` also registers that operation id; the pin schema omits `operation_id`. `--grouped` registers one tool per resource and lists the callable ids in that group's description. A group or pin name cannot replace the three capabilities. Search returns `id`, the pack call line, related ids, `related_calls`, and `confirmation` when the gate is on. Describe still returns the operation.
 
 `veto serve --json` serves JSON lines for skills and scripts. An idle `--json` process polls stdin so SIGTERM stops it. `veto --help-json` is the contract. Catalog flags stay on `serve`.
 
@@ -239,7 +241,7 @@ veto serve --config veto.yaml --json
 {"invoke":{"operation_id":"orders.delete","params":{"id":"123"}},"caller":"ada"}
 ```
 
-`veto search`, `describe`, and `invoke` are a shorthand. Words are a search query. A JSON object is the tool arguments. On a terminal the result is the call line. A pipe keeps the JSON. `invoke --operation` and `--param key=value` are the same call as the positional id. A string field of the request body is its own parameter, so `--param reason=late` is sent as `body`.
+`veto search`, `describe`, and `invoke` are a shorthand. Words are a search query. A JSON object is the tool arguments. On a terminal the result is the call line. A pipe keeps the JSON. `veto invoke` exits 1 when the status is not ok, including a held delete and an upstream 401. The result is still printed. `invoke --operation` and `--param key=value` are the same call as the positional id. A string field of the request body is its own parameter, so `--param reason=late` is sent as `body`.
 
 ```bash
 veto search --config veto.yaml retire order 123

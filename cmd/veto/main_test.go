@@ -19,6 +19,7 @@ import (
 	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/config"
 	"github.com/aiveto/veto/execute"
+	"github.com/aiveto/veto/mcpserver"
 	"github.com/aiveto/veto/memory"
 	"github.com/aiveto/veto/policy"
 	"github.com/aiveto/veto/runtime"
@@ -267,6 +268,21 @@ func TestPackPrintsTheDeleteCall(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal([]byte(raw), &pack))
 	assert.Contains(t, pack.Index, "orders.delete")
+}
+
+func TestVersionPrintsTheBuild(t *testing.T) {
+	root, err := newRoot()
+	require.NoError(t, err)
+	buf := &bytes.Buffer{}
+	root.SetOut(buf)
+	root.SetArgs([]string{"version"})
+	require.NoError(t, root.Execute())
+	assert.Equal(t, "veto "+mcpserver.Version+"\n", buf.String())
+
+	buf.Reset()
+	root.SetArgs([]string{"--version"})
+	require.NoError(t, root.Execute())
+	assert.Equal(t, "veto "+mcpserver.Version+"\n", buf.String())
 }
 
 func TestAuthSecretComesFromTheEnv(t *testing.T) {

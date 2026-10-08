@@ -20,7 +20,8 @@ func newValidateCommand() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "validate",
 		Short: "Load and validate an OpenAPI contract.",
-		Run: func(*cobra.Command, []string) {
+		Run: func(c *cobra.Command, _ []string) {
+			useRootConfig(c, &cmd.config)
 			runValidate(*cmd)
 		},
 	}

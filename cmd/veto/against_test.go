@@ -283,7 +283,7 @@ func TestCheckRequiresACaseWhenNothingIsTaught(t *testing.T) {
 	cfg := "contracts:\n  - orders.yaml\n"
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "veto.yaml"), []byte(cfg), 0o600))
 	err := runChecked(checkCmd{config: filepath.Join(dir, "veto.yaml")})
-	require.ErrorContains(t, err, "case required")
+	require.ErrorContains(t, err, "case required, for example: veto check --case testdata/delete.yaml")
 }
 
 func TestCheckNamesATaskThatCannotBeTaught(t *testing.T) {

@@ -1,8 +1,10 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/aiveto/veto/generate"
 	"github.com/spf13/cobra"
@@ -20,9 +22,14 @@ type generateCmd struct {
 func newGenerateCommand() (*cobra.Command, error) {
 	cmd := &generateCmd{}
 	c := &cobra.Command{
-		Use:   "generate",
-		Short: "Write a Go client, CLI, and MCP dispatch.",
-		Run: func(*cobra.Command, []string) {
+		Use:     "generate",
+		Short:   "Write a Go client, CLI, and MCP dispatch.",
+		Example: "  veto generate --out ./client --module example.com/orders",
+		PreRunE: func(*cobra.Command, []string) error {
+			return generateNeeds(cmd.out, cmd.module)
+		},
+		Run: func(c *cobra.Command, _ []string) {
+			useRootConfig(c, &cmd.config)
 			runGenerate(*cmd)
 		},
 	}
@@ -39,6 +46,20 @@ func newGenerateCommand() (*cobra.Command, error) {
 		return nil, err
 	}
 	return c, nil
+}
+
+func generateNeeds(out, module string) error {
+	out, module = strings.TrimSpace(out), strings.TrimSpace(module)
+	switch {
+	case out == "" && module == "":
+		return errors.New("--out and --module required, for example: veto generate --out ./client --module example.com/orders")
+	case out == "":
+		return errors.New("--out required, for example: veto generate --out ./client --module example.com/orders")
+	case module == "":
+		return errors.New("--module required, for example: veto generate --out ./client --module example.com/orders")
+	default:
+		return nil
+	}
 }
 
 func runGenerate(cmd generateCmd) {
