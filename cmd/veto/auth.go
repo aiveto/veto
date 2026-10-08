@@ -90,8 +90,17 @@ func runAuthSet(cmd authSetCmd) {
 		exitMain(1)
 	}
 	dir := auth.DefaultTokenDir()
-	if cmd.config != "" {
-		cfg, err := loadAuthConfig(cmd.config)
+	path := cmd.config
+	if path == "" {
+		found, err := findVetoYAML()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "auth set: %v\n", err)
+			exitMain(1)
+		}
+		path = found
+	}
+	if path != "" {
+		cfg, err := loadAuthConfig(path)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "auth set: %v\n", err)
 			exitMain(1)
@@ -114,6 +123,13 @@ func runAuthSet(cmd authSetCmd) {
 
 func configuredScheme(configPath, name string) (auth.Scheme, string, error) {
 	if configPath == "" {
+		found, err := findVetoYAML()
+		if err != nil {
+			return auth.Scheme{}, "", err
+		}
+		configPath = found
+	}
+	if configPath == "" {
 		return auth.Scheme{}, "", errors.New("config required")
 	}
 	if name == "" {
@@ -128,6 +144,9 @@ func configuredScheme(configPath, name string) (auth.Scheme, string, error) {
 		return auth.Scheme{}, "", fmt.Errorf("auth scheme %s is unset", name)
 	}
 	if src.Kind() != "login" {
+		if src.Env != "" {
+			return auth.Scheme{}, "", fmt.Errorf("auth scheme %s reads %s. Export %s, or veto auth set --scheme %s", name, src.Env, src.Env, name)
+		}
 		return auth.Scheme{}, "", fmt.Errorf("auth scheme %s is not login", name)
 	}
 	return auth.Scheme{

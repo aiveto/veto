@@ -18,12 +18,13 @@ func newRunCommand() *cobra.Command {
 	var flags catalogFlags
 	var params []string
 	var save string
+	var flowPath string
 	c := &cobra.Command{
 		Use:   "run TASK",
 		Short: "Run a read-only task and print what stayed true.",
 		Args:  cobra.ExactArgs(1),
 		Run: func(_ *cobra.Command, args []string) {
-			if err := runTask(flags, args[0], params, save); err != nil {
+			if err := runTask(flags, args[0], params, save, flowPath); err != nil {
 				fmt.Fprintf(os.Stderr, "run: %v\n", err)
 				exitMain(1)
 			}
@@ -32,16 +33,24 @@ func newRunCommand() *cobra.Command {
 	addCatalogFlags(c, &flags)
 	c.Flags().StringArrayVar(&params, "param", nil, "First-step parameter, as name=value. Repeat for another.")
 	c.Flags().StringVar(&flags.caller, "caller", "", "Caller or tenant passed to policy.")
+	c.Flags().StringVar(&flowPath, "flow", "", "Flow file for this run. Replaces flow_file.")
 	c.Flags().StringVar(&save, "save", "", "Write the task the run confirmed. A binding the relation already supplies is left unset.")
 	return c
 }
 
-func runTask(flags catalogFlags, name string, pairs []string, save string) error {
+func runTask(flags catalogFlags, name string, pairs []string, save, flowPath string) error {
 	params, err := taskParams(pairs)
 	if err != nil {
 		return err
 	}
-	srv, cfg, err := buildServer(flags.contract, flags.config, flags.agent, flags.relations, flags.baseURL)
+	src, err := resolve(flags.config, flags.contract, flags.relations, flags.agent)
+	if err != nil {
+		return err
+	}
+	if flowPath != "" {
+		src.cfg.FlowFile = flowPath
+	}
+	srv, cfg, err := assembleKernel(src, flags.baseURL)
 	if err != nil {
 		return err
 	}

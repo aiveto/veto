@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -175,11 +176,40 @@ func loadCatalog(contracts []string, relationsPath string) (*catalog.Catalog, er
 	return cat, nil
 }
 
+func findVetoYAML() (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	for {
+		candidate := filepath.Join(dir, "veto.yaml")
+		info, err := os.Stat(candidate)
+		if err == nil && !info.IsDir() {
+			return candidate, nil
+		}
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", nil
+		}
+		dir = parent
+	}
+}
+
 func resolve(configPath string, contracts []string, relations, agent string) (sources, error) {
 	return resolveBundle(configPath, "", contracts, relations, agent)
 }
 
 func resolveBundle(configPath, bundlePath string, contracts []string, relations, agent string) (sources, error) {
+	if configPath == "" && bundlePath == "" {
+		found, err := findVetoYAML()
+		if err != nil {
+			return sources{}, err
+		}
+		configPath = found
+	}
 	cfg := config.Defaults()
 	loadedConfig := false
 	if configPath != "" {

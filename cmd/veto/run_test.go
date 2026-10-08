@@ -52,7 +52,20 @@ func TestSavedCheckWritesTheReviewedTask(t *testing.T) {
 	require.ErrorContains(t, writeSavedCheck(path, taught, cat), "exists")
 }
 
+func TestRunFlowOverridesTheConfiguredFile(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "orders.yaml"), []byte(initListSpec("orders.list", "/orders", "List orders on the desk")), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "veto.yaml"), []byte("contracts: [orders.yaml]\nflow_file: flow.yaml\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "flow.yaml"), []byte("name: keep-me\nquestion: keep\nsteps:\n  - orders.list\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "draft.yaml"), []byte("name: read-orders-list\nquestion: List orders on the desk\nanswer: [data]\nsteps:\n  - orders.list\n"), 0o600))
+	t.Chdir(dir)
+	err := runTask(catalogFlags{}, "read-orders-list", nil, "", "draft.yaml")
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "keep-me")
+	assert.NotContains(t, err.Error(), "unknown task")
+}
+
 func TestRunRefusesAFlowThatIsNotATask(t *testing.T) {
-	err := runTask(catalogFlags{config: filepath.Join("..", "..", "testdata", "veto.yaml")}, "list-then-get", nil, "")
+	err := runTask(catalogFlags{config: filepath.Join("..", "..", "testdata", "veto.yaml")}, "list-then-get", nil, "", "")
 	require.EqualError(t, err, "unknown task list-then-get")
 }

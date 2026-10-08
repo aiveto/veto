@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"os"
 	"sort"
-
 	"strings"
 
 	"github.com/aiveto/veto/auth"
@@ -112,10 +111,11 @@ func catalogFindings(cat *catalog.Catalog, creds *auth.Resolver) ([]string, bool
 		return nil, false
 	}
 	var out []string
+	var authLines []string
 	fail := false
 	for _, op := range cat.Operations {
 		if line := missingAuth(op, creds); line != "" {
-			out = append(out, line)
+			authLines = append(authLines, line)
 			fail = true
 		}
 		if op.IDCollision != "" {
@@ -140,7 +140,28 @@ func catalogFindings(cat *catalog.Catalog, creds *auth.Resolver) ([]string, bool
 			out = append(out, line)
 		}
 	}
-	return out, fail
+	return append(collapseAuth(authLines), out...), fail
+}
+
+func collapseAuth(lines []string) []string {
+	if len(lines) < 2 {
+		return lines
+	}
+	suffix := ""
+	for _, line := range lines {
+		_, tail, ok := strings.Cut(line, ": ")
+		if !ok || !strings.HasPrefix(tail, "missing auth") {
+			return lines
+		}
+		if suffix == "" {
+			suffix = tail
+			continue
+		}
+		if tail != suffix {
+			return lines
+		}
+	}
+	return []string{suffix}
 }
 
 func missingAuth(op catalog.Operation, creds *auth.Resolver) string {

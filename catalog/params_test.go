@@ -10,6 +10,29 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestFoldBodyUsesAStringField(t *testing.T) {
+	op := catalog.Operation{
+		ID: "orders.cancel",
+		Params: []catalog.Param{
+			{Name: "id", In: "path", Required: true},
+			{Name: "body", In: "body", Required: true, Schema: `{"type":"object","required":["reason"],"properties":{"reason":{"type":"string"},"count":{"type":"integer"}}}`},
+		},
+	}
+	got := op.FoldBody(map[string]string{"id": "10502", "reason": "late"})
+	assert.JSONEq(t, `{"reason":"late"}`, got["body"])
+	assert.Equal(t, "10502", got["id"])
+	_, ok := got["reason"]
+	assert.False(t, ok)
+	require.NoError(t, op.CheckParams(got))
+
+	explicit := op.FoldBody(map[string]string{"id": "10502", "body": `{"reason":"desk"}`, "reason": "late"})
+	assert.JSONEq(t, `{"reason":"desk"}`, explicit["body"])
+
+	left := op.FoldBody(map[string]string{"id": "10502", "count": "1"})
+	assert.Empty(t, left["body"])
+	assert.Equal(t, "1", left["count"])
+}
+
 func TestCheckParamsRequiresAJSONObject(t *testing.T) {
 	op := &catalog.Operation{
 		ID: "orders.create",

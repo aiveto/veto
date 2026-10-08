@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -29,9 +30,10 @@ type catalogFlags struct {
 func newSearchCommand() *cobra.Command {
 	var flags catalogFlags
 	c := &cobra.Command{
-		Use:   "search [query JSON or words]",
-		Short: capability.SearchDescription,
-		Args:  cobra.MinimumNArgs(1),
+		Use:     "search [query JSON or words]",
+		Short:   capability.SearchDescription,
+		Example: "  veto search orders",
+		Args:    searchArgs,
 		Run: func(_ *cobra.Command, args []string) {
 			runCap("search", flags, func(srv *capability.Server) ([]byte, error) {
 				in, err := decodeSearch(args)
@@ -44,6 +46,13 @@ func newSearchCommand() *cobra.Command {
 	}
 	addCatalogFlags(c, &flags)
 	return c
+}
+
+func searchArgs(_ *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return errors.New("query required, for example: veto search orders")
+	}
+	return nil
 }
 
 func newDescribeCommand() *cobra.Command {
@@ -68,13 +77,26 @@ func newDescribeCommand() *cobra.Command {
 
 func newInvokeCommand() *cobra.Command {
 	var flags catalogFlags
+	var operation string
+	var params []string
 	c := &cobra.Command{
-		Use:   "invoke [operation JSON or id]",
-		Short: "Invoke an operation through policy and HTTP.",
-		Args:  cobra.MinimumNArgs(1),
+		Use:     "invoke [operation JSON or id]",
+		Short:   "Invoke an operation through policy and HTTP.",
+		Example: "  veto invoke orders.list\n  veto invoke --operation orders.get --param id=10482",
+		Args: func(_ *cobra.Command, args []string) error {
+			if len(args) == 0 && strings.TrimSpace(operation) == "" {
+				return errors.New("operation required, for example: veto invoke orders.list")
+			}
+			return nil
+		},
 		Run: func(_ *cobra.Command, args []string) {
+			merged, err := invokeArgs(args, operation, params)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "invoke: %v\n", err)
+				exitMain(1)
+			}
 			runCap("invoke", flags, func(srv *capability.Server) ([]byte, error) {
-				in, err := decodeInvoke(args)
+				in, err := decodeInvoke(merged)
 				if err != nil {
 					return nil, err
 				}
@@ -85,6 +107,8 @@ func newInvokeCommand() *cobra.Command {
 	}
 	addCatalogFlags(c, &flags)
 	c.Flags().StringVar(&flags.caller, "caller", "", "Caller or tenant passed to policy.")
+	c.Flags().StringVar(&operation, "operation", "", "Operation id.")
+	c.Flags().StringArrayVar(&params, "param", nil, "Parameter as key=value.")
 	return c
 }
 
@@ -195,6 +219,16 @@ func runCap(name string, flags catalogFlags, fn func(*capability.Server) ([]byte
 		exitMain(1)
 	}
 	b, err := fn(srv)
+	if isCharDevice(os.Stdout) {
+		if text, ok := presentCapability(name, b); ok {
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "%s: %s\n", name, strings.TrimSpace(text))
+				exitMain(1)
+			}
+			fmt.Print(text)
+			return
+		}
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", name, err)
 		if len(b) > 0 {

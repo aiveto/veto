@@ -120,10 +120,20 @@ func Lines(flows map[string]*Definition) []string {
 	return out
 }
 
+// Match reports whether a task index line matches the query.
+// The whole query may sit inside the line, or every significant word in the query may appear in it.
+func Match(line, query string) bool {
+	q := strings.ToLower(strings.TrimSpace(query))
+	if q == "" || strings.TrimSpace(line) == "" {
+		return false
+	}
+	head, _, _ := strings.Cut(strings.ToLower(line), " | ")
+	return strings.Contains(head, q) || tokensMatch(head, queryTokens(q))
+}
+
 // Find returns tasks whose name, question, or answer matches the query.
 func Find(flows map[string]*Definition, query string) []*Definition {
-	q := strings.ToLower(strings.TrimSpace(query))
-	if q == "" || len(flows) == 0 {
+	if strings.TrimSpace(query) == "" || len(flows) == 0 {
 		return nil
 	}
 	var names []string
@@ -131,8 +141,7 @@ func Find(flows map[string]*Definition, query string) []*Definition {
 		if def == nil || strings.TrimSpace(def.Question) == "" {
 			continue
 		}
-		head, _, _ := strings.Cut(strings.ToLower(def.IndexLine()), " | ")
-		if strings.Contains(head, q) {
+		if Match(def.IndexLine(), query) {
 			names = append(names, name)
 		}
 	}
@@ -142,6 +151,33 @@ func Find(flows map[string]*Definition, query string) []*Definition {
 		out = append(out, flows[name])
 	}
 	return out
+}
+
+func queryTokens(query string) []string {
+	skip := map[string]bool{
+		"all": true, "and": true, "for": true, "from": true,
+		"please": true, "show": true, "the": true, "with": true,
+	}
+	var out []string
+	for tok := range strings.FieldsSeq(query) {
+		if len(tok) < 3 || skip[tok] {
+			continue
+		}
+		out = append(out, tok)
+	}
+	return out
+}
+
+func tokensMatch(head string, tokens []string) bool {
+	if len(tokens) == 0 {
+		return false
+	}
+	for _, tok := range tokens {
+		if !strings.Contains(head, tok) {
+			return false
+		}
+	}
+	return true
 }
 
 func knownFlow(def *Definition, cat *catalog.Catalog) (*Definition, error) {
@@ -400,8 +436,21 @@ func bindParts(bind string) (from, field, to string) {
 
 // Suggest returns one read-only task the catalog can already teach.
 func Suggest(cat *catalog.Catalog) *Definition {
+	return SuggestIn(cat, nil)
+}
+
+// SuggestIn returns one read-only task, preferring a no-argument read whose id is in first, after a declared relation.
+func SuggestIn(cat *catalog.Catalog, first []string) *Definition {
 	for _, p := range relationPairs(cat) {
 		if def := teachable(cat, p[0], p[1]); def != nil {
+			return def
+		}
+	}
+	if def := runnableRead(cat, first); def != nil {
+		return def
+	}
+	if len(first) > 0 {
+		if def := runnableRead(cat, nil); def != nil {
 			return def
 		}
 	}
@@ -413,8 +462,52 @@ func Suggest(cat *catalog.Catalog) *Definition {
 	return nil
 }
 
+func runnableRead(cat *catalog.Catalog, only []string) *Definition {
+	if cat == nil {
+		return nil
+	}
+	if len(only) > 0 {
+		for _, id := range only {
+			op := cat.ByID(id)
+			if op == nil || !runnable(*op) {
+				continue
+			}
+			if def := teachable(cat, op.ID); def != nil {
+				return def
+			}
+		}
+		return nil
+	}
+	for _, op := range cat.Operations {
+		if !runnable(op) {
+			continue
+		}
+		if def := teachable(cat, op.ID); def != nil {
+			return def
+		}
+	}
+	return nil
+}
+
+func runnable(op catalog.Operation) bool {
+	return op.Kind == catalog.KindRead && len(op.ResponseFields) > 0 && !needsArgument(op)
+}
+
+func needsArgument(op catalog.Operation) bool {
+	for _, p := range op.Params {
+		if p.In != "path" && !p.Required {
+			continue
+		}
+		if strings.TrimSpace(p.Default) != "" {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
 // Propose returns a reviewable task for every declared relation between two reads.
-// The question is the relation sentence. The answer lists the last operation's response fields.
+// The question is the relation sentence. The answer lists the last operation's required response fields.
 func Propose(cat *catalog.Catalog) []*Definition {
 	var out []*Definition
 	seen := map[string]bool{}
@@ -525,8 +618,7 @@ func reviewTask(cat *catalog.Catalog, from, to string) *Definition {
 	if last == nil || len(last.ResponseFields) == 0 {
 		return nil
 	}
-	fields := slices.Clone(last.ResponseFields)
-	slices.Sort(fields)
+	fields := answerDefaults(last)
 	question := strings.TrimSpace(last.Summary)
 	if note := relationQuestion(cat, from, to); note != "" {
 		question = note
@@ -547,6 +639,29 @@ func reviewTask(cat *catalog.Catalog, from, to string) *Definition {
 	taught.Steps[0].Output = ""
 	taught.Steps[0].To = ""
 	return taught
+}
+
+func answerDefaults(op *catalog.Operation) []string {
+	if op == nil {
+		return nil
+	}
+	fields := op.ResponseFields
+	if len(op.ResponseRequired) > 0 {
+		fields = op.ResponseRequired
+	}
+	out := make([]string, 0, len(fields))
+	for _, field := range fields {
+		if len(op.ResponseFields) > 0 && !slices.Contains(op.ResponseFields, field) {
+			continue
+		}
+		out = append(out, field)
+	}
+	slices.Sort(out)
+	if len(out) == 0 {
+		out = slices.Clone(op.ResponseFields)
+		slices.Sort(out)
+	}
+	return out
 }
 
 func relationQuestion(cat *catalog.Catalog, from, to string) string {

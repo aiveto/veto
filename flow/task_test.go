@@ -118,6 +118,10 @@ func TestFindMatchesTheQuestionNotTheOperation(t *testing.T) {
 	flows := map[string]*flow.Definition{taught.Name: taught, "list": {Name: "list", Steps: []flow.Step{{Operation: "orders.list"}}}}
 	require.Len(t, flow.Find(flows, "disputed charge"), 1)
 	assert.Empty(t, flow.Find(flows, "orders.get"))
+	list := &flow.Definition{Name: "read-orders-list", Question: "List orders on the desk", Steps: []flow.Step{{Operation: "orders.list"}}}
+	listed := map[string]*flow.Definition{list.Name: list}
+	require.Len(t, flow.Find(listed, "show me all orders"), 1)
+	assert.Empty(t, flow.Find(listed, "show me all customers"))
 	assert.Contains(t, flow.Lines(flows)[0], "answer: amount, currency")
 }
 
@@ -136,6 +140,31 @@ func TestTaskRegressionsNameTheBrokenBinding(t *testing.T) {
 		"task investigate-charge can no longer read amount from invoices.get",
 	}, flow.TaskRegressions(base, []string{broken}))
 	assert.Empty(t, flow.TaskRegressions(nil, base))
+}
+
+func TestSuggestPrefersARunnableReadFromTheFirstContract(t *testing.T) {
+	cat := &catalog.Catalog{Operations: []catalog.Operation{
+		{
+			ID: "customers.list", Kind: catalog.KindRead, Summary: "List customers",
+			ResponseFields: []string{"data"},
+		},
+		{
+			ID: "orders.get", Kind: catalog.KindRead, Summary: "Get order by id",
+			ResponseFields: []string{"id"},
+			Params:         []catalog.Param{{Name: "id", In: "path", Required: true}},
+		},
+		{
+			ID: "orders.list", Kind: catalog.KindRead, Summary: "List orders on the desk",
+			ResponseFields: []string{"data"},
+		},
+	}}
+	got := flow.SuggestIn(cat, []string{"orders.list", "orders.get"})
+	require.NotNil(t, got)
+	assert.Equal(t, "orders.list", got.Steps[0].Operation)
+	assert.Equal(t, "List orders on the desk", got.Question)
+	plain := flow.Suggest(cat)
+	require.NotNil(t, plain)
+	assert.Equal(t, "customers.list", plain.Steps[0].Operation)
 }
 
 func TestSuggestPrefersARelationThenASingleRead(t *testing.T) {
@@ -170,6 +199,10 @@ func TestProposeAsksTheOwnerToReviewTheRelation(t *testing.T) {
 	assert.Equal(t, "read-orders-get-customers-get", got[0].Name)
 	assert.Equal(t, "Order.customerId identifies customers.get", got[0].Question)
 	assert.Equal(t, []string{"id", "name"}, got[0].Answer)
+	cat.Operations[2].ResponseFields = []string{"address", "email", "id", "name", "phone", "since"}
+	cat.Operations[2].ResponseRequired = []string{"id", "name", "email", "since"}
+	required := flow.Propose(cat)
+	assert.Equal(t, []string{"email", "id", "name", "since"}, required[0].Answer)
 	assert.Empty(t, got[0].Steps[0].Output)
 	_, err := flow.Teach(got[0], cat)
 	require.NoError(t, err)

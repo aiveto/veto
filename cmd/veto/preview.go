@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -24,9 +25,16 @@ type previewCmd struct {
 func newPreviewCommand() *cobra.Command {
 	cmd := &previewCmd{}
 	c := &cobra.Command{
-		Use:   "preview",
-		Short: "Resolve, validate, and check policy without upstream HTTP.",
-		Run: func(*cobra.Command, []string) {
+		Use:     "preview [operation]",
+		Short:   "Resolve, validate, and check policy without upstream HTTP.",
+		Example: "  veto preview orders.list\n  veto preview orders.get --param id=10482",
+		Run: func(_ *cobra.Command, args []string) {
+			operation, err := previewOperation(args, cmd.operation)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "preview: %v\n", err)
+				exitMain(1)
+			}
+			cmd.operation = operation
 			runPreview(*cmd)
 		},
 	}
@@ -39,6 +47,23 @@ func newPreviewCommand() *cobra.Command {
 	c.Flags().StringArrayVar(&cmd.param, "param", nil, "Parameter as key=value. Repeat for another parameter.")
 	c.Flags().StringVar(&cmd.caller, "caller", "", "Caller or tenant passed to policy.")
 	return c
+}
+
+func previewOperation(position []string, operation string) (string, error) {
+	switch len(position) {
+	case 0:
+		if strings.TrimSpace(operation) == "" {
+			return "", errors.New("operation required, for example: veto preview orders.list")
+		}
+		return operation, nil
+	case 1:
+		if operation != "" && operation != position[0] {
+			return "", fmt.Errorf("operation is %s and %s", position[0], operation)
+		}
+		return position[0], nil
+	default:
+		return "", errors.New("operation required, for example: veto preview orders.list")
+	}
 }
 
 func runPreview(cmd previewCmd) {

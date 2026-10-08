@@ -53,9 +53,9 @@ Traces are OpenTelemetry. OTLP export is optional. The Go model and memory inter
 veto init orders.yaml customers.yaml
 ```
 
-This writes `veto.yaml` in the current directory and, if it is missing, a `relations.yaml` stub (`relations: []`). When a contract loads and a read lists response fields, it also writes `flow.yaml` for that read and sets `flow_file`. A declared relation between two reads becomes the two steps. An existing `flow.yaml` is left in place. If `veto.yaml` is already there, `veto init` stops and leaves the files alone.
+This writes `veto.yaml` in the current directory and, if it is missing, a `relations.yaml` stub (`relations: []`). When a contract loads and a read lists response fields, it also writes `flow.yaml` for that read and sets `flow_file`. The read is one that can be called without a required parameter when the first contract has one. A declared relation between two reads becomes the two steps. An existing `flow.yaml` is left in place. If `veto.yaml` is already there, `veto init` stops and leaves the files alone. `relations.yaml` stays empty until it names a field and an operation. A response field is not a call until then. Init prints that sentence, the question search will match, `veto run` for the task, and `veto invoke` for the operation so the response can be read. A file that cannot be read is an error, and init writes nothing. From that directory, or a directory inside it, `run`, `search`, `describe`, `preview`, and `invoke` read `veto.yaml`.
 
-When that read declares a security scheme, `init` writes `auth` with an environment variable for the scheme and prints the variable when it is unset. It writes `agent.yaml` naming those operations and sets `agent_file`. It previews the first read. It calls that read when the preview is clean and the credential is set. The response is not printed.
+When that read declares a security scheme, `init` writes `auth` with an environment variable for the scheme and prints how to export it when it is unset. It writes `agent.yaml` with the operation and its exposure and sets `agent_file`. It previews the first read. It calls that read when the preview is clean and the credential is set. The response is not printed.
 
 ```yaml
 contracts:
@@ -88,7 +88,7 @@ expose:
 
 `approval_ttl: 30m` sets the lifetime of a signed approval. Unset keeps 15 minutes. It applies when `VETO_APPROVAL_SECRET` is set. `approval_store: VALKEY_URL` reads that env for a Valkey or Redis URL so more than one process shares consume-once. `VETO_APPROVAL_STORE` is the URL itself. A bundle manifest cannot carry these keys.
 
-`veto validate --config veto.yaml` loads the contracts and prints the operation count and joins.
+`veto validate --config veto.yaml` loads the contracts and prints the operation count and joins. When no relation is declared, it says a response field is not a call until `relations.yaml` names the operation.
 
 ## Capability bundle
 
@@ -239,7 +239,7 @@ veto serve --config veto.yaml --json
 {"invoke":{"operation_id":"orders.delete","params":{"id":"123"}},"caller":"ada"}
 ```
 
-`veto search`, `describe`, and `invoke` are a shorthand. Words are a search query. A JSON object is the tool arguments.
+`veto search`, `describe`, and `invoke` are a shorthand. Words are a search query. A JSON object is the tool arguments. On a terminal the result is the call line. A pipe keeps the JSON. `invoke --operation` and `--param key=value` are the same call as the positional id. A string field of the request body is its own parameter, so `--param reason=late` is sent as `body`.
 
 ```bash
 veto search --config veto.yaml retire order 123
@@ -365,7 +365,7 @@ steps:
   - invoices.get
 ```
 
-`Order.invoiceId` joined to `invoices.get` becomes the binding `orders.get invoiceId -> invoices.get id`. `veto search "disputed charge"` returns the task. The context pack includes that sentence when the message matches the question or an answer field. `veto propose` prints a task for each declared relation between two reads. The question is the relation sentence. The answer lists that operation's response fields for you to keep or delete. The steps do not copy the parameter mapping. `veto run investigate-charge --param id=10482` calls those steps and prints what stayed true: the earlier response supplied the binding field, the next operation accepted that parameter, the last response included the answer fields, and the task stayed read-only. Those lines do not include the response or the identifier. `--save` writes that task. A binding the relation already supplies stays out of the file. With that file as `flow_file`, `veto check` runs the task without an eval case and names it when a field is gone. A step that stops names the stage: parameter, policy, catalog, upstream, missing auth, or held until you approve. A flow step that names an operation, response field, or parameter the catalog does not have fails to load. `veto check` prints the sentence. A `flows` list in that file holds the task next to any other flow. Check fails when the response no longer includes the binding field or an answer field, when the next operation has no parameter for it, or when a step is not a read.
+`Order.invoiceId` joined to `invoices.get` becomes the binding `orders.get invoiceId -> invoices.get id`. `veto search "disputed charge"` returns the task. The context pack includes that task for the same words, so `show me all orders` includes a question that contains orders. `veto search` with no words names an example query. `veto propose` prints a task for each declared relation between two reads. `veto propose --out draft.yaml` writes that draft beside `flow.yaml` and prints `veto run --flow draft.yaml` for each task. `veto preview orders.list` is the operation id, the same way `veto invoke` takes it. A task matches the words in its question, so `show me all orders` matches a question that contains orders. `veto auth login` is a login source. A scheme that reads an environment variable names that variable and `veto auth set`. The question is the relation sentence. The answer lists that operation's required response fields. Add an optional field when the task should fail without it. The steps do not copy the parameter mapping. `veto run investigate-charge --param id=10482` calls those steps and prints what stayed true: the earlier response supplied the binding field, the next operation accepted that parameter, the last response included the answer fields, and the task stayed read-only. Those lines do not include the response or the identifier. `--save` writes that task. A binding the relation already supplies stays out of the file. With that file as `flow_file`, `veto check` runs the task without an eval case and names it when a field is gone. A step that stops names the stage: parameter, policy, catalog, upstream, missing auth, or held until you approve. A flow step that names an operation, response field, or parameter the catalog does not have fails to load. `veto check` prints the sentence. A `flows` list in that file holds the task next to any other flow. Check fails when the response no longer includes the binding field or an answer field, when the next operation has no parameter for it, or when a step is not a read.
 
 ## Pack
 
@@ -377,7 +377,7 @@ veto pack --config veto.yaml --message "who placed order 123"
 
 ## Check in CI
 
-`veto check` loads the catalog, prints joins and any task, and runs the case files. A task in the flow file is the check when no case is configured. Check fails when that task can no longer be taught. `--case` names the case file or directory. When it is omitted, check uses the `cases` list from the bundle. A case is required only when no task is loaded. `--against` is a git ref or a snapshot JSON file. The check fails when a joined operation disappears, confirmation is dropped without an `agent.yaml` change or `confirmation: false`, a new destructive operation appears, a discovery-only operation becomes callable, a required permission is removed, an eval expectation changes, or a task can no longer obtain its binding or an answer field. Drift compares `operation`, `confirmation_required`, `no_http`, `pack_contains`, `pack_excludes`, and `related`. `confirmation: false` prints `confirmation is off` and does not also report each operation as lost confirmation.
+`veto check` loads the catalog, prints joins and any task, and runs the case files. When no relation is declared, it says a response field is not a call until `relations.yaml` names the operation. A task in the flow file is the check when no case is configured. Check fails when that task can no longer be taught. `--case` names the case file or directory. When it is omitted, check uses the `cases` list from the bundle. A case is required only when no task is loaded. `--against` is a git ref or a snapshot JSON file. The check fails when a joined operation disappears, confirmation is dropped without an `agent.yaml` change or `confirmation: false`, a new destructive operation appears, a discovery-only operation becomes callable, a required permission is removed, an eval expectation changes, or a task can no longer obtain its binding or an answer field. Drift compares `operation`, `confirmation_required`, `no_http`, `pack_contains`, `pack_excludes`, and `related`. `confirmation: false` prints `confirmation is off` and does not also report each operation as lost confirmation.
 
 `--against` reads files from that git ref, so the checkout needs the history.
 

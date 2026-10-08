@@ -37,6 +37,14 @@ func TestPingTreatsNon2xxAsFailure(t *testing.T) {
 	assert.Contains(t, lines[0], "502")
 }
 
+func TestRepeatedMissingAuthCollapses(t *testing.T) {
+	got := collapseAuth([]string{"customers.list: missing auth bearerAuth", "orders.list: missing auth bearerAuth"})
+	assert.Equal(t, []string{"missing auth bearerAuth"}, got)
+	assert.Equal(t, []string{"ping: missing auth bearerAuth"}, collapseAuth([]string{"ping: missing auth bearerAuth"}))
+	mixed := collapseAuth([]string{"a: missing auth bearerAuth", "b: missing auth basic"})
+	assert.Equal(t, []string{"a: missing auth bearerAuth", "b: missing auth basic"}, mixed)
+}
+
 func TestStdioRejectsStdoutTraces(t *testing.T) {
 	require.Error(t, stdioTraceConflict(true, "stdout"))
 	assert.NoError(t, stdioTraceConflict(true, "otlp"))

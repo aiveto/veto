@@ -30,6 +30,22 @@ func TestWitnessNamesWhatTheRunKeptTrue(t *testing.T) {
 	assert.NotContains(t, joined, "10.00")
 }
 
+func TestWitnessReadsAnAnswerFieldFromAnArray(t *testing.T) {
+	def := &flow.Definition{
+		Name:     "read-orders-list",
+		Question: "List orders",
+		Answer:   []string{"customerId"},
+		Steps:    []flow.Step{{Operation: "orders.list"}},
+	}
+	cat := &catalog.Catalog{Operations: []catalog.Operation{{
+		ID: "orders.list", Kind: catalog.KindRead, ResponseFields: []string{"customerId"},
+	}}}
+	lines, err := flow.Witness(def, cat, []string{`[{"id":"1","customerId":"cus_priya"}]`})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"orders.list included customerId", "read-orders-list stayed read-only"}, lines)
+	assert.NotContains(t, lines[0]+lines[1], "cus_priya")
+}
+
 func TestWitnessNamesTheFieldTheResponseDropped(t *testing.T) {
 	taught := taughtCharge(t)
 	_, err := flow.Witness(taught, chargeCatalog(), []string{

@@ -445,7 +445,9 @@ func TestDoctorReportsCallRisks(t *testing.T) {
 	assert.Contains(t, report, "ping: empty summary")
 	assert.Contains(t, report, "items.create: weak summary")
 	assert.Contains(t, report, "items.delete: write requires approval")
-	assert.Contains(t, report, "ping: missing auth bearerAuth")
+	assert.Contains(t, report, "missing auth bearerAuth")
+	assert.NotContains(t, report, "ping: missing auth")
+	assert.Equal(t, 1, strings.Count(report, "missing auth"))
 
 	notes := loadDoctorCatalog(t, doctorNoteSpec)
 	noteLines, noteFail := doctorReport(context.Background(), notes, config.File{}, nil, false)
