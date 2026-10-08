@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `veto init` writes the auth env name for the suggested read and an `agent.yaml` that names those operations. It previews that read, and calls it when the preview is clean and the credential is set. The response is not printed.
+- `veto check` treats a task in the flow file as the check when no eval case is configured.
+
 ## v0.1.9 - 2026-10-07
 
 - A flow with a question is a read-only task. Search and the context pack return it. A later step takes its parameter from a declared relation. Check fails when that field or an answer field is gone, or a step is not a read.
