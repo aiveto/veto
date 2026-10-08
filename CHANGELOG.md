@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.12 - 2026-10-08
+
 - `veto version` prints the build. A release prints that version. A checkout prints `dev`.
 - A missing argument or flag names that input and an example.
 - `veto --help` says what veto is. `--config` works before the command.
