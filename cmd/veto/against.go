@@ -49,7 +49,7 @@ func newCheckCommand() *cobra.Command {
 	cmd := &checkCmd{}
 	c := &cobra.Command{
 		Use:   "check",
-		Short: "Load the catalog, print joins, and run eval cases.",
+		Short: "Load the catalog, print joins, and run a task or eval cases.",
 		Run: func(*cobra.Command, []string) {
 			runCheck(*cmd)
 		},
@@ -85,19 +85,23 @@ func runChecked(cmd checkCmd) error {
 	for _, line := range loop.Catalog.Joins() {
 		fmt.Println(line)
 	}
-	for _, line := range flow.Lines(loop.Flows) {
+	tasks := flow.Lines(loop.Flows)
+	for _, line := range tasks {
 		fmt.Println(line)
 	}
 	if len(cmd.cases) == 0 {
 		cmd.cases = cfg.Cases
 	}
-	if len(cmd.cases) == 0 {
+	if len(cmd.cases) == 0 && len(tasks) == 0 {
 		return errors.New("case required")
 	}
 	if cmd.against != "" {
-		if err := diffAgainst(cmd, loop.Catalog, flow.Lines(loop.Flows)); err != nil {
+		if err := diffAgainst(cmd, loop.Catalog, tasks); err != nil {
 			return err
 		}
+	}
+	if len(cmd.cases) == 0 {
+		return nil
 	}
 	return runCases(loop, cmd.cases)
 }
