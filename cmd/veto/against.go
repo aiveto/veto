@@ -126,6 +126,7 @@ func diffAgainst(cmd checkCmd, cat *catalog.Catalog, tasks []string) error {
 	lines := catalog.SurfaceRegressions(base.Operations, catalog.Facts(cat), agentmeta.ChangedConfirmations(base.Confirmations, agentmeta.Confirmations(curAgent)), !src.cfg.Confirms())
 	lines = append(lines, eval.Drift(base.Cases, eval.Expects(cases))...)
 	lines = append(lines, flow.TaskRegressions(base.Tasks, tasks)...)
+	lines = withStages(lines)
 	if len(lines) == 0 {
 		return nil
 	}
