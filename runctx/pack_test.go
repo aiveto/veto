@@ -211,4 +211,9 @@ func TestPackIncludesAMatchingTask(t *testing.T) {
 	assert.Contains(t, pack.Index, "invoiceId")
 	other := b.Build(nil, []runctx.Turn{{Role: "user", Content: "orders.get"}}, nil, nil, nil)
 	assert.NotContains(t, other.Index, "investigate-charge")
+	b.Tasks = append(b.Tasks, "task read-orders-list: List orders on the desk. answer: data")
+	orders := b.Build(nil, []runctx.Turn{{Role: "user", Content: "show me all orders"}}, nil, nil, nil)
+	assert.Contains(t, orders.Index, "read-orders-list")
+	customers := b.Build(nil, []runctx.Turn{{Role: "user", Content: "show me all customers"}}, nil, nil, nil)
+	assert.NotContains(t, customers.Index, "read-orders-list")
 }

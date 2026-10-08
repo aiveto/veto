@@ -381,6 +381,32 @@ func TestInvokeRejectsAQueryOutsideTheSchemaBeforeHTTP(t *testing.T) {
 	assert.Equal(t, int32(0), hits.Load())
 }
 
+func TestInvokeFoldsAStringBodyField(t *testing.T) {
+	var body string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		body = string(raw)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+	cat := &catalog.Catalog{Operations: []catalog.Operation{{
+		ID: "orders.cancel", Method: http.MethodPost, PathTemplate: "/orders/{id}/cancel",
+		Params: []catalog.Param{
+			{Name: "id", In: "path", Required: true},
+			{Name: "body", In: "body", Required: true, MediaType: "application/json", Schema: `{"type":"object","required":["reason"],"properties":{"reason":{"type":"string"}}}`},
+		},
+	}}}
+	cat.Finalize()
+	rt := runtime.Runtime{Catalog: cat, State: policy.NewState(), Exec: execute.Client{BaseURL: ts.URL}}
+	out, err := rt.Invoke(context.Background(), runtime.Request{
+		Operation: "orders.cancel",
+		Arguments: runtime.FromStrings(map[string]string{"id": "10502", "reason": "late"}),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, runtime.StatusOK, out.Status)
+	assert.JSONEq(t, `{"reason":"late"}`, body)
+}
+
 func TestMissingParamSkipsHTTP(t *testing.T) {
 	cat, err := openapi.Load(context.Background(), "../testdata/orders.yaml")
 	require.NoError(t, err)

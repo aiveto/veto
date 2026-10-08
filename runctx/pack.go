@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/aiveto/veto/catalog"
+	"github.com/aiveto/veto/flow"
 	"github.com/aiveto/veto/policy"
 	"github.com/aiveto/veto/semantics"
 )
@@ -374,14 +375,12 @@ func joinIndex(ops, tasks string) string {
 }
 
 func matchTasks(lines []string, query string) string {
-	q := strings.ToLower(strings.TrimSpace(query))
-	if q == "" {
+	if strings.TrimSpace(query) == "" {
 		return ""
 	}
 	var hit []string
 	for _, line := range lines {
-		head, _, _ := strings.Cut(strings.ToLower(line), " | ")
-		if strings.Contains(head, q) {
+		if flow.Match(line, query) {
 			hit = append(hit, line)
 		}
 	}

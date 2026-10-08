@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/aiveto/veto/catalog"
 	"github.com/spf13/cobra"
 )
 
@@ -54,4 +55,19 @@ func runValidate(cmd validateCmd) {
 	for _, line := range cat.Joins() {
 		fmt.Println(line)
 	}
+	if line := relationGap(cat); line != "" {
+		fmt.Println(line)
+	}
+}
+
+func relationGap(cat *catalog.Catalog) string {
+	if cat == nil {
+		return ""
+	}
+	for _, e := range cat.Graph.Edges {
+		if e.Kind == catalog.EdgeRelates {
+			return ""
+		}
+	}
+	return "no relations. A response field is not a call until relations.yaml names the operation."
 }

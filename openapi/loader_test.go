@@ -16,6 +16,42 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestLoadKeepsRequiredResponseFields(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "customers.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(`
+openapi: 3.0.3
+info: {title: t, version: "1"}
+paths:
+  /customers/{id}:
+    get:
+      operationId: customers.get
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: One customer
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, name, email, since]
+                properties:
+                  id: {type: string}
+                  name: {type: string}
+                  email: {type: string}
+                  phone: {type: string}
+                  since: {type: string}
+                  address: {type: object}
+`), 0o600))
+	cat, err := openapi.Load(context.Background(), path)
+	require.NoError(t, err)
+	op := cat.ByID("customers.get")
+	require.NotNil(t, op)
+	assert.Contains(t, op.ResponseFields, "phone")
+	assert.Contains(t, op.ResponseFields, "address")
+	assert.Equal(t, []string{"email", "id", "name", "since"}, op.ResponseRequired)
+}
+
 func TestLoadRejectsIncompleteDocuments(t *testing.T) {
 	cases := []struct {
 		name string

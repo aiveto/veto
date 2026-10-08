@@ -117,6 +117,51 @@ func responseFields(op *openapi3.Operation) []string {
 	return names
 }
 
+func responseRequired(op *openapi3.Operation) []string {
+	if op == nil || op.Responses == nil {
+		return nil
+	}
+	var names []string
+	seen := map[string]bool{}
+	stack := map[*openapi3.Schema]bool{}
+	for code, ref := range op.Responses.Map() {
+		if !strings.HasPrefix(code, "2") || ref == nil || ref.Value == nil {
+			continue
+		}
+		mt := ref.Value.Content.Get(jsonMedia)
+		if mt == nil {
+			continue
+		}
+		collectRequired(mt.Schema, &names, seen, stack)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func collectRequired(ref *openapi3.SchemaRef, names *[]string, seen map[string]bool, stack map[*openapi3.Schema]bool) {
+	if ref == nil || ref.Value == nil || stack[ref.Value] {
+		return
+	}
+	stack[ref.Value] = true
+	defer delete(stack, ref.Value)
+	for _, name := range ref.Value.Required {
+		if ref.Value.Properties[name] == nil || seen[name] {
+			continue
+		}
+		seen[name] = true
+		*names = append(*names, name)
+	}
+	for _, sub := range ref.Value.AllOf {
+		collectRequired(sub, names, seen, stack)
+	}
+	for _, sub := range ref.Value.OneOf {
+		collectRequired(sub, names, seen, stack)
+	}
+	for _, sub := range ref.Value.AnyOf {
+		collectRequired(sub, names, seen, stack)
+	}
+}
+
 func collectFields(ref *openapi3.SchemaRef, names *[]string, seen map[string]bool, stack map[*openapi3.Schema]bool) {
 	if ref == nil || ref.Value == nil || stack[ref.Value] {
 		return

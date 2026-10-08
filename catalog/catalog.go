@@ -93,6 +93,7 @@ type (
 		Requirements         [][]Auth          `json:"Requirements"` // OR of AND groups. Auth is the first group.
 		Tags                 []string          `json:"Tags"`
 		ResponseFields       []string          `json:"ResponseFields"`
+		ResponseRequired     []string          `json:"ResponseRequired,omitempty"`
 	}
 
 	OpLink struct {

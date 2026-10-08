@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- The context pack includes a task for the same words `veto search` uses. `veto search` with no words names an example query.
+- A string field of a request body is its own parameter, so `--param reason=late` is sent as `body`. `veto propose` puts the required response fields in the answer.
+- A terminal `veto invoke` names the missing parameter. `veto preview orders.list` takes the operation id. `veto propose --out` prints `veto run --flow` for the draft. Init also prints `veto invoke`. Search matches the words in a task question. `veto auth login` finds `veto.yaml` and names the environment variable when the scheme is not a login. Commands find `veto.yaml` in the current directory or a parent.
+- `veto init` with no file names the OpenAPI file it needs.
+- `veto init` suggests a read that needs no parameter when the first contract has one. `agent.yaml` names the operation and its exposure. Init prints the unset credential, the empty relations file, the question, and `veto run`.
+- `veto doctor` reports one missing-auth line when every operation is missing the same scheme.
+- `veto propose --out` writes the drafted tasks. The error names `relations.yaml` when no relation joins two reads.
+- `veto validate` and `veto check` say a response field is not a call until `relations.yaml` names the operation.
+- On a terminal, `veto search`, `describe`, and `invoke` print the call. `describe` includes the method, path, and response fields. An invoke error includes the HTTP status. `invoke --operation` and `--param` are the same call as the positional id.
+- Commands read `veto.yaml` in the current directory when `--config` is omitted.
+- `veto init` fails when an OpenAPI file cannot be read, and writes nothing.
+- A task answer field is read from the first array element when the response is a JSON array.
+- `veto propose --out draft.yaml` writes the draft beside `flow.yaml`.
+
 ## v0.1.10 - 2026-10-07
 
 - `veto init` writes the auth env name for the suggested read and an `agent.yaml` that names those operations. It previews that read, and calls it when the preview is clean and the credential is set. The response is not printed.

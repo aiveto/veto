@@ -160,6 +160,7 @@ func (rt *Runtime) Invoke(ctx context.Context, req Request) (Result, error) {
 	if err != nil {
 		return rt.record(ctx, errorResult(op.ID, "", err)), err
 	}
+	args = op.FoldBody(args)
 	if err := op.CheckParams(args); err != nil {
 		return rt.record(ctx, errorResult(op.ID, "", err)), err
 	}
@@ -298,8 +299,11 @@ func (rt *Runtime) Preview(ctx context.Context, req Request) (Preview, error) {
 	args, err := wire(req.Arguments, rt.JSON)
 	if err != nil {
 		out.Errors = append(out.Errors, err.Error())
-	} else if err := op.CheckParams(args); err != nil {
-		out.Errors = append(out.Errors, err.Error())
+	} else {
+		args = op.FoldBody(args)
+		if err := op.CheckParams(args); err != nil {
+			out.Errors = append(out.Errors, err.Error())
+		}
 	}
 	if drafter, ok := rt.Exec.(Drafter); ok {
 		draft, err := drafter.Draft(ctx, op, args)

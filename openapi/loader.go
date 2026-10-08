@@ -332,6 +332,7 @@ func mapOperation(method, path, group string, servers []catalog.Server, item *op
 		Servers:              servers,
 		Tags:                 append([]string(nil), op.Tags...),
 		ResponseFields:       responseFields(op),
+		ResponseRequired:     responseRequired(op),
 	}
 }
 

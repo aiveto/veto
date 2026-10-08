@@ -15,6 +15,78 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
+// FoldBody moves string fields of a missing JSON body onto that body.
+// An explicit body is left as given. A field that is not a string stays out of the body.
+func (op Operation) FoldBody(params map[string]string) map[string]string {
+	body, ok := op.BodyParam()
+	if !ok || strings.TrimSpace(params[body.Name]) != "" {
+		return params
+	}
+	props := body.stringProperties()
+	if len(props) == 0 {
+		return params
+	}
+	declared := map[string]bool{}
+	for _, p := range op.Params {
+		declared[p.Name] = true
+	}
+	folded := map[string]string{}
+	for name, value := range params {
+		if declared[name] || !props[name] || strings.TrimSpace(value) == "" {
+			continue
+		}
+		folded[name] = value
+	}
+	if len(folded) == 0 {
+		return params
+	}
+	raw, err := json.Marshal(folded)
+	if err != nil {
+		return params
+	}
+	out := make(map[string]string, len(params)+1)
+	for name, value := range params {
+		if _, ok := folded[name]; ok {
+			continue
+		}
+		out[name] = value
+	}
+	out[body.Name] = string(raw)
+	return out
+}
+
+func (p Param) stringProperties() map[string]bool {
+	if p.Schema == "" {
+		return nil
+	}
+	var doc struct {
+		Properties map[string]struct {
+			Type any `json:"type"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal([]byte(p.Schema), &doc); err != nil {
+		return nil
+	}
+	out := map[string]bool{}
+	for name, prop := range doc.Properties {
+		if stringSchema(prop.Type) {
+			out[name] = true
+		}
+	}
+	return out
+}
+
+func stringSchema(t any) bool {
+	switch v := t.(type) {
+	case nil:
+		return true
+	case string:
+		return v == "" || v == "string"
+	default:
+		return false
+	}
+}
+
 // CheckParams reports a missing required value, a parameter the call cannot send, a body that is not the declared JSON object, or a query, path, or header value that is not the declared schema.
 func (op Operation) CheckParams(params map[string]string) error {
 	for _, p := range op.Params {

@@ -85,6 +85,9 @@ func runChecked(cmd checkCmd) error {
 	for _, line := range loop.Catalog.Joins() {
 		fmt.Println(line)
 	}
+	if line := relationGap(loop.Catalog); line != "" {
+		fmt.Println(line)
+	}
 	tasks := flow.Lines(loop.Flows)
 	for _, line := range tasks {
 		fmt.Println(line)
