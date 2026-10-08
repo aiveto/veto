@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.10 - 2026-10-07
+
 - `veto init` writes the auth env name for the suggested read and an `agent.yaml` that names those operations. It previews that read, and calls it when the preview is clean and the credential is set. The response is not printed.
 - `veto check` treats a task in the flow file as the check when no eval case is configured.
 
