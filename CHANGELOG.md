@@ -2,13 +2,15 @@
 
 ## Unreleased
 
+## v0.1.9 - 2026-10-07
+
 - A flow with a question is a read-only task. Search and the context pack return it. A later step takes its parameter from a declared relation. Check fails when that field or an answer field is gone, or a step is not a read.
 - `veto check --against` names a task that lost a binding or an answer field.
 - An invoke failure names its stage in `why`: parameter, policy, catalog, upstream, missing auth, or held until you approve.
 - A semantics file that names an operation the catalog does not have fails to load.
 - `veto init` writes a read-only task when a contract lists response fields for a read. A declared relation between two reads becomes the two steps.
 - `veto propose` drafts a reviewable task from each declared relation. The owner keeps the question and the answer fields that matter.
-- `veto run` prints what a read-only task kept true. A missing binding or answer field uses the same sentence as check. The response and its values are not stored.
+- `veto run` prints what a read-only task kept true. A missing binding or answer field uses the same sentence as check. The response and its values are not stored. `--save` writes that task. A binding the relation already supplies stays out of the file.
 - A flow step that names an operation, response field, or parameter the catalog does not have fails to load.
 - A stopped task step names the same stage as invoke. A doctor ping that cannot reach the server says upstream.
 

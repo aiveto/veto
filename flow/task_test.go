@@ -180,6 +180,33 @@ func TestProposeAsksTheOwnerToReviewTheRelation(t *testing.T) {
 	require.Len(t, defs, 2)
 }
 
+func TestReviewLeavesARelationBindingUnset(t *testing.T) {
+	cat := chargeCatalog()
+	base := &flow.Definition{
+		Name:     "investigate-charge",
+		Question: "Investigate a customer's disputed charge",
+		Answer:   []string{"amount", "currency"},
+		Steps:    []flow.Step{{Operation: "orders.get"}, {Operation: "invoices.get"}},
+	}
+	taught, err := flow.Teach(base, cat)
+	require.NoError(t, err)
+	got := flow.Review(taught, cat)
+	assert.Empty(t, got.Steps[0].Output)
+	assert.Empty(t, got.Steps[0].To)
+	again, err := flow.Teach(got, cat)
+	require.NoError(t, err)
+	assert.Equal(t, taught.Binds(), again.Binds())
+
+	cat.Links = append(cat.Links, catalog.OpLink{From: "orders.get", To: "invoices.get", Note: "Order.customerId"})
+	explicit := *base
+	explicit.Steps = []flow.Step{{Operation: "orders.get", Output: "invoiceId", To: "id"}, {Operation: "invoices.get"}}
+	taught, err = flow.Teach(&explicit, cat)
+	require.NoError(t, err)
+	kept := flow.Review(taught, cat)
+	assert.Equal(t, "invoiceId", kept.Steps[0].Output)
+	assert.Equal(t, "id", kept.Steps[0].To)
+}
+
 func TestParseReadsTheQuestion(t *testing.T) {
 	def, err := flow.Parse([]byte("name: investigate-charge\nquestion: Investigate a customer's disputed charge\nanswer: [amount, currency]\nsteps:\n  - orders.get\n  - invoices.get\n"))
 	require.NoError(t, err)
