@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/aiveto/veto/config"
@@ -15,10 +17,12 @@ import (
 func newApproveCommand() *cobra.Command {
 	var configPath string
 	cmd := &cobra.Command{
-		Use:   "approve <id>",
-		Short: "Record approval for a pending confirmation.",
-		Args:  cobra.ExactArgs(1),
+		Use:     "approve <id>",
+		Short:   "Record approval for a pending confirmation.",
+		Example: "  veto approve pending-id",
+		Args:    approveArgs,
 		Run: func(cmd *cobra.Command, args []string) {
+			useRootConfig(cmd, &configPath)
 			approved, err := approveID(cmd.Context(), args[0], configPath)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "approve: %v\n", err)
@@ -29,6 +33,13 @@ func newApproveCommand() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&configPath, "config", "", "Path to veto.yaml. Reads approval_store and approval_ttl.")
 	return cmd
+}
+
+func approveArgs(_ *cobra.Command, args []string) error {
+	if len(args) != 1 || strings.TrimSpace(args[0]) == "" {
+		return errors.New("approval id required, for example: veto approve pending-id")
+	}
+	return nil
 }
 
 func approveID(ctx context.Context, id, configPath string) (string, error) {

@@ -20,9 +20,10 @@ func newRunCommand() *cobra.Command {
 	var save string
 	var flowPath string
 	c := &cobra.Command{
-		Use:   "run TASK",
-		Short: "Run a read-only task and print what stayed true.",
-		Args:  cobra.ExactArgs(1),
+		Use:     "run TASK",
+		Short:   "Run a read-only task and print what stayed true.",
+		Example: "  veto run read-orders-list",
+		Args:    runArgs,
 		Run: func(_ *cobra.Command, args []string) {
 			if err := runTask(flags, args[0], params, save, flowPath); err != nil {
 				fmt.Fprintf(os.Stderr, "run: %v\n", err)
@@ -36,6 +37,13 @@ func newRunCommand() *cobra.Command {
 	c.Flags().StringVar(&flowPath, "flow", "", "Flow file for this run. Replaces flow_file.")
 	c.Flags().StringVar(&save, "save", "", "Write the task the run confirmed. A binding the relation already supplies is left unset.")
 	return c
+}
+
+func runArgs(_ *cobra.Command, args []string) error {
+	if len(args) != 1 || strings.TrimSpace(args[0]) == "" {
+		return errors.New("task required, for example: veto run read-orders-list")
+	}
+	return nil
 }
 
 func runTask(flags catalogFlags, name string, pairs []string, save, flowPath string) error {

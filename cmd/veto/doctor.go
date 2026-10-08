@@ -31,7 +31,8 @@ func newDoctorCommand() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "doctor",
 		Short: "Check contracts, auth, ids, parameters, summaries, and pins.",
-		Run: func(*cobra.Command, []string) {
+		Run: func(c *cobra.Command, _ []string) {
+			useRootConfig(c, &cmd.config)
 			runDoctor(*cmd)
 		},
 	}

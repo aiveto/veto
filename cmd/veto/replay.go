@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/aiveto/veto/execute"
 	"github.com/aiveto/veto/replay"
@@ -25,9 +27,17 @@ type replayCmd struct {
 func newReplayCommand() *cobra.Command {
 	cmd := &replayCmd{}
 	c := &cobra.Command{
-		Use:   "replay",
-		Short: "Run one message and print the recorded trace.",
-		Run: func(*cobra.Command, []string) {
+		Use:     "replay",
+		Short:   "Run one message and print the recorded trace.",
+		Example: "  veto replay --message \"delete order 123\"",
+		PreRunE: func(*cobra.Command, []string) error {
+			if strings.TrimSpace(cmd.from) == "" && strings.TrimSpace(cmd.message) == "" {
+				return errors.New(`message required, for example: veto replay --message "delete order 123"`)
+			}
+			return nil
+		},
+		Run: func(c *cobra.Command, _ []string) {
+			useRootConfig(c, &cmd.config)
 			runReplay(*cmd)
 		},
 	}
@@ -51,10 +61,6 @@ func runReplay(cmd replayCmd) {
 		}
 		fmt.Print(view.String())
 		return
-	}
-	if cmd.message == "" {
-		fmt.Fprintf(os.Stderr, "replay: message required\n")
-		exitMain(1)
 	}
 	rec, err := telemetry.Record()
 	if err != nil {

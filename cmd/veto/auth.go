@@ -41,7 +41,8 @@ func newAuthLoginCommand() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "login",
 		Short: "Sign in once and store a refresh token.",
-		Run: func(*cobra.Command, []string) {
+		Run: func(c *cobra.Command, _ []string) {
+			useRootConfig(c, &cmd.config)
 			runAuthLogin(*cmd)
 		},
 	}
@@ -54,9 +55,17 @@ func newAuthLoginCommand() *cobra.Command {
 func newAuthSetCommand() *cobra.Command {
 	cmd := &authSetCmd{}
 	c := &cobra.Command{
-		Use:   "set",
-		Short: "Store a token read from stdin.",
-		Run: func(*cobra.Command, []string) {
+		Use:     "set",
+		Short:   "Store a token read from stdin.",
+		Example: "  veto auth set --scheme bearerAuth",
+		PreRunE: func(*cobra.Command, []string) error {
+			if strings.TrimSpace(cmd.scheme) == "" {
+				return errors.New("scheme required, for example: veto auth set --scheme bearerAuth")
+			}
+			return nil
+		},
+		Run: func(c *cobra.Command, _ []string) {
+			useRootConfig(c, &cmd.config)
 			runAuthSet(*cmd)
 		},
 	}
@@ -85,10 +94,6 @@ func runAuthLogin(cmd authLoginCmd) {
 }
 
 func runAuthSet(cmd authSetCmd) {
-	if cmd.scheme == "" {
-		fmt.Fprintln(os.Stderr, "auth set: scheme required")
-		exitMain(1)
-	}
 	dir := auth.DefaultTokenDir()
 	path := cmd.config
 	if path == "" {
@@ -130,10 +135,10 @@ func configuredScheme(configPath, name string) (auth.Scheme, string, error) {
 		configPath = found
 	}
 	if configPath == "" {
-		return auth.Scheme{}, "", errors.New("config required")
+		return auth.Scheme{}, "", errors.New("config required, for example: veto auth login --config veto.yaml --scheme bearerAuth")
 	}
 	if name == "" {
-		return auth.Scheme{}, "", errors.New("scheme required")
+		return auth.Scheme{}, "", errors.New("scheme required, for example: veto auth login --scheme bearerAuth")
 	}
 	cfg, err := loadAuthConfig(configPath)
 	if err != nil {

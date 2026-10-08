@@ -19,7 +19,8 @@ func newProposeCommand() *cobra.Command {
 		Use:     "propose",
 		Short:   "Print read-only tasks drafted from declared relations.",
 		Example: "  veto propose --config veto.yaml --out draft.yaml",
-		Run: func(*cobra.Command, []string) {
+		Run: func(c *cobra.Command, _ []string) {
+			useRootConfig(c, &flags.config)
 			if err := runPropose(flags, out); err != nil {
 				fmt.Fprintf(os.Stderr, "propose: %v\n", err)
 				exitMain(1)

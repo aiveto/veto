@@ -2,8 +2,10 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/aiveto/veto/agent"
 	"github.com/aiveto/veto/runctx"
@@ -22,9 +24,17 @@ type packCmd struct {
 func newPackCommand() (*cobra.Command, error) {
 	cmd := &packCmd{}
 	c := &cobra.Command{
-		Use:   "pack",
-		Short: "Print the context pack for a message.",
-		Run: func(*cobra.Command, []string) {
+		Use:     "pack",
+		Short:   "Print the context pack for a message.",
+		Example: "  veto pack --message \"show me orders\"",
+		PreRunE: func(*cobra.Command, []string) error {
+			if strings.TrimSpace(cmd.message) == "" {
+				return errors.New(`--message required, for example: veto pack --message "show me orders"`)
+			}
+			return nil
+		},
+		Run: func(c *cobra.Command, _ []string) {
+			useRootConfig(c, &cmd.config)
 			runPack(*cmd)
 		},
 	}

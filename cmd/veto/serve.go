@@ -36,6 +36,7 @@ func newServeCommand() *cobra.Command {
 		Use:   "serve",
 		Short: "Serve the three capabilities over MCP or JSON.",
 		Run: func(c *cobra.Command, _ []string) {
+			useRootConfig(c, &cmd.config)
 			runServe(*cmd, c)
 		},
 	}
@@ -64,7 +65,7 @@ func runServe(cmd serveCmd, c *cobra.Command) {
 		exitMain(1)
 	}
 	if !cmd.http && !stdio && !cmd.jsonLines {
-		fmt.Fprintf(os.Stderr, "serve: stdio, http, or json required\n")
+		fmt.Fprintf(os.Stderr, "serve: stdio, http, or json required, for example: veto serve --stdio\n")
 		exitMain(1)
 	}
 	srv, cfg, err := buildServer(cmd.contract, cmd.config, cmd.agent, cmd.relations, cmd.baseURL)

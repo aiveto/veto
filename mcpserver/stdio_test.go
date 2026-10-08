@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"testing"
@@ -109,4 +110,29 @@ func TestInvokeErrorReturnsTheSanitizedCause(t *testing.T) {
 	require.True(t, ok)
 	assert.Contains(t, storedText.Text, "api_key=REDACTED")
 	assert.NotContains(t, storedText.Text, secret)
+}
+
+func TestToolResultKeepsStructuredJSON(t *testing.T) {
+	result, out, err := textResult(`[{"id":"orders.list"}]`)
+	require.NoError(t, err)
+	assert.Nil(t, out)
+	require.Len(t, result.Content, 1)
+	raw, ok := result.StructuredContent.(json.RawMessage)
+	require.True(t, ok)
+	assert.JSONEq(t, `[{"id":"orders.list"}]`, string(raw))
+}
+
+func TestConnectSendsInstructions(t *testing.T) {
+	server, err := newMCP(nil, Options{})
+	require.NoError(t, err)
+	ctx := t.Context()
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	_, err = server.Connect(ctx, serverTransport, nil)
+	require.NoError(t, err)
+	session, err := mcp.NewClient(&mcp.Implementation{Name: "client", Version: "dev"}, nil).Connect(ctx, clientTransport, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, session.Close()) })
+	got := session.InitializeResult()
+	require.NotNil(t, got)
+	assert.Equal(t, Instructions, got.Instructions)
 }

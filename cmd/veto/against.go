@@ -50,7 +50,8 @@ func newCheckCommand() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "check",
 		Short: "Load the catalog, print joins, and run a task or eval cases.",
-		Run: func(*cobra.Command, []string) {
+		Run: func(c *cobra.Command, _ []string) {
+			useRootConfig(c, &cmd.config)
 			runCheck(*cmd)
 		},
 	}
@@ -96,7 +97,7 @@ func runChecked(cmd checkCmd) error {
 		cmd.cases = cfg.Cases
 	}
 	if len(cmd.cases) == 0 && len(tasks) == 0 {
-		return errors.New("case required")
+		return errors.New("case required, for example: veto check --case testdata/delete.yaml")
 	}
 	if cmd.against != "" {
 		if err := diffAgainst(cmd, loop.Catalog, tasks); err != nil {

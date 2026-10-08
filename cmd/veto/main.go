@@ -4,7 +4,9 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
+	"github.com/aiveto/veto/mcpserver"
 	"github.com/spf13/cobra"
 )
 
@@ -28,6 +30,17 @@ func main() {
 	exitMain(0)
 }
 
+func useRootConfig(cmd *cobra.Command, local *string) {
+	if local == nil || strings.TrimSpace(*local) != "" || cmd == nil || cmd.Root() == nil {
+		return
+	}
+	flag := cmd.Root().PersistentFlags().Lookup("config")
+	if flag == nil || !flag.Changed {
+		return
+	}
+	*local = flag.Value.String()
+}
+
 func exitMain(code int) {
 	releaseBundles()
 	os.Exit(code)
@@ -49,8 +62,13 @@ func newRoot() (*cobra.Command, error) {
 	checkCmd := newCheckCommand()
 	root := &cobra.Command{
 		Use:          "veto",
+		Short:        "Decide a call against an OpenAPI contract.",
+		Long:         "Veto loads an OpenAPI contract, serves search, describe, and invoke, and refuses a destructive call until confirmation is stored.",
 		SilenceUsage: true,
+		Version:      mcpserver.Version,
 	}
+	root.SetVersionTemplate("veto {{.Version}}\n")
+	root.PersistentFlags().String("config", "", "Path to veto.yaml. Works before the command.")
 	root.AddCommand(
 		newValidateCommand(),
 		newInitCommand(),
@@ -69,6 +87,7 @@ func newRoot() (*cobra.Command, error) {
 		checkCmd,
 		newAuthCommand(),
 		newApproveCommand(),
+		newVersionCommand(),
 	)
 	return root, nil
 }
