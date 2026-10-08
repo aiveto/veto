@@ -452,6 +452,40 @@ func Format(defs []*Definition) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// Review returns the task a run confirmed. A binding the relation already supplies is left unset.
+func Review(def *Definition, cat *catalog.Catalog) *Definition {
+	if def == nil {
+		return nil
+	}
+	out := *def
+	out.Answer = slices.Clone(def.Answer)
+	out.Steps = slices.Clone(def.Steps)
+	if cat == nil {
+		return &out
+	}
+	for i := 0; i+1 < len(out.Steps); i++ {
+		step := out.Steps[i]
+		if strings.TrimSpace(step.Output) == "" {
+			continue
+		}
+		from := cat.ByID(step.Operation)
+		next := cat.ByID(out.Steps[i+1].Operation)
+		if from == nil || next == nil {
+			continue
+		}
+		cleared := step
+		cleared.Output = ""
+		cleared.To = ""
+		bound, err := bind(out.Name, *from, *next, cleared, cat.Links)
+		if err != nil || bound.Output != step.Output || bound.To != step.To {
+			continue
+		}
+		out.Steps[i].Output = ""
+		out.Steps[i].To = ""
+	}
+	return &out
+}
+
 func relationPairs(cat *catalog.Catalog) [][2]string {
 	if cat == nil {
 		return nil

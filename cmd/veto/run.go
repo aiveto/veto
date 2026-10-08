@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -9,10 +8,10 @@ import (
 	"strings"
 
 	"github.com/aiveto/veto/auth"
+	"github.com/aiveto/veto/catalog"
 	"github.com/aiveto/veto/flow"
 	"github.com/aiveto/veto/runtime"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 )
 
 func newRunCommand() *cobra.Command {
@@ -33,7 +32,7 @@ func newRunCommand() *cobra.Command {
 	addCatalogFlags(c, &flags)
 	c.Flags().StringArrayVar(&params, "param", nil, "First-step parameter, as name=value. Repeat for another.")
 	c.Flags().StringVar(&flags.caller, "caller", "", "Caller or tenant passed to policy.")
-	c.Flags().StringVar(&save, "save", "", "Write a check the owner reviews. It records the question, answer fields, and bindings.")
+	c.Flags().StringVar(&save, "save", "", "Write the task the run confirmed. A binding the relation already supplies is left unset.")
 	return c
 }
 
@@ -86,7 +85,7 @@ func runTask(flags catalogFlags, name string, pairs []string, save string) error
 	if save == "" {
 		return nil
 	}
-	return writeSavedCheck(save, def)
+	return writeSavedCheck(save, def, srv.Catalog)
 }
 
 func taskParams(pairs []string) (map[string]string, error) {
@@ -106,7 +105,7 @@ func taskParams(pairs []string) (map[string]string, error) {
 	return out, nil
 }
 
-func writeSavedCheck(path string, def *flow.Definition) error {
+func writeSavedCheck(path string, def *flow.Definition, cat *catalog.Catalog) error {
 	_, err := os.Stat(path)
 	if err == nil {
 		return fmt.Errorf("%s exists", path)
@@ -114,46 +113,13 @@ func writeSavedCheck(path string, def *flow.Definition) error {
 	if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	body, err := savedCheck(def)
+	reviewed := flow.Review(def, cat)
+	if reviewed == nil {
+		return errors.New("task is missing")
+	}
+	body, err := flow.Format([]*flow.Definition{reviewed})
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(path, body, 0o600)
-}
-
-func savedCheck(def *flow.Definition) ([]byte, error) {
-	if def == nil || strings.TrimSpace(def.Question) == "" {
-		return nil, errors.New("task is missing")
-	}
-	head, rest, _ := strings.Cut(def.IndexLine(), " | ")
-	contains := []string{head}
-	if rest != "" {
-		for part := range strings.SplitSeq(rest, " | ") {
-			part = strings.TrimSpace(part)
-			if part != "" {
-				contains = append(contains, part)
-			}
-		}
-	}
-	doc := struct {
-		Name   string `yaml:"name"`
-		Input  string `yaml:"input"`
-		Expect struct {
-			PackContains []string `yaml:"pack_contains"`
-		} `yaml:"expect"`
-	}{
-		Name:  def.Name,
-		Input: def.Question,
-	}
-	doc.Expect.PackContains = contains
-	var buf bytes.Buffer
-	enc := yaml.NewEncoder(&buf)
-	enc.SetIndent(2)
-	if err := enc.Encode(doc); err != nil {
-		return nil, err
-	}
-	if err := enc.Close(); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
 }
