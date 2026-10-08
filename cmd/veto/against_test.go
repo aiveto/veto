@@ -266,3 +266,33 @@ paths:
         "200":
           description: One order
 `
+
+func TestCheckAcceptsATaskWithoutACase(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "orders.yaml"), []byte(initOrderSpec), 0o600))
+	flowBody := "name: read-orders-get\nquestion: Get order by id\nanswer: [customerId]\nsteps:\n  - orders.get\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "flow.yaml"), []byte(flowBody), 0o600))
+	cfg := "contracts:\n  - orders.yaml\nflow_file: flow.yaml\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "veto.yaml"), []byte(cfg), 0o600))
+	require.NoError(t, runChecked(checkCmd{config: filepath.Join(dir, "veto.yaml")}))
+}
+
+func TestCheckRequiresACaseWhenNothingIsTaught(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "orders.yaml"), []byte(initOrderSpec), 0o600))
+	cfg := "contracts:\n  - orders.yaml\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "veto.yaml"), []byte(cfg), 0o600))
+	err := runChecked(checkCmd{config: filepath.Join(dir, "veto.yaml")})
+	require.ErrorContains(t, err, "case required")
+}
+
+func TestCheckNamesATaskThatCannotBeTaught(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "orders.yaml"), []byte(initOrderSpec), 0o600))
+	flowBody := "name: read-orders-get\nquestion: Get order by id\nanswer: [amount]\nsteps:\n  - orders.get\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "flow.yaml"), []byte(flowBody), 0o600))
+	cfg := "contracts:\n  - orders.yaml\nflow_file: flow.yaml\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "veto.yaml"), []byte(cfg), 0o600))
+	err := runChecked(checkCmd{config: filepath.Join(dir, "veto.yaml")})
+	require.ErrorContains(t, err, "task read-orders-get can no longer read amount from orders.get")
+}
