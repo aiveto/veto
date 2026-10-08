@@ -103,6 +103,7 @@ func doctorReport(ctx context.Context, cat *catalog.Catalog, cfg config.File, pi
 			fail = true
 		}
 	}
+	out = withStages(out)
 	sort.Strings(out)
 	return out, fail
 }

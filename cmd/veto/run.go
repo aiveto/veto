@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -11,17 +12,19 @@ import (
 	"github.com/aiveto/veto/flow"
 	"github.com/aiveto/veto/runtime"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 func newRunCommand() *cobra.Command {
 	var flags catalogFlags
 	var params []string
+	var save string
 	c := &cobra.Command{
 		Use:   "run TASK",
 		Short: "Run a read-only task and print what stayed true.",
 		Args:  cobra.ExactArgs(1),
 		Run: func(_ *cobra.Command, args []string) {
-			if err := runTask(flags, args[0], params); err != nil {
+			if err := runTask(flags, args[0], params, save); err != nil {
 				fmt.Fprintf(os.Stderr, "run: %v\n", err)
 				exitMain(1)
 			}
@@ -30,10 +33,11 @@ func newRunCommand() *cobra.Command {
 	addCatalogFlags(c, &flags)
 	c.Flags().StringArrayVar(&params, "param", nil, "First-step parameter, as name=value. Repeat for another.")
 	c.Flags().StringVar(&flags.caller, "caller", "", "Caller or tenant passed to policy.")
+	c.Flags().StringVar(&save, "save", "", "Write a check the owner reviews. It records the question, answer fields, and bindings.")
 	return c
 }
 
-func runTask(flags catalogFlags, name string, pairs []string) error {
+func runTask(flags catalogFlags, name string, pairs []string, save string) error {
 	params, err := taskParams(pairs)
 	if err != nil {
 		return err
@@ -79,7 +83,10 @@ func runTask(flags catalogFlags, name string, pairs []string) error {
 	for _, line := range lines {
 		fmt.Println(line)
 	}
-	return nil
+	if save == "" {
+		return nil
+	}
+	return writeSavedCheck(save, def)
 }
 
 func taskParams(pairs []string) (map[string]string, error) {
@@ -97,4 +104,56 @@ func taskParams(pairs []string) (map[string]string, error) {
 		out[key] = value
 	}
 	return out, nil
+}
+
+func writeSavedCheck(path string, def *flow.Definition) error {
+	_, err := os.Stat(path)
+	if err == nil {
+		return fmt.Errorf("%s exists", path)
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	body, err := savedCheck(def)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, body, 0o600)
+}
+
+func savedCheck(def *flow.Definition) ([]byte, error) {
+	if def == nil || strings.TrimSpace(def.Question) == "" {
+		return nil, errors.New("task is missing")
+	}
+	head, rest, _ := strings.Cut(def.IndexLine(), " | ")
+	contains := []string{head}
+	if rest != "" {
+		for part := range strings.SplitSeq(rest, " | ") {
+			part = strings.TrimSpace(part)
+			if part != "" {
+				contains = append(contains, part)
+			}
+		}
+	}
+	doc := struct {
+		Name   string `yaml:"name"`
+		Input  string `yaml:"input"`
+		Expect struct {
+			PackContains []string `yaml:"pack_contains"`
+		} `yaml:"expect"`
+	}{
+		Name:  def.Name,
+		Input: def.Question,
+	}
+	doc.Expect.PackContains = contains
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(doc); err != nil {
+		return nil, err
+	}
+	if err := enc.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
