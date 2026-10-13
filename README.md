@@ -6,7 +6,7 @@ Point veto at your OpenAPI specs. An agent gets three tools: search, describe, a
 
 No API rewrites. The agent does not get a tool for every endpoint.
 
-<img src="docs/veto.gif" width="1280" alt="veto init reads the OpenAPI specs. You name the customer and invoice links. scrap means delete the order. Cursor gets search, describe, and invoke. Order 10482 is Mara Ellison, a wool coat and two cedar trays, $556. The invoice is paid. Scrap the order, and the call is held. The order is still there.">
+<img src="docs/veto.gif" width="1280" alt="veto init reads the OpenAPI specs. You name the customer and invoice links. scrap means delete the order. Claude, Cursor, or ChatGPT gets search, describe, and invoke. Order 10482 is Mara Ellison, a wool coat and two cedar trays, $556. The invoice is paid. Scrap the order, and the call is held. The order is still there.">
 
 See it yourself: [Run the Harbor demo](https://github.com/aiveto/veto-demo). Mara's order, the customer and invoice links, and a delete that waits.
 
