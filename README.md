@@ -1,16 +1,21 @@
+<img src="docs/veto-social.png" width="1280" alt="Your whole API. Three tools.">
+
 **Your whole API. Three tools.**
 
-A hundred endpoints. A thousand. Still three tools.
+Your APIs are already built. Make them ready for an agent.
 
-Stop turning every endpoint into another tool the agent has to carry. Point veto at the OpenAPI you already have.
+Point veto at the OpenAPI you have.
+
+- **Three tools**, however large the catalog grows. Search, describe, and invoke.
+- **The next call is one you declared.** Search finds the operation. A relation names what comes next. The raw spec stays out.
+- **MCP, the CLI, JSON lines, and a Go client** for this runtime.
+- **A hold on the delete.** You approve that caller, that operation, and those parameters. Policy, credentials, and a trace come with the call.
+
+One catalog. One runtime. Your services stay where they are.
 
 <img src="docs/veto.gif" width="1280" alt="Three tools: search, describe, invoke. The search command runs, then order 123 follows customerId 7 to customers.get. The delete command runs, then the call is held until you approve.">
 
-It finds order 123, follows the customer you named, and holds the delete.
-
-**search → describe → invoke**
-
-Search finds the operation from what you asked, including retire for delete. Describe returns that call, and the next one. Invoke runs it. The raw spec stays out of the agent's context.
+Watch it discover an order, follow the relationship you declared, and hold the delete. Still three tools.
 
 **Who placed order 123?**
 
@@ -18,20 +23,16 @@ Search finds the operation from what you asked, including retire for delete. Des
 
 You declared that link. The agent follows it. A field name alone is not a call.
 
-**One catalog. Four ways in.**
-
 | | |
 | --- | --- |
 | MCP | search, describe, and invoke for the agent |
 | CLI | the same three, in your terminal |
 | JSON lines | `veto serve --json`, for scripts |
-| Go client | `veto generate` writes a client for this runtime |
-
-Your services stay where they are. The Go client calls veto. It is not a new client for every upstream API. Module `github.com/aiveto/veto`.
+| Go client | `veto generate` writes a client for this runtime, not a new client for every upstream API |
 
 **Delete order 123.**
 
-The agent can ask. Veto holds that caller, that operation, and those parameters. Nothing is sent until you approve that call. Credentials resolve on the call. The trace records the decision and leaves the secret out.
+The agent can ask. Veto holds that call. Nothing is sent until you approve it.
 
 ```bash
 brew install aiveto/veto/veto
@@ -42,13 +43,13 @@ veto init orders.yaml customers.yaml
 veto serve --stdio
 ```
 
-The [setup guide](docs/guide.md#mcp) has the block for Claude, Cursor, or ChatGPT.
+The [setup guide](docs/guide.md#mcp) has the block for Claude, Cursor, or ChatGPT. Install with Go, and the container image, are there too.
 
-`go install github.com/aiveto/veto/cmd/veto@latest` needs Go 1.27.1. `brew` does not. Binaries are on [GitHub Releases](https://github.com/aiveto/veto/releases). A release also pushes `ghcr.io/aiveto/veto`.
+<img src="docs/veto-runtime.png" width="1280" alt="Claude, Cursor, or ChatGPT talks to veto over MCP. A CLI or script uses search, describe, and invoke. Search and describe read the catalog. Invoke goes to policy and confirmation, then HTTP.">
 
-[veto-demo](https://github.com/aiveto/veto-demo) is the longer walk: Harbor, orders, customers, and billing. `make demo` runs it over the CLI, then over MCP.
+[veto-demo](https://github.com/aiveto/veto-demo) is Harbor: orders, customers, and billing, the relationship, and the hold. `make demo` runs it over the CLI, then over MCP.
 
-This repo runs the same story with no model key.
+This repo runs that story with no model key.
 
 ```bash
 git clone https://github.com/aiveto/veto.git
@@ -70,8 +71,6 @@ veto serve --config testdata/veto.yaml --stdio
 veto eval --config testdata/veto.yaml --case testdata/delete.yaml
 ```
 
-<img src="docs/veto-runtime.png" width="1280" alt="Claude, Cursor, or ChatGPT talks to veto over MCP. A CLI or script uses search, describe, and invoke. Search and describe read the catalog. Invoke goes to policy and confirmation, then HTTP.">
-
-**Pre-1.0.** Public APIs may change.
+Your APIs are already built. Point veto at them.
 
 [Setup guide](docs/guide.md) | [Current limits](docs/guide.md#limits)

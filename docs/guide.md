@@ -2,6 +2,8 @@
 
 Point `veto` at OpenAPI files you already have. The agent gets three tools. Destructive calls wait for confirmation.
 
+Pre-1.0. Public APIs may change.
+
 ## Install
 
 ```bash
