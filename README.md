@@ -10,6 +10,8 @@ No API rewrites. No hundreds of MCP tools. No separate integration for every ser
 
 <img src="docs/veto.gif" width="1280" alt="Three tools: search, describe, invoke. The search command runs, then order 123 follows customerId 7 to customers.get. The delete command runs, then the call is held until you approve.">
 
+See it yourself: [Run the Harbor demo](https://github.com/aiveto/veto-demo) — explore connected APIs, follow relationships, and see approval-gated execution in action.
+
 ## 100 endpoints. 1,000 endpoints. Still 3 MCP tools.
 
 ### search → describe → invoke
@@ -47,6 +49,10 @@ Veto holds the operation until a human approves the exact caller, operation, and
 | Understand what executed | Redacted audit traces |
 
 One catalog. One runtime. Consistent behavior across interfaces. Module `github.com/aiveto/veto`.
+
+## Get started
+
+Already have OpenAPI specs? You're three commands away from your first MCP server.
 
 ```bash
 brew install aiveto/veto/veto
