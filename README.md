@@ -1,4 +1,4 @@
-# Your whole API. Just 3 tools.
+# Your entire API platform. Just 3 MCP tools.
 
 Your APIs are already built. Make them agent-ready.
 
