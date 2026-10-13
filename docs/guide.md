@@ -1,6 +1,6 @@
 # Using veto
 
-Point `veto` at OpenAPI files you already have. The agent gets three tools. Destructive calls wait for confirmation.
+Point `veto` at OpenAPI files you already have. The agent gets three tools. Destructive calls wait for confirmation. Those three tools are the default. A pin or grouped mode adds tools beside them. You still supply the OpenAPI files, the credentials, and each relation the agent should follow. A field name alone is not a call.
 
 Pre-1.0. Public APIs may change.
 
