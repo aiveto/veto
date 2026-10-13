@@ -1,4 +1,4 @@
-**Your whole API. Just 3 tools.**
+# Your whole API. Just 3 tools.
 
 Your APIs are already built. Make them agent-ready.
 
@@ -10,9 +10,9 @@ No API rewrites. No hundreds of MCP tools. No separate integration for every ser
 
 <img src="docs/veto.gif" width="1280" alt="Three tools: search, describe, invoke. The search command runs, then order 123 follows customerId 7 to customers.get. The delete command runs, then the call is held until you approve.">
 
-**100 endpoints. 1,000 endpoints. Still 3 MCP tools.**
+## 100 endpoints. 1,000 endpoints. Still 3 MCP tools.
 
-**search → describe → invoke**
+### search → describe → invoke
 
 - **Search.** Find the right API using natural language.
 - **Describe.** Discover its schema and what to call next.
@@ -20,7 +20,7 @@ No API rewrites. No hundreds of MCP tools. No separate integration for every ser
 
 Your API catalog grows. Your agent's tool surface stays the same.
 
-**Your APIs are connected. Your agents should know that.**
+## Your APIs are connected. Your agents should know that.
 
 Ask: "Who placed order 123?"
 
@@ -28,13 +28,13 @@ Ask: "Who placed order 123?"
 
 Veto uses declared relationships to guide the next API call. No guessed endpoints. No invented relationships. No loading the entire API catalog into context.
 
-**Agents can act. You stay in control.**
+## Agents can act. You stay in control.
 
 Ask: "Delete order 123."
 
-Veto holds the operation until a human approves the exact caller, operation, and parameters. No approval. No destructive API call.
+Veto holds the operation until a human approves the exact caller, operation, and parameters. When approval is required, the operation cannot proceed without it.
 
-**One OpenAPI catalog. Multiple ways to use it.**
+## One OpenAPI catalog. Multiple ways to use it.
 
 | Want to... | Veto gives you |
 | --- | --- |
@@ -59,7 +59,7 @@ veto serve --stdio
 
 The [setup guide](docs/guide.md#mcp) has the block for Claude, Cursor, or ChatGPT.
 
-**See Veto in action**
+## See Veto in action
 
 [Harbor](https://github.com/aiveto/veto-demo) is a working example: orders, customers, billing, declared relationships, and a delete that waits. `make demo` runs it over the CLI, then over MCP.
 
