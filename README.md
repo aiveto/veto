@@ -1,38 +1,52 @@
-<img src="docs/veto-social.png" width="1280" alt="Your whole API. Three tools.">
+**Your whole API. Just 3 tools.**
 
-**Your whole API. Three tools.**
+Your APIs are already built. Make them agent-ready.
 
-Your APIs are already built. Make them ready for an agent.
+Turn existing OpenAPI services into intelligent, connected tools for AI agents, without building an MCP integration per endpoint.
 
-Point veto at the OpenAPI you have.
+3 MCP tools. Semantic discovery. Deterministic API relationships. CLI. Human approvals. All from one runtime.
 
-- **Three tools**, however large the catalog grows. Search, describe, and invoke.
-- **The next call is one you declared.** Search finds the operation. A relation names what comes next. The raw spec stays out.
-- **MCP, the CLI, JSON lines, and a Go client** for this runtime.
-- **A hold on the delete.** You approve that caller, that operation, and those parameters. Policy, credentials, and a trace come with the call.
-
-One catalog. One runtime. Your services stay where they are.
+No API rewrites. No hundreds of MCP tools. No separate integration for every service.
 
 <img src="docs/veto.gif" width="1280" alt="Three tools: search, describe, invoke. The search command runs, then order 123 follows customerId 7 to customers.get. The delete command runs, then the call is held until you approve.">
 
-Watch it discover an order, follow the relationship you declared, and hold the delete. Still three tools.
+**100 endpoints. 1,000 endpoints. Still 3 MCP tools.**
 
-**Who placed order 123?**
+**search → describe → invoke**
+
+- **Search.** Find the right API using natural language.
+- **Describe.** Discover its schema and what to call next.
+- **Invoke.** Execute it with built-in controls.
+
+Your API catalog grows. Your agent's tool surface stays the same.
+
+**Your APIs are connected. Your agents should know that.**
+
+Ask: "Who placed order 123?"
 
 `orders.get` → customerId 7 → `customers.get`
 
-You declared that link. The agent follows it. A field name alone is not a call.
+Veto uses declared relationships to guide the next API call. No guessed endpoints. No invented relationships. No loading the entire API catalog into context.
 
-| | |
+**Agents can act. You stay in control.**
+
+Ask: "Delete order 123."
+
+Veto holds the operation until a human approves the exact caller, operation, and parameters. No approval. No destructive API call.
+
+**One OpenAPI catalog. Multiple ways to use it.**
+
+| Want to... | Veto gives you |
 | --- | --- |
-| MCP | search, describe, and invoke for the agent |
-| CLI | the same three, in your terminal |
-| JSON lines | `veto serve --json`, for scripts |
-| Go client | `veto generate` writes a client for this runtime, not a new client for every upstream API |
+| Connect AI agents | MCP server with 3 discovery tools |
+| Explore APIs in your terminal | CLI |
+| Build scripts and agent skills | JSON-line interface (`veto serve --json`) |
+| Integrate with Go applications | A generated client for this runtime, not a new client per upstream API |
+| Navigate across services | Semantic search and declared relationships |
+| Safely execute sensitive operations | Human approvals and policy enforcement |
+| Understand what executed | Redacted audit traces |
 
-**Delete order 123.**
-
-The agent can ask. Veto holds that call. Nothing is sent until you approve it.
+One catalog. One runtime. Consistent behavior across interfaces. Module `github.com/aiveto/veto`.
 
 ```bash
 brew install aiveto/veto/veto
@@ -43,34 +57,14 @@ veto init orders.yaml customers.yaml
 veto serve --stdio
 ```
 
-The [setup guide](docs/guide.md#mcp) has the block for Claude, Cursor, or ChatGPT. Install with Go, and the container image, are there too.
+The [setup guide](docs/guide.md#mcp) has the block for Claude, Cursor, or ChatGPT.
 
-<img src="docs/veto-runtime.png" width="1280" alt="Claude, Cursor, or ChatGPT talks to veto over MCP. A CLI or script uses search, describe, and invoke. Search and describe read the catalog. Invoke goes to policy and confirmation, then HTTP.">
+**See Veto in action**
 
-[veto-demo](https://github.com/aiveto/veto-demo) is Harbor: orders, customers, and billing, the relationship, and the hold. `make demo` runs it over the CLI, then over MCP.
+[Harbor](https://github.com/aiveto/veto-demo) is a working example: orders, customers, billing, declared relationships, and a delete that waits. `make demo` runs it over the CLI, then over MCP.
 
-This repo runs that story with no model key.
+No model API key for the local example in this repo: `go run ./examples/two-apis`.
 
-```bash
-git clone https://github.com/aiveto/veto.git
-cd veto
-go run ./examples/two-apis
-```
+You already have the APIs. Give your agents a better way to use them.
 
-```text
-Someone asked who placed order 123.
-orders.get returned customerId 7.
-customers.get was called for 7 because the note said Order.customerId identifies customers.get.
-orders.delete did not call HTTP until approved.
-The trace left the secret out.
-```
-
-```bash
-veto validate --config testdata/veto.yaml
-veto serve --config testdata/veto.yaml --stdio
-veto eval --config testdata/veto.yaml --case testdata/delete.yaml
-```
-
-Your APIs are already built. Point veto at them.
-
-[Setup guide](docs/guide.md) | [Current limits](docs/guide.md#limits)
+[Get started](docs/guide.md) · [Try the demo](https://github.com/aiveto/veto-demo) · [Explore the source](https://github.com/aiveto/veto)
