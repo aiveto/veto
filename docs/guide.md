@@ -1,6 +1,8 @@
 # Using veto
 
-Point `veto` at OpenAPI files you already have. The agent gets three tools. Destructive calls wait for confirmation.
+Point `veto` at OpenAPI files you already have. The agent gets three tools. Destructive calls wait for confirmation. Those three tools are the default. A pin or grouped mode adds tools beside them. You still supply the OpenAPI files, the credentials, and each relation the agent should follow. A field name alone is not a call.
+
+Pre-1.0. Public APIs may change.
 
 ## Install
 
@@ -12,7 +14,7 @@ brew install aiveto/veto/veto
 go install github.com/aiveto/veto/cmd/veto@latest
 ```
 
-`brew` does not need Go. `go install` needs Go 1.27.1. From a checkout of this repo, `go install ./cmd/veto` or `go run ./cmd/veto`. `veto version` prints the build. A release prints that version. A checkout prints `dev`. `veto --help` opens with what veto is. `--config` works before the command, as in `veto --config veto.yaml doctor`.
+`brew` does not need Go. `go install` needs Go 1.27.2. From a checkout of this repo, `go install ./cmd/veto` or `go run ./cmd/veto`. `veto version` prints the build. A release prints that version. A checkout prints `dev`. `veto --help` opens with what veto is. `--config` works before the command, as in `veto --config veto.yaml doctor`.
 
 The container image builds `veto`. Running the image runs `veto --help`. A tagged release pushes `ghcr.io/aiveto/veto`.
 

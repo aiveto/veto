@@ -1,10 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" role="img" aria-label="veto makes it possible for an AI agent to call your API with context and semantics. A hundred endpoints stay 3 tools.">
-  <rect width="1280" height="640" fill="#F4F1EA"/>
-  <g font-family="ui-sans-serif, system-ui, sans-serif" fill="#1A1916">
-    <text x="96" y="280" font-size="180" font-weight="800" letter-spacing="-9">veto</text>
-    <text x="96" y="418" font-size="36" font-weight="560">makes it possible for an AI agent</text>
-    <text x="96" y="470" font-size="36" font-weight="560">to call your API with context and semantics.</text>
-    <text x="96" y="536" font-size="40" font-weight="700">A hundred endpoints stay 3 tools.</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 393" role="img" aria-label="Your entire API platform. Just 3 MCP tools. OpenAPI to MCP, CLI, and SDK. Semantic discovery, connected APIs, and human approvals.">
+  <rect width="1280" height="393" fill="#F6F3EC"/>
+  <g font-family="Helvetica Neue, ui-sans-serif, system-ui, sans-serif" fill="#141414">
+    <text x="72" y="110" font-size="72" font-weight="700">veto</text>
+    <text x="72" y="188" font-size="28" font-weight="400">Your entire API platform.</text>
+    <text x="72" y="229" font-size="28" font-weight="700">Just 3 MCP tools.</text>
+    <text x="72" y="307" font-size="22" font-weight="400">OpenAPI → MCP · CLI · SDK</text>
+    <text x="72" y="343" font-size="22" font-weight="400">Semantic discovery · Connected APIs · Human approvals</text>
   </g>
-  <rect x="96" y="308" width="334" height="16" fill="#C2412D"/>
+  <rect x="72" y="119" width="148" height="7" fill="#C4402E"/>
+  <rect x="72" y="263" width="1136" height="1" fill="#141414" opacity="0.22"/>
 </svg>
