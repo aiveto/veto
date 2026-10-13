@@ -8,7 +8,7 @@ Turn existing OpenAPI services into intelligent, connected tools for AI agents, 
 
 No API rewrites. No hundreds of MCP tools. No separate integration for every service.
 
-<img src="docs/veto.gif" width="1280" alt="Three tools: search, describe, invoke. The search command runs, then order 123 follows customerId 7 to customers.get. The delete command runs, then the call is held until you approve.">
+<img src="docs/veto.gif" width="1280" alt="veto init, then three tools. Search finds orders.get and the customer and invoice links. Invoke reads Mara Ellison's order for $556, follows customers.get and invoices.get, and holds orders.delete with no HTTP call.">
 
 See it yourself: [Run the Harbor demo](https://github.com/aiveto/veto-demo) — explore connected APIs, follow relationships, and see approval-gated execution in action.
 
