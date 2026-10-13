@@ -1,16 +1,14 @@
 # Your entire API platform. Just 3 MCP tools.
 
-Your APIs are already built. Make them agent-ready.
+Your APIs are already built.
 
-Turn existing OpenAPI services into intelligent, connected tools for AI agents, without building an MCP integration per endpoint.
+Point veto at your OpenAPI specs. An agent gets three tools: search, describe, and invoke. You name how the APIs connect. A delete waits until a person approves it.
 
-3 MCP tools. Semantic discovery. Deterministic API relationships. CLI. Human approvals. All from one runtime.
+No API rewrites. The agent does not get a tool for every endpoint.
 
-No API rewrites. No hundreds of MCP tools. No separate integration for every service.
+<img src="docs/veto.gif" width="1280" alt="veto init reads the OpenAPI specs. You name the customer and invoice links. scrap means delete the order. Cursor gets search, describe, and invoke. Order 10482 is Mara Ellison, a wool coat and two cedar trays, $556. The invoice is paid. Scrap the order, and the call is held. The order is still there.">
 
-<img src="docs/veto.gif" width="1280" alt="Three tools: search, describe, invoke. The search command runs, then order 123 follows customerId 7 to customers.get. The delete command runs, then the call is held until you approve.">
-
-See it yourself: [Run the Harbor demo](https://github.com/aiveto/veto-demo) — explore connected APIs, follow relationships, and see approval-gated execution in action.
+See it yourself: [Run the Harbor demo](https://github.com/aiveto/veto-demo). Mara's order, the customer and invoice links, and a delete that waits.
 
 ## 100 endpoints. 1,000 endpoints. Still 3 MCP tools.
 
@@ -40,13 +38,13 @@ Veto holds the operation until a human approves the exact caller, operation, and
 
 | Want to... | Veto gives you |
 | --- | --- |
-| Connect AI agents | MCP server with 3 discovery tools |
-| Explore APIs in your terminal | CLI |
-| Build scripts and agent skills | JSON-line interface (`veto serve --json`) |
-| Integrate with Go applications | A generated client for this runtime, not a new client per upstream API |
-| Navigate across services | Semantic search and declared relationships |
-| Safely execute sensitive operations | Human approvals and policy enforcement |
-| Understand what executed | Redacted audit traces |
+| Connect an agent | Search, describe, and invoke |
+| Use your terminal | `veto search`, `veto describe`, `veto invoke` |
+| Write a script | `veto serve --json` |
+| Call it from Go | One generated client for this runtime, shared by every API |
+| Follow a link to another service | Search in plain language, then the links you wrote |
+| Stop a sensitive call | A person approves the exact caller, operation, and parameters |
+| See what ran | A record of what ran, with secrets left out |
 
 One catalog. One runtime. Consistent behavior across interfaces. Module `github.com/aiveto/veto`.
 
@@ -67,7 +65,7 @@ The [setup guide](docs/guide.md#mcp) has the block for Claude, Cursor, or ChatGP
 
 ## See Veto in action
 
-[Harbor](https://github.com/aiveto/veto-demo) is a working example: orders, customers, billing, declared relationships, and a delete that waits. `make demo` runs it over the CLI, then over MCP.
+[Harbor](https://github.com/aiveto/veto-demo) is a working example: orders, customers, billing, the links between them, and a delete that waits. `make demo` runs it over the CLI, then over MCP.
 
 No model API key for the local example in this repo: `go run ./examples/two-apis`.
 
