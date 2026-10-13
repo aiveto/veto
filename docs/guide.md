@@ -14,7 +14,7 @@ brew install aiveto/veto/veto
 go install github.com/aiveto/veto/cmd/veto@latest
 ```
 
-`brew` does not need Go. `go install` needs Go 1.27.1. From a checkout of this repo, `go install ./cmd/veto` or `go run ./cmd/veto`. `veto version` prints the build. A release prints that version. A checkout prints `dev`. `veto --help` opens with what veto is. `--config` works before the command, as in `veto --config veto.yaml doctor`.
+`brew` does not need Go. `go install` needs Go 1.27.2. From a checkout of this repo, `go install ./cmd/veto` or `go run ./cmd/veto`. `veto version` prints the build. A release prints that version. A checkout prints `dev`. `veto --help` opens with what veto is. `--config` works before the command, as in `veto --config veto.yaml doctor`.
 
 The container image builds `veto`. Running the image runs `veto --help`. A tagged release pushes `ghcr.io/aiveto/veto`.
 
