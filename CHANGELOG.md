@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## v0.1.13 - 2026-10-13
+
+- Build with Go 1.27.2. The module requires golang.org/x/net v0.60.0.
+- A generated module requires Go 1.27.2.
+
 ## v0.1.12 - 2026-10-08
 
 - `veto version` prints the build. A release prints that version. A checkout prints `dev`.
