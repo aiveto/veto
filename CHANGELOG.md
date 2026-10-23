@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Build with Go 1.27.3.
+
 ## v0.1.13 - 2026-10-13
 
 - Build with Go 1.27.2. The module requires golang.org/x/net v0.60.0.
