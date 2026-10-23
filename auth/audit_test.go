@@ -100,7 +100,9 @@ func TestFlightDoReturnsWhenTheWaiterIsCanceled(t *testing.T) {
 	f := &flight{}
 	started := make(chan struct{})
 	release := make(chan struct{})
+	leaderDone := make(chan struct{})
 	go func() {
+		defer close(leaderDone)
 		_, _ = f.Do(context.Background(), "k", func() (Material, error) {
 			close(started)
 			<-release
@@ -124,6 +126,7 @@ func TestFlightDoReturnsWhenTheWaiterIsCanceled(t *testing.T) {
 		t.Fatal("follower blocked")
 	}
 	close(release)
+	<-leaderDone
 }
 
 func TestFlightCancelDoesNotLeaveALeakedWaiter(t *testing.T) {
