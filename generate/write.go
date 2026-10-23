@@ -27,7 +27,7 @@ func Write(dir, module string, cat *catalog.Catalog) error {
 	if err != nil {
 		return err
 	}
-	mod := "module " + module + "\n\ngo 1.27.2\n\nrequire github.com/aiveto/veto " + ver + "\n"
+	mod := "module " + module + "\n\ngo 1.27.3\n\nrequire github.com/aiveto/veto " + ver + "\n"
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(mod), 0o600); err != nil {
 		return fmt.Errorf("write go.mod: %w", err)
 	}
