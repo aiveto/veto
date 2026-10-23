@@ -49,7 +49,7 @@ func TestGeneratedCLIHelpAndConfirm(t *testing.T) {
 	require.NoError(t, generate.Write(dir, module, cat))
 	mod, err := os.ReadFile(filepath.Join(dir, "go.mod"))
 	require.NoError(t, err)
-	assert.Contains(t, string(mod), "go 1.27.2")
+	assert.Contains(t, string(mod), "go 1.27.3")
 	sdk, err := os.ReadFile(filepath.Join(dir, "sdk", "client.go"))
 	require.NoError(t, err)
 	assert.Contains(t, string(sdk), "rt.Invoke")
