@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Build with Go 1.27.3.
+- Build with Go 1.27.4.
 
 ## v0.1.13 - 2026-10-13
 
