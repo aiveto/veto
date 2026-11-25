@@ -5,7 +5,7 @@ go 1.27.4
 require (
 	github.com/alicebob/miniredis/v2 v2.40.0
 	github.com/getkin/kin-openapi v0.153.0
-	github.com/go-openapi/jsonpointer v1.0.2
+	github.com/go-openapi/jsonpointer v1.0.3
 	github.com/google/uuid v1.6.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/open-policy-agent/opa v1.22.2
